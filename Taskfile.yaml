@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: '3'
+
+vars:
+  USE_DEBUG: '{{if eq .DEBUG "1"}}-debug{{else}}{{end}}'
+  USE_TRACY: true
+  DLL_EXT: '{{if eq OS "windows"}}dll{{else}}so{{end}}'
+  EXE_EXT: '{{exeExt | default ".out"}}'
+
+tasks:
+
+  build-meta:
+    cmds:
+      - |
+        odin build engine/meta \
+        -build-mode:exe \
+        -show-timings \
+        -out:out/debug/meta{{.EXE_EXT}} \
+        -o:none \
+        -use-separate-modules \
+    sources:
+      - engine/meta/**/*.odin
+    generates:
+      - out/debug/meta{{.EXE_EXT}}
+
+  run-meta:
+    deps: [build-meta]
+    cmds:
+      - ./out/debug/meta{{.EXE_EXT}} engine
+
+  test:
+    deps: [run-meta]
+    cmds:
+      - |
+        odin test engine \
+        -define:VALIDATION=true \
+        -show-timings \
+        -o:none \
+        -collection:packages=packages \
+        -define:TRACY_ENABLE={{.USE_TRACY}} {{.USE_DEBUG}} \
+        -ignore-unknown-attributes
+
+  build:
+    deps: [run-meta]
+    cmds:
+      - |
+        odin build engine \
+        -build-mode:exe -define:VALIDATION=true \
+        -show-timings \
+        -out:out/debug/spark{{.EXE_EXT}} \
+        -o:none \
+        -debug \
+        -use-separate-modules \
+        -collection:packages=packages \
+        -define:TRACY_ENABLE={{.USE_TRACY}} {{.USE_DEBUG}} \
+        -ignore-unknown-attributes
+    sources:
+      - engine/**/*.odin
+    generates:
+      - out/debug/spark{{.EXE_EXT}}
+
+  build-shaders:
+    aliases: [a2]
+    cmds:
+      - glslc -fshader-stage=frag assets/shaders/Builtin.Object.frag.glsl -o out/assets/shaders/Builtin.Object.frag.spv --target-env=vulkan
+      - glslc -fshader-stage=vert assets/shaders/Builtin.Object.vert.glsl -o out/assets/shaders/Builtin.Object.vert.spv --target-env=vulkan
+      - spirv-link out/assets/shaders/Builtin.Object.frag.spv out/assets/shaders/Builtin.Object.vert.spv -o out/assets/shaders/Builtin.Object.spv
+
+      - glslc -fshader-stage=frag assets/shaders/Builtin.Cubemap.frag.glsl -o out/assets/shaders/Builtin.Cubemap.frag.spv
+      - glslc -fshader-stage=vert assets/shaders/Builtin.Cubemap.vert.glsl -o out/assets/shaders/Builtin.Cubemap.vert.spv 
+      - spirv-link out/assets/shaders/Builtin.Cubemap.frag.spv out/assets/shaders/Builtin.Cubemap.vert.spv -o out/assets/shaders/Builtin.Cubemap.spv
+
+      - glslc -fshader-stage=frag assets/shaders/Builtin.ShadowPass.frag.glsl -o out/assets/shaders/Builtin.ShadowPass.frag.spv
+      - glslc -fshader-stage=vert assets/shaders/Builtin.ShadowPass.vert.glsl -o out/assets/shaders/Builtin.ShadowPass.vert.spv 
+      - spirv-link out/assets/shaders/Builtin.ShadowPass.frag.spv out/assets/shaders/Builtin.ShadowPass.vert.spv -o out/assets/shaders/Builtin.ShadowPass.spv
+
+      - glslc -fshader-stage=frag assets/shaders/nuklear.frag.glsl -o out/assets/shaders/nuklear.frag.spv
+      - glslc -fshader-stage=vert assets/shaders/nuklear.vert.glsl -o out/assets/shaders/nuklear.vert.spv 
+      - spirv-link out/assets/shaders/nuklear.frag.spv out/assets/shaders/nuklear.vert.spv -o out/assets/shaders/nuklear.spv
+    sources:
+      - assets/shaders/**/*.glsl
+    generates:
+      - out/assets/shaders/Builtin.Object.spv
+      - out/assets/shaders/Builtin.Cubemap.spv
+      - out/assets/shaders/nuklear.spv
+
+  run:
+    deps: [build]
+    cmds:
+      - ./out/debug/spark{{.EXE_EXT}}
+
+  debugger:
+    platforms: [windows]
+    deps: [build-loader, build, build-shaders]
+    cmds:
+      - raddbg.exe --profile:vulkan_test.raddbgprofile

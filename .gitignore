@@ -1,0 +1,7 @@
+.vscode/
+.task/
+.vs/
+.idea/
+out/
+**/*.raddbg_profile
+**/*_generated.odin
