@@ -124,13 +124,6 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             return
         }
 
-        if is_key_just_pressed(.p) {
-            i := 0
-            for entity in entities_iter(&i, PointLight) {
-                log.debugf("%v\n", entity)
-            }
-        }
-
         if e.capture_mouse {
             input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
             up_down := get_axis(.space, .left_control) * CAMERA_SPEED
@@ -757,11 +750,6 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) {
     // imgui.DrawList_ChannelsMerge(list)
 
     imgui.PopID()
-}
-
-imgui_draw_entity :: proc(e: ^Editor, en: ^EntitySlot) {
-    v := reflect.get_union_variant(en^)
-    imgui_draw_struct(e, v)
 }
 
 imgui_draw_component :: proc(e: ^Editor, s: any) -> (modified: bool) {

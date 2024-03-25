@@ -69,13 +69,6 @@ game_update :: proc(g: ^Game, _delta: f64) {
             return
         }
 
-        if is_key_just_pressed(.p) {
-            i := 0
-            for entity in entities_iter(&i, PointLight) {
-                log.debugf("%v\n", entity)
-            }
-        }
-
         input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
         up_down := get_axis(.space, .left_control) * CAMERA_SPEED
         g.engine.camera.position.xz += ( vec4{input.x, 0, -input.y, 0} * linalg.matrix4_from_quaternion(g.engine.camera.rotation)).xz * delta

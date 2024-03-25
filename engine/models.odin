@@ -130,20 +130,11 @@ Model :: struct {
     num_indices:    i32,
 }
 
-@(entity)
-Model_Entity :: struct {
-    using base: Entity,
-
-    model: Model,
-    material: Material,
-}
-
 model_deinit :: proc(model: ^Model) {
     delete(model.name)
 }
 
 Scene :: struct {
-    // models: [dynamic]^Model,
     entities: [dynamic]int,
 }
 

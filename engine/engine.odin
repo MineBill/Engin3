@@ -65,38 +65,6 @@ Lights_Data :: struct {
     ubo: u32,
 }
 
-@(entity)
-Directional_Light ::struct {
-    using base: Entity,
-    direction: vec4,
-    color: color,
-    test_name: string,
-};
-
-@(entity)
-SpotLight :: struct {
-    using base: Entity,
-}
-
-@(entity)
-PointLight :: struct {
-    using base: Entity,
-
-    color: color,
-    constant: f32,
-    linear: f32,
-    quadratic: f32,
-}
-
-default_PointLight :: proc() -> PointLight {
-    return {
-        color = {1, 1, 1, 1},
-        constant = 1.0,
-        linear = 0.7,
-        quadratic = 1.8,
-    }
-}
-
 EngineMode :: enum {
     Game,
     Editor,
@@ -220,12 +188,6 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
     }
 
     gl.CreateVertexArrays(1, &e.grid_va)
-
-    e.light_entity = add_entity("Dir Light", Directional_Light)
-    dir := get_entity(e.light_entity, Directional_Light)
-    dir.color = color{1, 1, 1, 1}
-    dir.rotation.x = 70
-    dir.test_name = "Pepegas"
 
     {
         SCREEN_VERTEX_SRC : string : `
@@ -830,7 +792,6 @@ engine_deinit :: proc(e: ^Engine) {
     scene_deinit(&e.scene)
     shader_deinit(&e.triangle_shader)
     shader_deinit(&e.outline_shader)
-    destroy_entities()
     destroy_world(&e.world)
 
     editor_deinit(&e.editor)

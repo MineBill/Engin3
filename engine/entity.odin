@@ -9,121 +9,12 @@ import "core:os"
 
 MAX_ENTITIES :: 1_000
 
-Entity :: struct {
-    name:   OwnedString,
-    flags: EntityFlags,
-
-    enabled: bool,
-    position: vec3,
-    rotation: vec3,
-    scale:    vec3,
-
-    // parent: ^Entity,
-}
-
 EntityFlag :: enum {
     Static,
     Outlined,
 }
 
 EntityFlags :: bit_set[EntityFlag]
-
-g_entities: [MAX_ENTITIES]EntitySlot
-g_entity_count: int = 0
-
-destroy_entities :: proc() {
-    for i in 0..<g_entity_count {
-        destroy_entity(i)
-    }
-}
-
-entities_iter :: proc(index: ^int, $T: typeid) -> (e: ^T, ok: bool) {
-    if index^ >= g_entity_count do return nil, false
-
-    for index^ < g_entity_count {
-        e, ok = get_entity(index^, T)
-        index^ += 1
-        if ok {
-            return e, true
-        }
-    }
-
-    return nil, false
-}
-
-import "core:intrinsics"
-add_entity_type :: proc(name := "New Entity", $T: typeid) -> (handle: int) 
-where intrinsics.type_is_subtype_of(T, Entity) {
-    handle = g_entity_count
-    g_entity_count += 1
-
-    g_entities[handle] = T{
-        position = {},
-        rotation = {},
-        scale = {1, 1, 1},
-        enabled = true,
-        name = owned_string(name),
-    }
-    return
-}
-
-add_entity_value :: proc(name := "New Entity", type: EntityType) -> (handle: int) {
-    handle = g_entity_count
-    g_entity_count += 1
-
-    // g_entities[handle] = T{
-    //     position = {},
-    //     rotation = {},
-    //     scale = {1, 1, 1},
-    //     enabled = true,
-    //     name = owned_string(name),
-    // }
-    g_entities[handle] = entity_from_type(type)
-    entity := cast(^Entity)&g_entities[handle]
-    entity.name = owned_string(name)
-    entity.scale = {1, 1, 1}
-    entity.enabled = true
-    return
-}
-
-add_entity :: proc {
-    add_entity_type,
-    add_entity_value,
-}
-
-get_entity :: proc(handle: int, $T: typeid) -> (t: ^T, ok: bool) 
-where intrinsics.type_is_subtype_of(T, Entity) #optional_ok {
-    assert(handle >= 0 && handle < g_entity_count)
-
-    t, ok = (&g_entities[handle].(T))
-    return
-}
-
-get_entity_base :: proc(handle: int) -> (t: ^Entity) {
-    assert(handle >= 0 && handle < g_entity_count)
-
-    t = cast(^Entity)&g_entities[handle]
-    return
-}
-
-find_entity :: proc(name: string) -> int {
-    for i in 0..<g_entity_count {
-        base := get_entity_base(i)
-        if base.name.s == name {
-            return i
-        }
-    }
-    return -1
-}
-
-destroy_entity :: proc(handle: int) {
-    entity := cast(^Entity)&g_entities[handle]
-    free_owned_string(&entity.name)
-}
-
-
-// ====================== New Component/GameObject Stuff ======================
-
 
 // The vtable for components.
 ComponentVTable :: struct {

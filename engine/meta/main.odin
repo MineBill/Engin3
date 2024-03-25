@@ -57,26 +57,6 @@ main :: proc() {
     strings.write_string(&sb, "package engine\n")
     strings.write_string(&sb, "// === AUTO GENERATED ===\n")
     strings.write_string(&sb, "\n")
-    strings.write_string(&sb, "EntitySlot :: union {\n")
-    for s in structs do if has_attr_name(s, "entity") {
-        strings.write_string(&sb, fmt.tprintf("\t%v,\n", s.name))
-    }
-    strings.write_string(&sb, "}\n\n")
-
-    strings.write_string(&sb, "EntityType :: enum {\n")
-    for s in structs do if has_attr_name(s, "entity") {
-        strings.write_string(&sb, fmt.tprintf("\t%v,\n", s.name))
-    }
-    strings.write_string(&sb, "}\n\n")
-
-    strings.write_string(&sb, "entity_from_type :: proc(type: EntityType) -> EntitySlot {\n")
-    strings.write_string(&sb, "\tswitch type {\n")
-
-    for s in structs do if has_attr_name(s, "entity") {
-        strings.write_string(&sb, fmt.tprintf("\tcase .%v: return %v{{}}\n", s.name, s.name))
-    }
-    strings.write_string(&sb, "\tcase: unreachable()\n")
-    strings.write_string(&sb, "\t}\n}\n\n")
 
     strings.write_string(&sb, "COMPONENT_INDICES : map[typeid]int = {\n")
 
