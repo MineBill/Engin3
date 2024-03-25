@@ -8,6 +8,10 @@ vars:
   EXE_EXT: '{{exeExt | default ".out"}}'
 
 tasks:
+  init:
+    dir: packages/odin-imgui
+    cmds:
+      - python3 build.py
 
   build-meta:
     cmds:
