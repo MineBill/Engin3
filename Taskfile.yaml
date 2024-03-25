@@ -47,7 +47,7 @@ tasks:
         odin build engine \
         -build-mode:exe -define:VALIDATION=true \
         -show-timings \
-        -out:out/debug/spark{{.EXE_EXT}} \
+        -out:out/debug/engin3{{.EXE_EXT}} \
         -o:none \
         -debug \
         -use-separate-modules \
@@ -57,37 +57,12 @@ tasks:
     sources:
       - engine/**/*.odin
     generates:
-      - out/debug/spark{{.EXE_EXT}}
-
-  build-shaders:
-    aliases: [a2]
-    cmds:
-      - glslc -fshader-stage=frag assets/shaders/Builtin.Object.frag.glsl -o out/assets/shaders/Builtin.Object.frag.spv --target-env=vulkan
-      - glslc -fshader-stage=vert assets/shaders/Builtin.Object.vert.glsl -o out/assets/shaders/Builtin.Object.vert.spv --target-env=vulkan
-      - spirv-link out/assets/shaders/Builtin.Object.frag.spv out/assets/shaders/Builtin.Object.vert.spv -o out/assets/shaders/Builtin.Object.spv
-
-      - glslc -fshader-stage=frag assets/shaders/Builtin.Cubemap.frag.glsl -o out/assets/shaders/Builtin.Cubemap.frag.spv
-      - glslc -fshader-stage=vert assets/shaders/Builtin.Cubemap.vert.glsl -o out/assets/shaders/Builtin.Cubemap.vert.spv 
-      - spirv-link out/assets/shaders/Builtin.Cubemap.frag.spv out/assets/shaders/Builtin.Cubemap.vert.spv -o out/assets/shaders/Builtin.Cubemap.spv
-
-      - glslc -fshader-stage=frag assets/shaders/Builtin.ShadowPass.frag.glsl -o out/assets/shaders/Builtin.ShadowPass.frag.spv
-      - glslc -fshader-stage=vert assets/shaders/Builtin.ShadowPass.vert.glsl -o out/assets/shaders/Builtin.ShadowPass.vert.spv 
-      - spirv-link out/assets/shaders/Builtin.ShadowPass.frag.spv out/assets/shaders/Builtin.ShadowPass.vert.spv -o out/assets/shaders/Builtin.ShadowPass.spv
-
-      - glslc -fshader-stage=frag assets/shaders/nuklear.frag.glsl -o out/assets/shaders/nuklear.frag.spv
-      - glslc -fshader-stage=vert assets/shaders/nuklear.vert.glsl -o out/assets/shaders/nuklear.vert.spv 
-      - spirv-link out/assets/shaders/nuklear.frag.spv out/assets/shaders/nuklear.vert.spv -o out/assets/shaders/nuklear.spv
-    sources:
-      - assets/shaders/**/*.glsl
-    generates:
-      - out/assets/shaders/Builtin.Object.spv
-      - out/assets/shaders/Builtin.Cubemap.spv
-      - out/assets/shaders/nuklear.spv
+      - out/debug/engin3{{.EXE_EXT}}
 
   run:
     deps: [build]
     cmds:
-      - ./out/debug/spark{{.EXE_EXT}}
+      - ./out/debug/engin3{{.EXE_EXT}}
 
   debugger:
     platforms: [windows]
