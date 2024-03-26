@@ -5,3 +5,7 @@
 out/
 **/*.raddbg_profile
 **/*_generated.odin
+**/*.a
+**/*.so
+**/*.o
+**/*.obj

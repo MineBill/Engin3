@@ -3,8 +3,8 @@ package tracy
 import "core:c"
 
 when ODIN_OS == .Darwin  do foreign import tracy "tracy.dylib"
-when ODIN_OS == .Windows do foreign import tracy "zig-out/lib/tracy.lib"
-when ODIN_OS == .Linux   do foreign import tracy "zig-out/lib/libtracy.a"
+when ODIN_OS == .Windows do foreign import tracy "tracy.lib"
+when ODIN_OS == .Linux   do foreign import tracy "libtracy.a"
 
 TracyPlotFormatEnum :: enum i32
 {

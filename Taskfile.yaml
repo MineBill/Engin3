@@ -8,10 +8,13 @@ vars:
   EXE_EXT: '{{exeExt | default ".out"}}'
 
 tasks:
-  init:
-    dir: packages/odin-imgui
-    cmds:
-      - python3 build.py
+  setup-windows:
+    platforms: [windows]
+    cmd: packages\\build.bat
+
+  setup-linux:
+    platforms: [linux]
+    cmd: ./packages/build.sh
 
   build-meta:
     cmds:
