@@ -873,10 +873,10 @@ setup_imgui_style :: proc() {
     style.ChildBorderSize           = 1.0
     style.PopupRounding             = 3.0
     style.PopupBorderSize           = 1.0
-    style.FramePadding              = vec2{4.0, 3.0}
+    style.FramePadding              = vec2{4.0, 2.0}
     style.FrameRounding             = 3.0
     style.FrameBorderSize           = 0.0
-    style.ItemSpacing               = vec2{12.0, 6.0}
+    style.ItemSpacing               = vec2{6.0, 3.0}
     style.ItemInnerSpacing          = vec2{6.0, 3.0}
     style.CellPadding               = vec2{12.0, 6.0}
     style.IndentSpacing             = 20.0

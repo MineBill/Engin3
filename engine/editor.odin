@@ -106,13 +106,6 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     }
 
     {
-        d := &e.engine.dbg_draw
-        dbg_draw_line(d, vec3{0, 0, 0}, vec3{0, 3, 0}, color = color_hex(0x86cd82FF))
-        dbg_draw_line(d, vec3{0, 3, 0}, vec3{1, 3, 0}, color = color_hex(0x86cd82FF))
-        dbg_draw_line(d, vec3{1, 3, 0}, vec3{0, 2, 1}, color = color_hex(0x86cd82FF))
-
-        dbg_draw_cube(d, vec3{0, 0.5, 0}, vec3{1, 1, 1}, color = COLOR_BLUE)
-
         engine := e.engine
         if e.capture_mouse {
             engine.camera.euler_angles.xy += get_mouse_delta().yx * 25 * delta
@@ -382,6 +375,8 @@ editor_entidor :: proc(e: ^Editor) {
 
         for id, component in go.components {
             draw_component(e, id, component)
+            imgui.Spacing()
+            imgui.Spacing()
         }
 
         imgui.Separator()
@@ -589,20 +584,29 @@ select_entity :: proc(e: ^Editor, entity: Handle) {
 draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
     info := type_info_of(id).variant.(reflect.Type_Info_Named)
     name := cstr(COMPONENT_NAMES[id]) if id in COMPONENT_NAMES else cstr(info.name)
-    opened := imgui.CollapsingHeader(name, {.AllowOverlap})
+
+    imgui.PushStyleVarImVec2(.FramePadding, {4, 4})
+    // opened := imgui.CollapsingHeader(name, {.AllowOverlap, .DefaultOpen})
+    opened := imgui.TreeNodeExPtr(transmute(rawptr)id, {.AllowOverlap, .DefaultOpen, .Framed, .FramePadding, .SpanAvailWidth}, name)
 
     // ImGui::SameLine(ImGui::GetWindowContentRegionWidth() - ImGui::CalcTextSize("(?)").x);
-    width := imgui.GetWindowContentRegionMax().x - imgui.GetWindowContentRegionMin().x
-    imgui.SameLineEx(width + imgui.CalcTextSize(name).x, 0)
-    imgui.Checkbox("Enabled", &component.enabled)
+    width := imgui.GetContentRegionAvail().x
+
+    line_height := imgui.GetFont().FontSize + imgui.GetStyle().FramePadding.y * 2.0
+    imgui.PopStyleVar()
+
+    // imgui.SameLineEx(width - line_height * 0.5, 0)
+    // if imgui.ButtonEx("+", vec2{line_height, line_height}) {
+    //     imgui.OpenPopup("ComponentSettings", {})
+    // }
 
     imgui.PushStyleVarImVec2(.WindowPadding, POPUP_PADDING)
     if imgui.BeginPopupContextItem() {
-        if imgui.Selectable("Copy Component") {
+        if imgui.MenuItem("Copy Component") {
             // TODO
         }
 
-        if imgui.Selectable("Remove Component") {
+        if imgui.MenuItem("Remove Component") {
             handle, ok := e.selected_entity.(Handle)
             if ok {
                 remove_component(&e.engine.world, handle, id)
@@ -614,6 +618,7 @@ draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
 
     if opened {
         imgui_draw_component(e, any{component, id})
+        imgui.TreePop()
     }
 
 }
