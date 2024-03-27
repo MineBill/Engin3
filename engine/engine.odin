@@ -45,12 +45,12 @@ Lights_Data :: struct {
     using block : struct {
         directional: struct {
             direction: vec4,
-            color: color,
+            color: Color,
             light_space_matrix: mat4,
         },
 
         pointlights: [MAX_POINTLIGHTS]struct {
-            color: color,
+            color: Color,
             position: vec3,
 
             constant: f32,

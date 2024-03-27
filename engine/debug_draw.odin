@@ -8,7 +8,7 @@ MAX_LINES :: 10_000
 LinePoint :: struct {
     point: vec3,
     thickness: f32,
-    color: color,
+    color: Color,
 }
 
 LINE_VERTEX_SIZE :: size_of(vec3) + size_of(f32)

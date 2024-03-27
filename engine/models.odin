@@ -14,7 +14,7 @@ NORMAL_MAP :: #load("../assets/textures/default_normal_map.png")
 Material :: struct {
     name: string,
     using block : struct {
-        albedo_color:     color,
+        albedo_color:     Color,
         metallic_factor:  f32 `range:"0.0, 1.0"`,
         roughness_factor: f32 `range:"0.0, 1.0"`,
     },
@@ -35,7 +35,7 @@ bind_material :: proc(m: ^Material) {
 default_material :: proc() -> Material {
     return {
         block = {
-            albedo_color = color{1, 1, 1, 1},
+            albedo_color = Color{1, 1, 1, 1},
             metallic_factor = 0,
             roughness_factor = 0,
         },
@@ -309,7 +309,7 @@ scene_load_from_file :: proc(w: ^World, file: string, scene: ^Scene) {
 
                         }
 
-                        e.material.albedo_color = color(material.pbr_metallic_roughness.base_color_factor)
+                        e.material.albedo_color = Color(material.pbr_metallic_roughness.base_color_factor)
                         e.material.metallic_factor = material.pbr_metallic_roughness.metallic_factor
                         e.material.roughness_factor = material.pbr_metallic_roughness.roughness_factor
                     }

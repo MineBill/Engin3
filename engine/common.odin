@@ -8,15 +8,15 @@ vec2 :: [2]f32
 vec3 :: [3]f32
 vec4 :: [4]f32
 
-color :: distinct vec4
+Color :: distinct vec4
 
-COLOR_RED   :: color{1, 0, 0, 1}
-COLOR_GREEN :: color{0, 1, 0, 1}
-COLOR_BLUE  :: color{0, 0, 1, 1}
-COLOR_BLACK :: color{0, 0, 0, 1}
-COLOR_WHITE :: color{1, 1, 1, 1}
+COLOR_RED   :: Color{1, 0, 0, 1}
+COLOR_GREEN :: Color{0, 1, 0, 1}
+COLOR_BLUE  :: Color{0, 0, 1, 1}
+COLOR_BLACK :: Color{0, 0, 0, 1}
+COLOR_WHITE :: Color{1, 1, 1, 1}
 
-color_hex :: proc(hex: int) -> color {
+color_hex :: proc(hex: int) -> Color {
     r: f32 = f32(hex >> 24) / 255
     g: f32 = f32((hex  >> 16) & 0x00FF) / 255
     b: f32 = f32((hex  >> 8) & 0x0000FF) / 255

@@ -876,9 +876,9 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
         case typeid_of(vec4):
             imgui.TextUnformatted(fmt.ctprintf("%v", field.name))
             modified = imgui.DragFloat4(fmt.ctprintf("##_field_%v", field.name), &value.(vec4))
-        case typeid_of(color):
+        case typeid_of(Color):
             imgui.TextUnformatted(fmt.ctprintf("%v", field.name))
-            color := cast(^vec4)&value.(color)
+            color := cast(^vec4)&value.(Color)
             modified = imgui.ColorEdit4(fmt.ctprintf("##_field_%v", field.name), color, {})
         case:
             imgui_draw_array(field.name, value)
