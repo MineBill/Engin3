@@ -141,7 +141,18 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
     @(static) show_depth_buffer := false
     if imgui.BeginMainMenuBar() {
-        imgui.Checkbox("Show Demo", &show_imgui_demo)
+
+        if imgui.BeginMenu("Scene") {
+            if imgui.MenuItem("Save") {
+                serialize_world(e.engine.world, "assets/scenes/main.scen3")
+            }
+
+            if imgui.MenuItem("Load") {
+                deserialize_world(&e.engine.world, "assets/scenes/main.scen3")
+            }
+
+            imgui.EndMenu()
+        }
 
         if imgui.BeginMenu("Options") {
             @(static) top_most := false
@@ -149,6 +160,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 top_most = !top_most
                 glfw.SetWindowAttrib(e.engine.window, glfw.FLOATING, i32(top_most))
             }
+            imgui.Checkbox("Show Demo", &show_imgui_demo)
             imgui.EndMenu()
         }
 
@@ -531,7 +543,8 @@ editor_gameobjects :: proc(e: ^Editor) {
 
     }
 
-    if imgui.Begin("Game Objects", nil, {}) {
+    if imgui.Begin("Entities", nil, {}) {
+        imgui.TextUnformatted(cstr(e.engine.world.name))
         imgui.Separator()
 
         go := e.engine.world.root

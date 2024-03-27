@@ -83,8 +83,8 @@ main :: proc() {
         // Find the ctor for the struct
         ctor: Maybe(string)
         for p in procs {
-            if has_attr_name(p, "ctor_for") {
-                if get_attr_value_proc(p, "ctor_for") == s.name {
+            if has_attr_name(p, "constructor") {
+                if get_attr_value_proc(p, "constructor") == s.name {
                     ctor = p.name
                 }
             }
@@ -120,15 +120,23 @@ main :: proc() {
         strings.write_string(&sb, fmt.tprintf("\t{{%v, typeid_of(%v)}},\n", value, s.name))
     }
 
-    strings.write_string(&sb, "}\n")
+    strings.write_string(&sb, "}\n\n")
 
     strings.write_string(&sb, "COMPONENT_NAMES : map[typeid]string = {\n")
 
-    for s, i in structs do if has_attr_name(s, "component") && has_attr_name(s, "name") {
-        name := get_attr_value(s, "name")
-        if len(name) == 0 do continue
+    for s, i in structs do if has_attr_name(s, "component") {
+        strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = \"%v\",\n", s.name, s.name))
+    }
 
-        strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", s.name, name))
+    strings.write_string(&sb, "}\n\n")
+
+    strings.write_string(&sb, "COMPONENT_SERIALIZERS : map[typeid]ComponentSerializer = {\n")
+
+    for p, i in procs do if has_attr_name(p, "serializer") {
+        component := get_attr_value(p, "serializer")
+        assert(len(component) != 0)
+
+        strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", component, p.name))
     }
 
     strings.write_string(&sb, "}\n")
@@ -184,6 +192,15 @@ get_component_category_typeid :: proc(id: typeid) -> (category: string, ok: bool
 get_component_category :: proc {
     get_component_category_type,
     get_component_category_typeid,
+}
+
+get_component_typeid_from_name :: proc(name: string) -> (id: typeid, ok: bool) {
+    for c_id, c_name in COMPONENT_NAMES {
+        if c_name == name {
+            return c_id, true
+        }
+    }
+    return {}, false
 }
 `)
 

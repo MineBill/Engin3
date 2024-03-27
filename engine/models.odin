@@ -134,12 +134,8 @@ model_deinit :: proc(model: ^Model) {
     delete(model.name)
 }
 
-Scene :: struct {
-    entities: [dynamic]int,
-}
-
 // Currently, every object in a gltf file is be its own buffer.
-scene_load_from_file :: proc(w: ^World, file: string, scene: ^Scene) {
+scene_load_from_file :: proc(w: ^World, file: string) {
     model_data, ok := os.read_entire_file_from_filename(file)
     if !ok do return
     defer delete(model_data)
@@ -320,8 +316,4 @@ scene_load_from_file :: proc(w: ^World, file: string, scene: ^Scene) {
     }
 
     return
-}
-
-scene_deinit :: proc(scene: ^Scene) {
-    delete(scene.entities)
 }

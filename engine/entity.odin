@@ -6,6 +6,8 @@ import "core:log"
 import tracy "packages:odin-tracy"
 import "core:encoding/json"
 import "core:os"
+import "core:runtime"
+import "core:reflect"
 
 MAX_ENTITIES :: 1_000
 
@@ -14,7 +16,7 @@ EntityFlag :: enum {
     Outlined,
 }
 
-EntityFlags :: bit_set[EntityFlag]
+EntityFlags :: bit_set[EntityFlag; u64]
 
 // The vtable for components.
 ComponentVTable :: struct {
@@ -62,9 +64,10 @@ Component :: struct {
 ComponentConstructor :: #type proc() -> rawptr
 
 GameObject :: struct {
-    components: map[typeid]^Component `json:"ignore"`,
-    world: ^World `json:"ignore"`,
+    components: map[typeid]^Component,
+    world: ^World,
     handle: Handle,
+    id: UUID,
 
     enabled: bool,
     name: DynamicString,
@@ -75,10 +78,10 @@ GameObject :: struct {
     children: [dynamic]Handle,
 }
 
-Handle :: distinct uint
+Handle :: UUID
 
 @(private = "file")
-NOT_REGISTERED_MESSAGE :: "Component %v is not registered. Register the component with @(component) and define a construct proc with @(ctor_for=<C>)"
+NOT_REGISTERED_MESSAGE :: "Component %v is not registered. Register the component with @(component) and define a constructor proc with @(constructor=<C>)"
 
 add_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) {
     tracy.Zone()
@@ -116,6 +119,13 @@ get_component_type :: proc(w: ^World, handle: Handle, $C: typeid) -> ^C {
     if !has_component(w, handle, C) do return nil
     go := get_object(w, handle)
     return cast(^C)go.components[C]
+}
+
+get_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) -> ^Component {
+    tracy.Zone()
+    if !has_component(w, handle, id) do return nil
+    go := get_object(w, handle)
+    return go.components[id]
 }
 
 get_component :: proc {
@@ -177,22 +187,24 @@ has_component :: proc {
 }
 
 World :: struct {
-    objects: map[Handle]GameObject,
-    // _objects: [dynamic]GameObject,
-    // _map: map[Handle]int,
-    root: Handle,
+    // The name of this world/level.
+    name: string,
 
-    next_handle: Handle,
+    objects: map[Handle]GameObject,
+    root: Handle,
 }
 
-create_world :: proc() -> (world: World) {
+create_world :: proc(world: ^World, name: string = "World") {
     tracy.Zone()
-    world.root = world.next_handle
-    world.objects[world.root] = GameObject{name = make_ds("Root"), transform = {
-        local_scale = vec3{1, 1, 1},
-    }}
+    // world.root = generate_uuid()
+    world^ = World{}
+    world.name = name
+    world.objects[world.root] = GameObject{
+        name = make_ds("Root"),
+        transform = default_transform(),
+        world = world,
+    }
 
-    world.next_handle += 1
     return
 }
 
@@ -226,34 +238,72 @@ get_object :: proc(world: ^World, handle: Handle) -> ^GameObject {
 }
 
 add_child :: proc(world: ^World, parent: Handle, child: Handle) {
+    child_go := &world.objects[child]
+    remove_child(world, child_go.parent, child)
+
     parent_go := &world.objects[parent]
     append(&parent_go.children, child)
 
-    child_go := &world.objects[child]
     child_go.parent = parent
+}
+
+remove_child :: proc(world: ^World, parent: Handle, child: Handle) {
+    entity := &world.objects[parent]
+    for c, i in entity.children {
+        if c == child {
+            ordered_remove(&entity.children, i)
+            return
+        }
+    }
 }
 
 new_object :: proc(world: ^World, name: string = "New GameObject", parent: Maybe(Handle) = nil) -> Handle {
     tracy.Zone()
-    handle := world.next_handle
-    world.objects[handle] = GameObject{name = make_ds(name)}
-    world.next_handle += 1
+    // handle := world.next_handle
+    id := generate_uuid()
+    world.objects[id] = GameObject{name = make_ds(name)}
+    // world.next_handle += 1
 
-    go := &world.objects[handle]
+    go := &world.objects[id]
     if parent == nil {
         // go.parent = world.root
-        add_child(world, world.root, handle)
+        add_child(world, world.root, id)
     } else {
         // go.parent = parent.(Handle)
-        add_child(world, parent.(Handle), handle)
+        add_child(world, parent.(Handle), id)
     }
 
     go.world = world
-    go.handle = handle
+    go.handle = id
+    go.id = id
     go.enabled = true
     go.transform.local_scale = vec3{1, 1, 1}
 
-    return handle
+    return id
+}
+
+new_object_with_uuid :: proc(world: ^World, name: string = "New GameObject", uuid: UUID, parent: Maybe(Handle) = nil) -> Handle {
+    tracy.Zone()
+    // handle := world.next_handle
+    world.objects[uuid] = GameObject{name = make_ds(name)}
+    // world.next_handle += 1
+
+    go := &world.objects[uuid]
+    if parent == nil {
+        // go.parent = world.root
+        add_child(world, world.root, uuid)
+    } else {
+        // go.parent = parent.(Handle)
+        add_child(world, parent.(Handle), uuid)
+    }
+
+    go.world = world
+    go.handle = uuid
+    go.id = uuid
+    go.enabled = true
+    go.transform.local_scale = vec3{1, 1, 1}
+
+    return uuid
 }
 
 delete_object :: proc(world: ^World, handle: Handle) {
@@ -291,14 +341,210 @@ find_first_component :: proc(world: ^World, $C: typeid) -> ^C {
     return nil
 }
 
+import "core:strings"
+import "core:io"
+
 serialize_world :: proc(world: World, file: string) {
-    data, err := json.marshal(world, {
-        spec = .JSON5,
-    })
-    if err != nil {
-        log.error(err)
-        return
+    log.debugf("Serializing world to file: %v", file)
+    sb: strings.Builder
+    strings.builder_init(&sb)
+
+    w := strings.to_writer(&sb)
+
+    opt: json.Marshal_Options
+    opt.pretty = true
+    opt.spec = .MJSON
+
+    json.opt_write_key(w, &opt, "Name")
+    json.marshal_to_writer(w, world.name, &opt)
+
+    json.opt_write_iteration(w, &opt, 1)
+
+    json.opt_write_key(w, &opt, "Entities")
+    json.opt_write_start(w, &opt, '[')
+
+    i := 0
+    for id, go in world.objects {
+        if id == 0 do continue
+        json.opt_write_iteration(w, &opt, i)
+        serialize_gameobject(w, go, &opt)
+        i += 1
     }
 
-    os.write_entire_file(file, data)
+    json.opt_write_end(w, &opt, ']')
+
+    os.write_entire_file(file, transmute([]u8)strings.to_string(sb))
+}
+
+deserialize_world :: proc(world: ^World, file: string) -> (ok: bool) {
+    log.debugf("Deserializing world from file: %v", file)
+
+    destroy_world(world)
+    create_world(world)
+
+    scene_data := os.read_entire_file(file) or_return
+    defer delete(scene_data)
+
+    value, err := json.parse(scene_data, .MJSON, parse_integers = true)
+    if err != nil do return false
+    
+    ResolvePair :: struct {entity, parent: UUID}
+    parents_to_resolve := make([dynamic]ResolvePair)
+    defer delete(parents_to_resolve)
+
+    if root, ok := value.(json.Object); ok {
+        world.name = root["Name"].(json.String)
+        entities := root["Entities"].(json.Array)
+        for entity in entities {
+            en := entity.(json.Object)
+
+            uuid := UUID(en["UUID"].(json.Integer))
+            name := en["Name"].(json.String)
+            flags := transmute(EntityFlags)(en["Flags"].(json.Integer))
+            enabled := en["Enabled"].(json.Boolean)
+            parent := UUID(en["Parent"].(json.Integer))
+
+            id: UUID
+            if parent in world.objects {
+                id = new_object_with_uuid(world, name, uuid, parent)
+            } else {
+                id = new_object_with_uuid(world, name, uuid)
+                append(&parents_to_resolve, ResolvePair{entity = id, parent = parent})
+            }
+
+            entity := get_object(world, id)
+            entity.enabled = enabled
+            entity.flags = flags
+
+            transform := en["Transform"].(json.Object)
+
+            get_vec3 :: proc(obj: json.Array) -> vec3 {
+                x := f32(obj[0].(json.Float))
+                y := f32(obj[1].(json.Float))
+                z := f32(obj[2].(json.Float))
+                return vec3{x, y, z}
+            }
+
+            // entity.transform.local_position = get_vec3(transform["Position"].(json.Array))
+            // entity.transform.local_rotation = get_vec3(transform["Rotation"].(json.Array))
+            // entity.transform.local_scale    = get_vec3(transform["Scale"].(json.Array))
+            s := Serializer {
+                object = transform,
+            }
+            serialize_transform(&entity.transform, false, &s)
+
+            for component_name, data in en["Components"].(json.Object) {
+                deserialize_component(world, entity, component_name, data.(json.Object))
+            }
+        }
+    }
+
+    for pair in parents_to_resolve {
+        if pair.parent in world.objects {
+            add_child(world, pair.parent, pair.entity)
+        }
+    }
+
+    return true
+}
+
+serialize_gameobject :: proc(w: io.Writer, go: GameObject, opt: ^json.Marshal_Options) {
+    json.opt_write_start(w, opt, '{')
+
+    json.opt_write_indentation(w, opt)
+    json.opt_write_key(w, opt, "UUID")
+    io.write_u64(w, u64(go.id))
+
+    json.opt_write_iteration(w, opt, 1)
+
+    json.opt_write_key(w, opt, "Name")
+    io.write_quoted_string(w, ds_to_string(go.name), '"', nil, true)
+
+    json.opt_write_iteration(w, opt, 2)
+
+    json.opt_write_key(w, opt, "Flags")
+    json.marshal_to_writer(w, go.flags, opt)
+
+    json.opt_write_iteration(w, opt, 3)
+
+    json.opt_write_key(w, opt, "Enabled")
+    json.marshal_to_writer(w, go.enabled, opt)
+
+    json.opt_write_iteration(w, opt, 4)
+
+    json.opt_write_key(w, opt, "Parent")
+    json.marshal_to_writer(w, go.parent, opt)
+
+    json.opt_write_iteration(w, opt, 5)
+
+    json.opt_write_key(w, opt, "Transform")
+    s := Serializer {
+        writer = w,
+        opt = opt,
+    }
+    transform := go.transform
+    serialize_transform(&transform, true, &s)
+
+    json.opt_write_iteration(w, opt, 6)
+
+    json.opt_write_key(w, opt, "Components")
+    json.opt_write_start(w, opt, '{')
+    i := 0
+    for id, comp in go.components {
+        json.opt_write_iteration(w, opt, i)
+        serialize_component(w, opt, id, comp)
+        i += 1
+    }
+    json.opt_write_end(w, opt, '}')
+
+    json.opt_write_end(w, opt, '}')
+}
+
+serialize_component :: proc(w: io.Writer, opt: ^json.Marshal_Options, type: typeid, comp: ^Component) {
+    ti := type_info_of(type)
+    named, ok := ti.variant.(runtime.Type_Info_Named)
+    assert(ok)
+
+    base_info := runtime.type_info_base(ti)
+    s, ok2 := base_info.variant.(runtime.Type_Info_Struct)
+    assert(ok2)
+
+    a := any{comp, ti.id}
+
+    json.opt_write_key(w, opt, named.name)
+    json.opt_write_start(w, opt, '{')
+
+    json.opt_write_iteration(w, opt, 0)
+    json.opt_write_key(w, opt, "Enabled")
+    json.marshal_to_writer(w, comp.enabled, opt)
+
+    if type in COMPONENT_SERIALIZERS {
+        serializer := COMPONENT_SERIALIZERS[type]
+
+        s := Serializer {
+            writer = w,
+            opt = opt,
+        }
+
+        serializer(comp, true, &s)
+    }
+
+    json.opt_write_end(w, opt, '}')
+}
+
+deserialize_component :: proc(world: ^World, go: ^GameObject, component_name: string, component: json.Object) {
+    enabled := component["Enabled"].(json.Boolean)
+
+    if id, ok := get_component_typeid_from_name(component_name); ok {
+        add_component(world, go.id, id)
+        comp := get_component_typeid(world, go.id, id)
+
+        if id in COMPONENT_SERIALIZERS {
+            // Component has a serializer
+            serializer := COMPONENT_SERIALIZERS[id]
+
+            s := Serializer{object = component}
+            serializer(comp, false, &s)
+        }
+    }
 }

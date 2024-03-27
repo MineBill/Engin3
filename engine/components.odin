@@ -7,6 +7,19 @@ import "core:os"
 import gl "vendor:OpenGL"
 import imgui "packages:odin-imgui"
 import tracy "packages:odin-tracy"
+import "core:io"
+import "core:encoding/json"
+
+Serializer :: struct {
+    // Serialize data
+    writer: io.Writer,
+    opt: ^json.Marshal_Options,
+
+    // Deserialize data
+    object: json.Object,
+}
+
+ComponentSerializer :: #type proc(this: rawptr, serialize: bool, s: ^Serializer)
 
 // Special case component, every gameobject has a Transform by default.
 @(component)
@@ -23,6 +36,40 @@ TransformComponent :: struct {
     global_matrix: mat4,
 
     dirty: bool,
+}
+
+default_transform :: proc() -> TransformComponent {
+    return {
+        local_scale = vec3{1, 1, 1},
+    }
+}
+
+@(serializer=TransformComponent)
+serialize_transform :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+    this := cast(^TransformComponent)this
+
+    if serialize {
+        w := s.writer
+        opt := s.opt
+
+        json.opt_write_start(w, opt, '{')
+        json.opt_write_iteration(w, opt, 0)
+        json.opt_write_key(w, opt, "LocalPosition")
+        json.marshal_to_writer(w, this.local_position, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "LocalRotation")
+        json.marshal_to_writer(w, this.local_rotation, opt)
+
+        json.opt_write_iteration(w, opt, 2)
+        json.opt_write_key(w, opt, "LocalScale")
+        json.marshal_to_writer(w, this.local_scale, opt)
+        json.opt_write_end(w, opt, '}')
+    } else {
+        this.local_position = json_array_to_vec(vec3, s.object["LocalPosition"].(json.Array))
+        this.local_rotation = json_array_to_vec(vec3, s.object["LocalRotation"].(json.Array))
+        this.local_scale = json_array_to_vec(vec3, s.object["LocalScale"].(json.Array))
+    }
 }
 
 // Called by the world/gameobject.
@@ -68,7 +115,7 @@ PrinterComponent :: struct {
     log_type: Level,
 }
 
-@(ctor_for=PrinterComponent)
+@(constructor=PrinterComponent)
 make_printer :: proc() -> rawptr {
     printer := new(PrinterComponent)
     // printer.base = default_component_constructor()
@@ -98,7 +145,7 @@ MeshRenderer :: struct {
     material: Material,
 }
 
-@(ctor_for=MeshRenderer)
+@(constructor=MeshRenderer)
 make_mesh_renderer :: proc() -> rawptr {
     mr := new(MeshRenderer)
     mr^ = {
@@ -145,7 +192,7 @@ mesh_renderer_update_material :: proc(mr: ^MeshRenderer) {
 PointLightComponent :: struct {
     using base: Component,
 
-    color: color,
+    color: Color,
     distance: f32 `range:"0.0, 100.0"`,
     power: f32 `range:"0.0, 10.0"`,
 
@@ -154,7 +201,7 @@ PointLightComponent :: struct {
     quadratic: f32 `hide:""`,
 }
 
-@(ctor_for=PointLightComponent)
+@(constructor=PointLightComponent)
 make_point_light :: proc() -> rawptr {
     light := new(PointLightComponent)
     light^ = {
@@ -163,7 +210,7 @@ make_point_light :: proc() -> rawptr {
         update = component_default_update,
         prop_changed = point_light_prop_changed,
 
-        color = color{1, 1, 1, 1},
+        color = Color{1, 1, 1, 1},
         constant = 1.0,
         linear = 0.7,
         quadratic = 1.8,
@@ -189,7 +236,7 @@ SpotLightComponent :: struct {
     using base: Component,
 }
 
-@(ctor_for=SpotLightComponent)
+@(constructor=SpotLightComponent)
 make_spotlight :: proc() -> rawptr {
     light := new(SpotLightComponent)
     light.base = default_component_constructor()
@@ -205,7 +252,7 @@ MoverComponent :: struct {
     timer: f32 `editor:"hide"`,
 }
 
-@(ctor_for=MoverComponent)
+@(constructor=MoverComponent)
 make_mover :: proc() -> rawptr {
     mover := new(MoverComponent)
     mover.base = default_component_constructor()
@@ -227,10 +274,10 @@ DirectionalLight :: struct {
     using base: Component,
 
     // direction
-    color: color,
+    color: Color,
 }
 
-@(ctor_for=DirectionalLight)
+@(constructor=DirectionalLight)
 make_directional_light :: proc() -> rawptr {
     light := new(DirectionalLight)
     light.base = default_component_constructor()
@@ -241,6 +288,40 @@ make_directional_light :: proc() -> rawptr {
     return light
 }
 
+json_array_to_vec :: proc($V: typeid/[$N]$E, arr: json.Array) -> (vec: V)
+where N == 2 || N == 3 || N == 4 {
+    when E == f32 {
+        for i in 0..<N {
+            vec[i] = f32(arr[i].(json.Float))
+        }
+    } else when E == i32 {
+        for i in 0..<N {
+            vec[i] = i32(arr[i].(json.Integer))
+        }
+    }
+    return
+}
+
+@(serializer=DirectionalLight)
+serialize_directional_light :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+    this := cast(^DirectionalLight)this
+    if serialize {
+        json.opt_write_iteration(s.writer, s.opt, 1)
+        json.opt_write_key(s.writer, s.opt, "color")
+        json.marshal_to_writer(s.writer, this.color, s.opt)
+    } else {
+        c, ok := s.object["color"].(json.Array)
+        if !ok do return
+        assert(len(c) == len(Color))
+
+        // for i in 0..<4 {
+        //     this.color[i] = f32(c[i].(json.Float))
+        // }
+        this.color = json_array_to_vec(Color, c)
+
+    }
+}
+
 @(component="Core/Rendering", name="Cubemap")
 CubemapComponent :: struct {
     using base: Component,
@@ -249,7 +330,7 @@ CubemapComponent :: struct {
     shader: Shader,
 }
 
-@(ctor_for=CubemapComponent)
+@(constructor=CubemapComponent)
 make_cubemap :: proc() -> rawptr {
     cube := new(CubemapComponent)
     cube.base = default_component_constructor()
@@ -312,7 +393,7 @@ BallGenerator :: struct {
     size: vec3,
 }
 
-@(ctor_for=BallGenerator)
+@(constructor=BallGenerator)
 make_ball_generator :: proc() -> rawptr {
     this := new(BallGenerator)
     this.base = default_component_constructor()
@@ -359,7 +440,7 @@ bg_editor_ui :: proc(this: rawptr) {
         material := default_material()
         update_material(&material, nil, nil, nil)
 
-        material.albedo_color = color{1, 0, 0, 1}
+        material.albedo_color = Color{1, 0, 0, 1}
 
         to_clone_mr := get_component(this.world, this.object_to_clone, MeshRenderer)
         if to_clone_mr == nil do return

@@ -13,6 +13,8 @@ import "packages:odin-imgui/imgui_impl_glfw"
 import "packages:odin-imgui/imgui_impl_opengl3"
 import imgui "packages:odin-imgui"
 import "core:sys/windows"
+import "core:math/rand"
+import "core:intrinsics"
 
 GL_DEBUG_CONTEXT :: ODIN_DEBUG
 
@@ -94,7 +96,6 @@ Engine :: struct {
 
     previouse_mouse: vec2,
     camera:          Camera,
-    scene:           Scene,
     editor:          Editor,
     game:            Game,
     run_mode:        EngineMode,
@@ -116,7 +117,6 @@ Engine :: struct {
 engine_init :: proc(e: ^Engine) -> Engine_Error {
     tracy.SetThreadName("main")
     tracy.Zone()
-
 
     engine_setup_window(e) or_return
 
@@ -327,31 +327,9 @@ void main() {
 
     e.run_mode = .Editor
 
-    e.world = create_world()
-    log.debug(e.world.next_handle)
-    root := &e.world.objects[e.world.root]
-    root.world = &e.world
-    root.transform.local_scale = vec3{1, 1, 1}
-    root.transform.local_scale = vec3{1, 1, 1}
-    root.parent = 9999
-
-    go_handle := new_object(&e.world, "Pepegas")
-    log.debug(e.world.next_handle)
-
-    go := &e.world.objects[go_handle]
-
-    // set_global_position(go, vec3{1, 1, 1})
-
-    a := new_object(&e.world, "Hmm", go_handle)
-    b := new_object(&e.world, "Hmm2", go_handle)
-    c := new_object(&e.world, "Hehehehe", b)
-
-    dir_handle := new_object(&e.world, "Directional Light")
-    dir_go := get_object(&e.world, dir_handle)
-    dir_go.transform.local_rotation = vec3{75, 0, 0}
-    add_component(&e.world, dir_handle, DirectionalLight)
-
-    scene_load_from_file(&e.world, "assets/scenes/simple_scene.glb", &e.scene)
+    if !deserialize_world(&e.world, "assets/scenes/main.scen3") {
+        log.debug("Failed to deserialize 'main.scen3")
+    }
 
     return {}
 }
@@ -718,7 +696,6 @@ engine_draw :: proc(e: ^Engine) {
         blend := gl.IsEnabled(gl.BLEND)
         gl.Disable(gl.DEPTH_TEST)
         vao: u32
-        // gl.PolygonMode()
         gl.CreateVertexArrays(1, &vao)
         defer gl.DeleteVertexArrays(1, &vao)
 
@@ -784,12 +761,10 @@ engine_draw :: proc(e: ^Engine) {
         }
     }
 
-
     glfw.SwapBuffers(e.window)
 }
 
 engine_deinit :: proc(e: ^Engine) {
-    scene_deinit(&e.scene)
     shader_deinit(&e.triangle_shader)
     shader_deinit(&e.outline_shader)
     destroy_world(&e.world)
@@ -1128,4 +1103,12 @@ get_frustum_corners_world_space :: proc(proj, view: mat4) -> (corners: [8]vec4) 
         }
     }
     return
+}
+
+UUID :: distinct u64
+
+g_rand_device := rand.create(u64(intrinsics.read_cycle_counter()))
+
+generate_uuid :: proc() -> UUID {
+    return UUID(rand.uint64(&g_rand_device))
 }

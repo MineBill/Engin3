@@ -1,0 +1,32 @@
+Name: "Test World"
+Entities: [
+	{
+		UUID: 14245373657994631996
+		Name: "Object A"
+		Flags: 2
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				-0.36924174
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			MoverComponent: {
+				Enabled: true
+			}
+		}
+	}
+]
