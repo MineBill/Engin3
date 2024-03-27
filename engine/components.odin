@@ -19,6 +19,8 @@ Serializer :: struct {
     object: json.Object,
 }
 
+// Proc used to serialize components.
+// If a proc is this type and it is marked with @(constructor=C), it will be used to serialize component C.
 ComponentSerializer :: #type proc(this: rawptr, serialize: bool, s: ^Serializer)
 
 // Special case component, every gameobject has a Transform by default.
@@ -76,7 +78,7 @@ serialize_transform :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
 init_transform :: proc(this: ^TransformComponent) {}
 
 // Called by the world/gameobject.
-update_transform :: proc(go: ^GameObject, this: ^TransformComponent, update: f64) {
+update_transform :: proc(go: ^Entity, this: ^TransformComponent, update: f64) {
     tracy.Zone()
     parent := get_object(go.world, go.parent)
 
@@ -95,7 +97,7 @@ update_transform :: proc(go: ^GameObject, this: ^TransformComponent, update: f64
     go.transform.position = vec3{m[0, 3], m[1, 3], m[2, 3]}
 }
 
-set_global_position :: proc(go: ^GameObject, pos: vec3) {
+set_global_position :: proc(go: ^Entity, pos: vec3) {
     parent := get_object(go.world, go.parent)
     if parent == nil {
         go.transform.local_position = pos
@@ -118,7 +120,7 @@ PrinterComponent :: struct {
 @(constructor=PrinterComponent)
 make_printer :: proc() -> rawptr {
     printer := new(PrinterComponent)
-    // printer.base = default_component_constructor()
+    printer.base = default_component_constructor()
     printer.init = printer_init
     printer.update = printer_update
     return printer
@@ -216,6 +218,46 @@ make_point_light :: proc() -> rawptr {
         quadratic = 1.8,
     }
     return light
+}
+
+@(serializer=PointLightComponent)
+serialize_point_light :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+    this := cast(^PointLightComponent)this
+    if serialize {
+        w := s.writer
+        opt := s.opt
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "color")
+        json.marshal_to_writer(w, this.color, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "constant")
+        json.marshal_to_writer(w, this.constant, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "linear")
+        json.marshal_to_writer(w, this.linear, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "quadratic")
+        json.marshal_to_writer(w, this.quadratic, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "distance")
+        json.marshal_to_writer(w, this.distance, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "power")
+        json.marshal_to_writer(w, this.power, opt)
+    } else {
+        this.color = json_array_to_vec(Color, s.object["color"].(json.Array))
+        this.constant = f32(s.object["constant"].(json.Float))
+        this.linear = f32(s.object["linear"].(json.Float))
+        this.quadratic = f32(s.object["quadratic"].(json.Float))
+        this.distance = f32(s.object["distance"].(json.Float))
+        this.power = f32(s.object["power"].(json.Float))
+    }
 }
 
 point_light_prop_changed :: proc(this: rawptr, prop: any) {

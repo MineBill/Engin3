@@ -63,7 +63,7 @@ Component :: struct {
 
 ComponentConstructor :: #type proc() -> rawptr
 
-GameObject :: struct {
+Entity :: struct {
     components: map[typeid]^Component,
     world: ^World,
     handle: Handle,
@@ -190,7 +190,7 @@ World :: struct {
     // The name of this world/level.
     name: string,
 
-    objects: map[Handle]GameObject,
+    objects: map[Handle]Entity,
     root: Handle,
 }
 
@@ -199,7 +199,7 @@ create_world :: proc(world: ^World, name: string = "World") {
     // world.root = generate_uuid()
     world^ = World{}
     world.name = name
-    world.objects[world.root] = GameObject{
+    world.objects[world.root] = Entity{
         name = make_ds("Root"),
         transform = default_transform(),
         world = world,
@@ -213,7 +213,7 @@ destroy_world :: proc(world: ^World) {
 
 world_update :: proc(world: ^World, delta: f64) {
     tracy.Zone()
-    update_object :: proc(go: ^GameObject, handle: Handle, delta: f64) {
+    update_object :: proc(go: ^Entity, handle: Handle, delta: f64) {
         tracy.Zone()
         update_transform(go, &go.transform, delta)
         for child_handle in go.children {
@@ -230,7 +230,7 @@ world_update :: proc(world: ^World, delta: f64) {
     update_object(root, world.root, delta)
 }
 
-get_object :: proc(world: ^World, handle: Handle) -> ^GameObject {
+get_object :: proc(world: ^World, handle: Handle) -> ^Entity {
     if handle in world.objects {
         return &world.objects[handle]
     }
@@ -257,11 +257,11 @@ remove_child :: proc(world: ^World, parent: Handle, child: Handle) {
     }
 }
 
-new_object :: proc(world: ^World, name: string = "New GameObject", parent: Maybe(Handle) = nil) -> Handle {
+new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Handle) = nil) -> Handle {
     tracy.Zone()
     // handle := world.next_handle
     id := generate_uuid()
-    world.objects[id] = GameObject{name = make_ds(name)}
+    world.objects[id] = Entity{name = make_ds(name)}
     // world.next_handle += 1
 
     go := &world.objects[id]
@@ -282,10 +282,10 @@ new_object :: proc(world: ^World, name: string = "New GameObject", parent: Maybe
     return id
 }
 
-new_object_with_uuid :: proc(world: ^World, name: string = "New GameObject", uuid: UUID, parent: Maybe(Handle) = nil) -> Handle {
+new_object_with_uuid :: proc(world: ^World, name: string = "New Entity", uuid: UUID, parent: Maybe(Handle) = nil) -> Handle {
     tracy.Zone()
     // handle := world.next_handle
-    world.objects[uuid] = GameObject{name = make_ds(name)}
+    world.objects[uuid] = Entity{name = make_ds(name)}
     // world.next_handle += 1
 
     go := &world.objects[uuid]
@@ -310,13 +310,14 @@ delete_object :: proc(world: ^World, handle: Handle) {
     tracy.Zone()
     go := get_object(world, handle)
 
+    remove_child(world, go.parent, handle)
+
     for child in go.children {
         delete_object(world, child)
     }
     if handle in world.objects {
 
         obj := world.objects[handle]
-        log.debugf("Destroying '%v'", ds_to_string(obj.name))
 
         for id, comp in obj.components {
             if comp.destroy != nil {
@@ -448,7 +449,7 @@ deserialize_world :: proc(world: ^World, file: string) -> (ok: bool) {
     return true
 }
 
-serialize_gameobject :: proc(w: io.Writer, go: GameObject, opt: ^json.Marshal_Options) {
+serialize_gameobject :: proc(w: io.Writer, go: Entity, opt: ^json.Marshal_Options) {
     json.opt_write_start(w, opt, '{')
 
     json.opt_write_indentation(w, opt)
@@ -532,7 +533,7 @@ serialize_component :: proc(w: io.Writer, opt: ^json.Marshal_Options, type: type
     json.opt_write_end(w, opt, '}')
 }
 
-deserialize_component :: proc(world: ^World, go: ^GameObject, component_name: string, component: json.Object) {
+deserialize_component :: proc(world: ^World, go: ^Entity, component_name: string, component: json.Object) {
     enabled := component["Enabled"].(json.Boolean)
 
     if id, ok := get_component_typeid_from_name(component_name); ok {
