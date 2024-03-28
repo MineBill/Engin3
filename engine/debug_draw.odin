@@ -48,6 +48,10 @@ dbg_init :: proc(d: ^DebugDrawContext) {
     gl.VertexArrayAttribBinding(d.vao, 2, 0)
 }
 
+dbg_deinit :: proc(d: DebugDrawContext) {
+    delete(d.lines)
+}
+
 dbg_draw_line :: proc(d: ^DebugDrawContext, s, e: vec3, thickness: f32 = 1.0, color := COLOR_RED) {
     append(&d.lines, LinePoint{s, thickness, color})
     append(&d.lines, LinePoint{e, thickness, color})

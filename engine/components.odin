@@ -139,7 +139,7 @@ printer_update :: proc(this: rawptr, delta: f64) {
     }
 }
 
-@(component)
+@(component="Core/Rendering")
 MeshRenderer :: struct {
     using base: Component,
 
@@ -391,8 +391,10 @@ make_cubemap :: proc() -> rawptr {
 
     for image_path, i in images {
         data, ok := os.read_entire_file(image_path)
+        defer delete(data)
         if !ok do continue
         image, image_loaded := load_image_memory(data)
+        defer destroy_image(&image)
         if !image_loaded {
             log.warnf("Failed to load image '%v'", image_path)
             continue // NOTE(minebill): Maybe abort?

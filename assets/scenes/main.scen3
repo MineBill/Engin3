@@ -3,13 +3,13 @@ Entities: [
 	{
 		UUID: 14245373657994631996
 		Name: "Object A"
-		Flags: 2
+		Flags: 0
 		Enabled: true
 		Parent: 0
 		Transform: {
 			LocalPosition: [
 				0.00000000
-				-0.36924174
+				-0.97408396
 				0.00000000
 			]
 			LocalRotation: [
@@ -27,6 +27,111 @@ Entities: [
 			MoverComponent: {
 				Enabled: true
 			}
+			PointLightComponent: {
+				Enabled: true
+				color: [
+					1.00000000
+					1.00000000
+					0.00000000
+					1.00000000
+				]
+				constant: 1.00000000
+				linear: 0.69999999
+				quadratic: 1.79999995
+				distance: 57.81200027
+				power: 1.04200006
+			}
+		}
+	}
+	{
+		UUID: 13907734931026591776
+		Name: "Pepegas"
+		Flags: 2
+		Enabled: true
+		Parent: 6458666054497191459
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			DirectionalLight: {
+				Enabled: true
+				color: [
+					1.00000000
+					1.00000000
+					1.00000000
+					1.00000000
+				]
+			}
+		}
+	}
+	{
+		UUID: 18365496378108575934
+		Name: "Environment"
+		Flags: 2
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			CubemapComponent: {
+				Enabled: true
+			}
+		}
+	}
+	{
+		UUID: 6458666054497191459
+		Name: "New GameObject"
+		Flags: 0
+		Enabled: true
+		Parent: 14245373657994631996
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
 		}
 	}
 ]

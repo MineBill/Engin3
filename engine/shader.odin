@@ -83,12 +83,14 @@ load_shader :: proc(path: string, type: u32) -> (u32, bool) {
     }
     defer delete(data)
 
-    cwd := os.get_current_directory(allocator = context.temp_allocator)
+    cwd := os.get_current_directory()
+    defer delete(cwd)
 
-    cwd = slashpath.join({cwd, slashpath.dir(path)}, allocator = context.temp_allocator)
+    full := slashpath.join({cwd, slashpath.dir(path, allocator = context.temp_allocator)}, allocator = context.temp_allocator)
 
     included_files := map[string]int{}
-    src := process_shader_source(cwd, slashpath.base(path, allocator = context.temp_allocator), &included_files)
+    defer delete(included_files)
+    src := process_shader_source(full, slashpath.base(path, allocator = context.temp_allocator), &included_files)
 
     return load_shader_memory(transmute([]u8)src, type)
 }
@@ -142,7 +144,7 @@ clone_map :: proc(m: map[$K]$V, allocator := context.allocator) -> map[K]V {
 }
 
 process_shader_source :: proc(cwd: string, file_path: string, included_files: ^map[string]int) -> string {
-    file := slashpath.join({cwd, file_path})
+    file := slashpath.join({cwd, file_path}, allocator = context.allocator)
     included_files[file] += 1
     data, ok := os.read_entire_file(file); assert(ok)
     defer delete(data)
@@ -170,7 +172,7 @@ process_shader_source :: proc(cwd: string, file_path: string, included_files: ^m
             }
 
             path := line[first_quote + 1:second_quote]
-            joined := slashpath.join({cwd, path})
+            joined := slashpath.join({cwd, path}, allocator = context.allocator)
             if joined not_in included_files {
                 included := process_shader_source(cwd, path, included_files)
                 strings.write_string(&sb, included)

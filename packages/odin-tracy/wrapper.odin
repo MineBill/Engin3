@@ -25,13 +25,13 @@ ZoneNS  :: ZoneN
 ZoneCS  :: ZoneC
 ZoneNCS :: ZoneNC
 
-@(disabled=!TRACY_ENABLE) ZoneText  :: #force_inline proc(ctx: ZoneCtx, text: string) { ___tracy_emit_zone_text(ctx, _sl(text)) }
-@(disabled=!TRACY_ENABLE) ZoneName  :: #force_inline proc(ctx: ZoneCtx, name: string) { ___tracy_emit_zone_name(ctx, _sl(name)) }
-@(disabled=!TRACY_ENABLE) ZoneColor :: #force_inline proc(ctx: ZoneCtx, color: u32)   { ___tracy_emit_zone_color(ctx, color)    }
-@(disabled=!TRACY_ENABLE) ZoneValue :: #force_inline proc(ctx: ZoneCtx, value: u64)   { ___tracy_emit_zone_value(ctx, value)    }
+@(disabled=!TRACY_ENABLE) ZoneText  :: #force_inline proc "contextless" (ctx: ZoneCtx, text: string) { ___tracy_emit_zone_text(ctx, _sl(text)) }
+@(disabled=!TRACY_ENABLE) ZoneName  :: #force_inline proc "contextless" (ctx: ZoneCtx, name: string) { ___tracy_emit_zone_name(ctx, _sl(name)) }
+@(disabled=!TRACY_ENABLE) ZoneColor :: #force_inline proc "contextless" (ctx: ZoneCtx, color: u32)   { ___tracy_emit_zone_color(ctx, color)    }
+@(disabled=!TRACY_ENABLE) ZoneValue :: #force_inline proc "contextless" (ctx: ZoneCtx, value: u64)   { ___tracy_emit_zone_value(ctx, value)    }
 
 // NOTE: scoped Zone*() procs also exists, no need of calling this directly.
-ZoneBegin :: proc(active: bool, depth: i32, loc := #caller_location) -> (ctx: ZoneCtx) {
+ZoneBegin :: proc "contextless" (active: bool, depth: i32, loc := #caller_location) -> (ctx: ZoneCtx) {
 	when TRACY_ENABLE {
 		/* From manual, page 46:
 		     The variable representing an allocated source location is of an opaque type.
@@ -51,7 +51,7 @@ ZoneBegin :: proc(active: bool, depth: i32, loc := #caller_location) -> (ctx: Zo
 }
 
 // NOTE: scoped Zone*() procs also exists, no need of calling this directly.
-@(disabled=!TRACY_ENABLE) ZoneEnd :: #force_inline proc(ctx: ZoneCtx) { ___tracy_emit_zone_end(ctx) }
+@(disabled=!TRACY_ENABLE) ZoneEnd :: #force_inline proc "contextless" (ctx: ZoneCtx) { ___tracy_emit_zone_end(ctx) }
 
 // Memory profiling
 // (See allocator.odin for an implementation of an Odin custom allocator using memory profiling.)
@@ -124,6 +124,6 @@ IsConnected :: #force_inline proc() -> bool { return cast(bool)___tracy_connecte
 */
 
 // Helper for passing cstring+length to Tracy functions.
-@(private="file") _sl :: proc(s: string) -> (cstring, c.size_t) {
+@(private="file") _sl :: proc "contextless" (s: string) -> (cstring, c.size_t) {
 	return cstring(raw_data(s)), c.size_t(len(s))
 }

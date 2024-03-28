@@ -15,6 +15,8 @@ import "core:mem"
 import "core:runtime"
 import "core:slice"
 import "core:strconv"
+import "core:os"
+import "core:path/filepath"
 
 USE_EDITOR :: true
 
@@ -36,7 +38,8 @@ Editor :: struct {
     force_show_fields: bool,
 
     allocator: mem.Allocator,
-    test_string: DynamicString,
+
+    content_browser: ContentBrowser,
 }
 
 editor_init :: proc(e: ^Editor, engine: ^Engine) {
@@ -44,9 +47,14 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.engine = engine
 
     e.logger = create_capture_logger(&e.log_entries)
-    backing := make([]byte, 1)
-    backing[len(backing) - 1] = 0
-    e.test_string = make_ds()
+
+    e.content_browser.root_dir = filepath.join({os.get_current_directory(allocator = context.temp_allocator), "assets"})
+    cb_navigate_to_folder(&e.content_browser, e.content_browser.root_dir)
+
+    e.content_browser.textures[.Folder] = load_texture_from_file("assets/textures/ui/folder.png")
+    e.content_browser.textures[.FolderBack] = load_texture_from_file("assets/textures/ui/folder_back.png")
+    e.content_browser.textures[.File] = load_texture_from_file("assets/textures/ui/file.png")
+    e.content_browser.textures[.World] = load_texture_from_file("assets/textures/ui/world.png")
 }
 
 editor_deinit :: proc(e: ^Editor) {
@@ -57,6 +65,10 @@ editor_deinit :: proc(e: ^Editor) {
     }
     delete(e.log_entries)
     destroy_capture_logger(e.logger)
+
+    delete(e.content_browser.root_dir)
+    delete(e.content_browser.current_dir)
+    delete(e.content_browser.items)
 }
 
 editor_update :: proc(e: ^Editor, _delta: f64) {
@@ -137,11 +149,11 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
         if imgui.BeginMenu("Scene") {
             if imgui.MenuItem("Save") {
-                serialize_world(e.engine.world, "assets/scenes/main.scen3")
+                serialize_world(e.engine.world, e.engine.world.file_path)
             }
 
             if imgui.MenuItem("Load") {
-                deserialize_world(&e.engine.world, "assets/scenes/main.scen3")
+                deserialize_world(&e.engine.world, e.engine.world.file_path)
             }
 
             imgui.EndMenu()
@@ -189,6 +201,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     editor_viewport(e)
     editor_gameobjects(e)
     editor_log_window(e)
+    editor_content_browser(e)
 }
 
 editor_env_panel :: proc(e: ^Editor) {
@@ -201,11 +214,6 @@ editor_env_panel :: proc(e: ^Editor) {
         @(static) ambient_color := vec3{0.1, 0.1, 0.1}
         if imgui.ColorEdit4("Ambent Color", &e.engine.scene_data.ambient_color, {}) {
             gl.NamedBufferSubData(e.engine.scene_data.ubo, int(offset_of(Scene_Data, ambient_color)), size_of(vec4), &e.engine.scene_data.ambient_color)
-        }
-
-        if imgui_text("String", &e.test_string) {
-            s := ds_to_string(e.test_string)
-            log.debugf("'%v' len: %v", s, len(s))
         }
     }
     imgui.End()
@@ -301,6 +309,16 @@ editor_viewport :: proc(e: ^Editor) {
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
         imgui.ImageEx(transmute(rawptr)u64(get_color_attachment(e.engine.scene_fb, 0)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+
+        if imgui.BeginDragDropTarget() {
+            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
+                path := cast(^string)payload.Data
+                defer delete(path^)
+
+                deserialize_world(&e.engine.world, path^)
+            }
+            imgui.EndDragDropTarget()
+        }
 
         flags := imgui.WindowFlags_NoDecoration
         flags += imgui.WindowFlags_NoNav
@@ -424,8 +442,151 @@ editor_entidor :: proc(e: ^Editor) {
     imgui.End()
 }
 
+Folder :: struct {
+    path: string,
+    opened: bool,
+}
+
+ContentBrowserTexture :: enum {
+    Folder,
+    FolderBack,
+    File,
+    World,
+}
+
+ContentBrowser :: struct {
+    root_dir: string,
+    current_dir: string,
+
+    items: []os.File_Info,
+
+    textures: [ContentBrowserTexture]Texture2D,
+}
+
+cb_navigate_to_folder :: proc(cb: ^ContentBrowser, folder: string) {
+    os.file_info_slice_delete(cb.items[:])
+
+    // clear(&cb.items)
+    handle, err := os.open(folder)
+    defer os.close(handle)
+    files, err2 := os.read_dir(handle, 100)
+
+    cb.items = files
+    slice.sort_by(cb.items, proc(i, j: os.File_Info) -> bool {
+        return int(i.is_dir) > int(j.is_dir)
+    })
+    // delete(cb.current_dir)
+    cb.current_dir = folder
+}
+
+editor_content_browser :: proc(e: ^Editor) {
+    opened := imgui.Begin("Content Browser", nil, {})
+    {
+        imgui.BeginChild("folder side view", vec2{150, 0}, {.Border, .ResizeX}, {})
+        imgui.EndChild()
+    }
+    imgui.SameLine()
+    {
+        imgui.BeginChild("content view root", vec2{0, 0}, {.Border}, {})
+        relative, _ := filepath.rel(e.content_browser.root_dir, e.content_browser.current_dir, allocator = context.temp_allocator)
+        imgui.TextUnformatted(fmt.ctprintf("root://%v", relative))
+        imgui.TextUnformatted(cstr(e.content_browser.current_dir))
+
+        imgui.SameLineEx(imgui.GetContentRegionAvail().x - 40, 0)
+        if imgui.Button("Options") {
+            imgui.OpenPopup("ContentBrowserSettings", {})
+        }
+
+        @(static) padding := i32(8)
+        @(static) thumbnail_size := i32(64)
+
+        if imgui.BeginPopup("ContentBrowserSettings", {}) {
+            imgui.DragInt("Padding", &padding)
+            imgui.DragInt("Thumbnail Size", &thumbnail_size)
+            imgui.EndPopup()
+        }
+
+        imgui.BeginChild("content view", vec2{0, 0}, {.FrameStyle} ,{})
+
+        frame_padding := imgui.GetStyle().FramePadding
+
+        item_size := padding + thumbnail_size + i32(frame_padding.x)
+        width := imgui.GetContentRegionAvail().x
+        columns := i32(width) / item_size
+        if columns < 1 {
+            columns = 1
+        }
+
+        imgui.ColumnsEx(columns, "awd", false)
+
+        imgui.PushStyleColorImVec4(.Button, vec4{0, 0, 0, 0})
+
+        size := vec2{f32(thumbnail_size), f32(thumbnail_size)}
+        if e.content_browser.current_dir != e.content_browser.root_dir {
+            imgui.ImageButton(cstr("back"), transmute(rawptr)u64(e.content_browser.textures[.FolderBack].handle), size)
+            if imgui.IsItemHovered({}) && imgui.IsMouseDoubleClicked(.Left) {
+                cb_navigate_to_folder(
+                    &e.content_browser,
+                    filepath.dir(e.content_browser.current_dir))
+            }
+            imgui.TextUnformatted("..")
+            imgui.NextColumn()
+        }
+
+        for i in 0..<len(e.content_browser.items) {
+            item := e.content_browser.items[i]
+
+            texture: ContentBrowserTexture = .File
+            switch {
+            case item.is_dir:
+                texture = .Folder
+            case:
+                switch filepath.ext(item.name) {
+                case ".scen3": fallthrough
+                case ".world":
+                    texture = .World
+                }
+            }
+            imgui.ImageButton(cstr(item.name), transmute(rawptr)u64(e.content_browser.textures[texture].handle), size)
+
+            if imgui.BeginDragDropSource({}) {
+                path := item.fullpath
+                imgui.SetDragDropPayload("CONTENT_ITEM", &path, len(path), .Once)
+
+                imgui.EndDragDropSource()
+            }
+
+            if imgui.IsItemHovered({}) && imgui.IsMouseDoubleClicked(.Left) {
+                if item.is_dir {
+                    cb_navigate_to_folder(&e.content_browser, strings.clone(item.fullpath))
+                }
+            }
+            imgui.TextWrapped(cstr(item.name))
+            imgui.NextColumn()
+        }
+        imgui.PopStyleColor()
+
+        if imgui.BeginPopupContextWindow() {
+            if imgui.MenuItem("New World") {
+                world: World
+                create_world(&world, "New World")
+                path := filepath.join({e.content_browser.current_dir, "New World.world"})
+                defer delete(path)
+                serialize_world(world, path)
+            }
+            imgui.EndPopup()
+        }
+
+        imgui.EndChild()
+        imgui.EndChild()
+    }
+
+    imgui.End()
+}
+
 editor_log_window :: proc(e: ^Editor) {
-    if imgui.Begin("Log", nil, {}) {
+    opened := imgui.Begin("Log", nil, {})
+    if opened {
         if imgui.Button("Clear") {
             clear(&e.log_entries)
         }
@@ -441,7 +602,8 @@ editor_log_window :: proc(e: ^Editor) {
         imgui.InputText("Filter", transmute(cstring)&filter_backing, 100, {})
         filter := cast(string)(transmute(cstring)&filter_backing)
 
-        if imgui.BeginChild("scrolling_region", vec2{0, 0}, {.FrameStyle}, {.HorizontalScrollbar}) {
+        child_opened := imgui.BeginChild("scrolling_region", vec2{0, 0}, {.FrameStyle}, {.HorizontalScrollbar})
+        if child_opened {
             width := imgui.GetContentRegionAvail().x
             for entry, i in e.log_entries {
                 if !strings.contains(entry.text, filter) {
@@ -478,8 +640,8 @@ editor_log_window :: proc(e: ^Editor) {
             }
             imgui.EndChild()
         }
-        imgui.End()
     }
+    imgui.End()
 }
 
 editor_gameobjects :: proc(e: ^Editor) {
@@ -792,7 +954,7 @@ imgui_draw_struct :: proc(e: ^Editor, s: any) -> (modified: bool) {
         }
 
         is_struct := reflect.is_struct(field.type)
-        if is_struct && !field.is_using {
+        if false && is_struct && !field.is_using {
             switch field.type.id {
             case:
             if imgui.TreeNodeEx(cstr(field.name), {.FramePadding}) {
@@ -908,6 +1070,7 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
         case typeid_of(Texture2D):
             // imgui
             texture := value.(Texture2D)
+            if texture.type == .CubeMap do break
             aspect := f32(texture.height) / f32(texture.width)
             region := imgui.GetContentRegionAvail()
             region.y = aspect * region.x
@@ -919,21 +1082,26 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
             uv1 := vec2{1, 0}
             imgui.ImageEx(
                 transmute(rawptr)u64(texture.handle), region, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        case typeid_of(Model):
+            imgui.Button(cstr(field.name))
+            if imgui.BeginDragDropTarget() {
+                if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
+                    file := cast(^string)payload.Data
+                    defer delete(file^)
+                    log.debug("Load model from", file)
+                }
+                imgui.EndDragDropTarget()
+            }
         case:
-            modified = imgui_draw_struct(e, value)
+            if imgui.TreeNodeEx(cstr(field.name), {.FramePadding}) {
+                modified = imgui_draw_struct(e, value)
+                imgui.TreePop()
+            }
         }
     case reflect.is_string(field.type):
         imgui.TextUnformatted(fmt.ctprintf("String len: %v", len(value.(string))))
     }
 
-    if modified {
-        // if vtable, ok := s.(^Component); ok {
-        //     log.debug(s)
-        //     if vtable.prop_changed != nil {
-        //         vtable->prop_changed(field)
-        //     }
-        // }
-    }
     return
 }
 import "core:intrinsics"
@@ -1008,6 +1176,10 @@ imgui_draw_slice :: proc(name: string, slice: any) -> (changed: bool) {
 DynamicString :: struct {
     data: [dynamic]byte,
     allocator: mem.Allocator,
+}
+
+delete_ds :: proc(ds: DynamicString) {
+    delete(ds.data)
 }
 
 make_ds :: proc(s := "", allocator := context.allocator) -> DynamicString {

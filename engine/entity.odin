@@ -37,7 +37,9 @@ ComponentVTable :: struct {
 
 component_default_init :: proc(this: rawptr) {}
 component_default_update :: proc(this: rawptr, delta: f64) {}
-component_default_destroy :: proc(this: rawptr) {}
+component_default_destroy :: proc(this: rawptr) {
+    free(this)
+}
 component_default_prop_changed :: proc(this: rawptr, prop: any) {}
 component_default_editor_ui :: proc(this: rawptr) {}
 
@@ -190,6 +192,9 @@ World :: struct {
     // The name of this world/level.
     name: string,
 
+    // NOTE(minebill): This does not belong here, it is editor-only data.
+    file_path: string,
+
     objects: map[Handle]Entity,
     root: Handle,
 }
@@ -209,6 +214,10 @@ create_world :: proc(world: ^World, name: string = "World") {
 }
 
 destroy_world :: proc(world: ^World) {
+    delete(world.name)
+    delete_object(world, world.root)
+    delete(world.objects)
+    delete(world.file_path)
 }
 
 world_update :: proc(world: ^World, delta: f64) {
@@ -238,6 +247,7 @@ get_object :: proc(world: ^World, handle: Handle) -> ^Entity {
 }
 
 add_child :: proc(world: ^World, parent: Handle, child: Handle) {
+    tracy.Zone()
     child_go := &world.objects[child]
     remove_child(world, child_go.parent, child)
 
@@ -248,6 +258,7 @@ add_child :: proc(world: ^World, parent: Handle, child: Handle) {
 }
 
 remove_child :: proc(world: ^World, parent: Handle, child: Handle) {
+    tracy.Zone()
     entity := &world.objects[parent]
     for c, i in entity.children {
         if c == child {
@@ -309,12 +320,14 @@ new_object_with_uuid :: proc(world: ^World, name: string = "New Entity", uuid: U
 delete_object :: proc(world: ^World, handle: Handle) {
     tracy.Zone()
     go := get_object(world, handle)
+    if go == nil do return
 
     remove_child(world, go.parent, handle)
 
     for child in go.children {
         delete_object(world, child)
     }
+
     if handle in world.objects {
 
         obj := world.objects[handle]
@@ -327,6 +340,10 @@ delete_object :: proc(world: ^World, handle: Handle) {
         
         delete_key(&world.objects, handle)
     }
+
+    delete_ds(go.name)
+    delete(go.children)
+    delete(go.components)
 }
 
 // Scans the entire world and returns the first componment of type C it finds.
@@ -346,9 +363,11 @@ import "core:strings"
 import "core:io"
 
 serialize_world :: proc(world: World, file: string) {
+    tracy.Zone()
     log.debugf("Serializing world to file: %v", file)
     sb: strings.Builder
     strings.builder_init(&sb)
+    defer strings.builder_destroy(&sb)
 
     w := strings.to_writer(&sb)
 
@@ -378,23 +397,26 @@ serialize_world :: proc(world: World, file: string) {
 }
 
 deserialize_world :: proc(world: ^World, file: string) -> (ok: bool) {
+    tracy.Zone()
     log.debugf("Deserializing world from file: %v", file)
 
     destroy_world(world)
     create_world(world)
+    world.file_path = strings.clone(file)
 
     scene_data := os.read_entire_file(file) or_return
     defer delete(scene_data)
 
     value, err := json.parse(scene_data, .MJSON, parse_integers = true)
     if err != nil do return false
-    
+    defer json.destroy_value(value)
+
     ResolvePair :: struct {entity, parent: UUID}
     parents_to_resolve := make([dynamic]ResolvePair)
     defer delete(parents_to_resolve)
 
     if root, ok := value.(json.Object); ok {
-        world.name = root["Name"].(json.String)
+        world.name = strings.clone(root["Name"].(json.String))
         entities := root["Entities"].(json.Array)
         for entity in entities {
             en := entity.(json.Object)
@@ -450,6 +472,7 @@ deserialize_world :: proc(world: ^World, file: string) -> (ok: bool) {
 }
 
 serialize_gameobject :: proc(w: io.Writer, go: Entity, opt: ^json.Marshal_Options) {
+    tracy.Zone()
     json.opt_write_start(w, opt, '{')
 
     json.opt_write_indentation(w, opt)
@@ -502,6 +525,7 @@ serialize_gameobject :: proc(w: io.Writer, go: Entity, opt: ^json.Marshal_Option
 }
 
 serialize_component :: proc(w: io.Writer, opt: ^json.Marshal_Options, type: typeid, comp: ^Component) {
+    tracy.Zone()
     ti := type_info_of(type)
     named, ok := ti.variant.(runtime.Type_Info_Named)
     assert(ok)
@@ -534,6 +558,7 @@ serialize_component :: proc(w: io.Writer, opt: ^json.Marshal_Options, type: type
 }
 
 deserialize_component :: proc(world: ^World, go: ^Entity, component_name: string, component: json.Object) {
+    tracy.Zone()
     enabled := component["Enabled"].(json.Boolean)
 
     if id, ok := get_component_typeid_from_name(component_name); ok {

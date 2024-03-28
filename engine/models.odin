@@ -65,7 +65,7 @@ update_material :: proc(m: ^Material, albedo, normal, height: []byte) {
         anisotropy = 4,
     })
 
-    set_texture_data(m.albedo_texture, raw_data(i.data))
+    set_texture_data(m.albedo_texture, i.data)
 
     i2, ok2 := load_image_memory(normal if normal != nil else NORMAL_MAP)
     defer destroy_image(&i2)
@@ -77,7 +77,7 @@ update_material :: proc(m: ^Material, albedo, normal, height: []byte) {
         mag_filter = .Linear,
         anisotropy = 4,
     })
-    set_texture_data(m.normal_texture, raw_data(i2.data))
+    set_texture_data(m.normal_texture, i2.data)
 
     i3, ok3 := load_image_memory(height if height != nil else BLACK_TEXTURE)
     defer destroy_image(&i3)
@@ -89,7 +89,7 @@ update_material :: proc(m: ^Material, albedo, normal, height: []byte) {
         mag_filter = .Linear,
         anisotropy = 1,
     })
-    set_texture_data(m.height_texture, raw_data(i3.data))
+    set_texture_data(m.height_texture, i3.data)
 
     gl.CreateBuffers(1, &m.ubo)
     gl.NamedBufferStorage(m.ubo, size_of(m.block), &m.block, gl.DYNAMIC_STORAGE_BIT)
@@ -117,6 +117,23 @@ load_image_memory :: proc(data: []byte) -> (image: Image, ok: bool) {
     return image, true
 }
 
+load_image_from_file :: proc(file: string) -> (image: Image, ok: bool) {
+    data := os.read_entire_file(file) or_return
+    defer delete(data)
+    w, h, c: i32
+    raw_image := stbi.load_from_memory(raw_data(data), cast(i32)len(data), &w, &h, &c, 4)
+    if raw_image == nil {
+        log.warnf("Failed to read image: %v", stbi.failure_reason())
+        return {}, false
+    }
+
+    image.data = raw_image[:w * h * c]
+    image.width = int(w)
+    image.height = int(h)
+    image.channels = int(c)
+    return image, true
+}
+
 destroy_image :: proc(image: ^Image) {
     stbi.image_free(raw_data(image.data))
     image^ = {}
@@ -128,6 +145,10 @@ Model :: struct {
     index_buffer:   u32,
     vertex_array:   u32,
     num_indices:    i32,
+}
+
+is_model_valid :: proc(model: Model) -> bool {
+    return model.vertex_array != 0
 }
 
 model_deinit :: proc(model: ^Model) {

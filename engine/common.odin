@@ -65,9 +65,15 @@ Texture_Wrap :: enum {
     
 }
 
+TextureType :: enum {
+    Normal,
+    CubeMap,
+}
+
 Texture2D :: struct {
     handle: u32,
     width, height: i32,
+    type: TextureType,
     params: Texture_Params,
 }
 
@@ -84,6 +90,7 @@ DEFAULT_TEXTURE_PARAMS :: Texture_Params {
     format = gl.RGBA,
     min_filter = .Linear,
     mag_filter = .Linear,
+    anisotropy = 1,
 }
 
 create_texture :: proc(width, height: int, params := DEFAULT_TEXTURE_PARAMS) -> (texture: Texture2D) {
@@ -91,6 +98,7 @@ create_texture :: proc(width, height: int, params := DEFAULT_TEXTURE_PARAMS) -> 
     texture.width = width
     texture.height = height
     texture.params = params
+    texture.type = .Normal
     using params
 
     min_image_count := i32(math.floor(math.log2(f32(math.max(width, height))))) + 1
@@ -114,17 +122,29 @@ create_texture :: proc(width, height: int, params := DEFAULT_TEXTURE_PARAMS) -> 
     return
 }
 
-set_texture_data :: proc(texture: Texture2D, data: rawptr, level: i32 = 0) {
+set_texture_data :: proc(texture: Texture2D, data: []byte, level: i32 = 0) {
     gl.TextureSubImage2D(
         texture.handle,
         level,
         0, 0,
         texture.width, texture.height,
         gl.RGBA, gl.UNSIGNED_BYTE,
-        data,
+        raw_data(data),
     )
 
     gl.GenerateTextureMipmap(texture.handle)
+}
+
+load_texture_from_file :: proc(file: string) -> (texture: Texture2D) {
+    image, ok := load_image_from_file(file)
+    assert(ok)
+    defer destroy_image(&image)
+
+    params := DEFAULT_TEXTURE_PARAMS
+    params.format = gl.RGBA8
+    texture = create_texture(image.width, image.height, params)
+    set_texture_data(texture, image.data)
+    return
 }
 
 // params.samples is ignored.
@@ -133,6 +153,7 @@ create_cubemap_texture :: proc(width, height: int, params := DEFAULT_TEXTURE_PAR
     texture.width = width
     texture.height = height
     texture.params = params
+    texture.type = .CubeMap
 
     gl.CreateTextures(gl.TEXTURE_CUBE_MAP, 1, &texture.handle)
 

@@ -417,15 +417,6 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
         imgui.NewFrame()
 
         editor_update(&e.editor, _delta)
-        n := &nk_context.ctx
-        if nk.begin(n, "Window", nk.rect(0, 0, f32(e.width), 150), {}) {
-            nk.layout_row_dynamic(n, 30, 2)
-            if nk.button_string(n, "Button") {
-                log.debug("Button!")
-            }
-            nk.label_string(n, "Label!", {.Centered})
-            nk.end(n)
-        }
     }
     world_update(&e.world, _delta)
 
@@ -445,7 +436,9 @@ engine_draw :: proc(e: ^Engine) {
         tracy.ZoneN("Mesh Collection")
         for handle, &go in e.world.objects do if go.enabled && has_component(&e.world, handle, MeshRenderer) {
             mr := get_component(&e.world, handle, MeshRenderer)
-            append(&mesh_components, mr)
+            if is_model_valid(mr.model) {
+                append(&mesh_components, mr)
+            }
         }
     }
 
@@ -767,9 +760,15 @@ engine_draw :: proc(e: ^Engine) {
 engine_deinit :: proc(e: ^Engine) {
     shader_deinit(&e.triangle_shader)
     shader_deinit(&e.outline_shader)
+    shader_deinit(&e.grid_shader)
+    shader_deinit(&e.depth_shader)
+    shader_deinit(&e.screen_shader)
+
     destroy_world(&e.world)
 
     editor_deinit(&e.editor)
+
+    dbg_deinit(e.dbg_draw)
 
     monitor.deinit(&e.shader_monitor)
 }
