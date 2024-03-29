@@ -55,7 +55,9 @@ main :: proc() {
     strings.builder_init(&sb)
 
     strings.write_string(&sb, "package engine\n")
-    strings.write_string(&sb, "// === AUTO GENERATED ===\n")
+    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
     strings.write_string(&sb, "\n")
 
     strings.write_string(&sb, "COMPONENT_INDICES : map[typeid]int = {\n")
@@ -206,6 +208,27 @@ get_component_typeid_from_name :: proc(name: string) -> (id: typeid, ok: bool) {
 
     src := strings.to_string(sb)
     os.write_entire_file("engine/entity_generated.odin", transmute([]byte)src)
+
+    // ASSET STUFF GENERATION
+
+    strings.builder_reset(&sb)
+    
+    strings.write_string(&sb, "package engine\n")
+    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&sb, "\n")
+
+    strings.write_string(&sb, "ASSET_LOADERS : map[typeid]AssetLoader = {\n")
+    for p in procs do if has_attr_name(p, "loader") {
+        asset := get_attr_value(p, "loader")
+
+        strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", asset, p.name))
+    }
+    strings.write_string(&sb, "}\n")
+
+    src = strings.to_string(sb)
+    os.write_entire_file("engine/assets_generated.odin", transmute([]byte)src)
 }
 
 _ :: proc() {

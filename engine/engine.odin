@@ -16,6 +16,8 @@ import "core:sys/windows"
 import "core:math/rand"
 import "core:intrinsics"
 
+g_engine: ^Engine
+
 GL_DEBUG_CONTEXT :: ODIN_DEBUG
 
 CAMERA_DEFAULT_POSITION :: vec3{0, 3, 10}
@@ -110,11 +112,13 @@ Engine :: struct {
     scene_fb:             FrameBuffer,
 
     dbg_draw: DebugDrawContext,
+    asset_manager: AssetManager,
 
     width, height: i32,
 }
 
 engine_init :: proc(e: ^Engine) -> Engine_Error {
+    g_engine = e
     tracy.SetThreadName("main")
     tracy.Zone()
 
@@ -151,6 +155,8 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     gl.Enable(gl.STENCIL_TEST)
     gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+
+    asset_manager_init(&e.asset_manager)
 
     editor_init(&e.editor, e)
     context.logger = e.editor.logger
@@ -630,7 +636,7 @@ engine_draw :: proc(e: ^Engine) {
 
         mm := &go.transform.global_matrix
         gl.UniformMatrix4fv(uniform(&e.triangle_shader, "model"), 1, false, &mm[0][0])
-        gl.Uniform1i(uniform(&e.triangle_shader, "gameobject_id"), i32(go.handle))
+        gl.Uniform1i(uniform(&e.triangle_shader, "gameobject_id"), i32(go.local_id))
 
         gl.DrawElements(gl.TRIANGLES, mr.model.num_indices, gl.UNSIGNED_SHORT, nil)
     }

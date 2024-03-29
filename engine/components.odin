@@ -43,6 +43,8 @@ TransformComponent :: struct {
 default_transform :: proc() -> TransformComponent {
     return {
         local_scale = vec3{1, 1, 1},
+        local_matrix = mat4(1.0),
+        global_matrix = mat4(1.0),
     }
 }
 
@@ -155,6 +157,8 @@ make_mesh_renderer :: proc() -> rawptr {
         material = default_material(),
     }
 
+    update_material(&mr.material, nil, nil, nil)
+
     mr.init         = mesh_renderer_init
     mr.update       = mesh_renderer_update
     mr.destroy      = mesh_renderer_destroy
@@ -178,11 +182,49 @@ mesh_renderer_prop_changed :: proc(this: rawptr, prop: any) {
     this := cast(^MeshRenderer)this
     field, ok := prop.(reflect.Struct_Field)
     if !ok do return
-    log.debug("Prop changed: %v", field.name)
 
     switch field.name {
     case "material":
         upload_material(this.material)
+    }
+}
+
+@(serializer=MeshRenderer)
+serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+    this := cast(^MeshRenderer)this
+    am := &g_engine.asset_manager
+    serialize_asset(am, s, serialize, &this.model)
+    if serialize {
+        w := s.writer
+        opt := s.opt
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "MaterialAlbedoColor")
+        json.marshal_to_writer(w, this.material.albedo_color, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "MaterialRoughness")
+        json.marshal_to_writer(w, this.material.roughness_factor, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "MaterialMetalness")
+        json.marshal_to_writer(w, this.material.metallic_factor, opt)
+    } else {
+        // model := s.object["Model"].(json.Object)
+        // this.model = deserialize_asset(model, Model)
+        if "MaterialAlbedoColor"in s.object {
+            this.material.albedo_color = json_array_to_vec(Color, s.object["MaterialAlbedoColor"].(json.Array))
+        }
+
+        if "MaterialRoughness" in s.object {
+            this.material.roughness_factor = f32(s.object["MaterialRoughness"].(json.Float))
+        }
+
+        if "MaterialMetalness" in s.object {
+            this.material.metallic_factor = f32(s.object["MaterialMetalness"].(json.Float))
+        }
+
+        update_material(&this.material, nil, nil, nil)
     }
 }
 

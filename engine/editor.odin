@@ -106,9 +106,8 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                     color := read_pixel(e.engine.viewport_fb, int(mouse.x), int(e.viewport_size.y) - int(mouse.y), 1)
 
                     id := color[0]
-                    // if id != 0 {
-                        select_entity(e, Handle(id))
-                    // }
+                    handle := e.engine.world.local_id_to_uuid[int(id)]
+                    select_entity(e, handle)
                 }
             }
         case MouseWheelEvent:
@@ -312,10 +311,10 @@ editor_viewport :: proc(e: ^Editor) {
 
         if imgui.BeginDragDropTarget() {
             if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
-                path := cast(^string)payload.Data
-                defer delete(path^)
+                data := transmute(^byte)payload.Data
+                path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
-                deserialize_world(&e.engine.world, path^)
+                deserialize_world(&e.engine.world, path)
             }
             imgui.EndDragDropTarget()
         }
@@ -551,7 +550,7 @@ editor_content_browser :: proc(e: ^Editor) {
 
             if imgui.BeginDragDropSource({}) {
                 path := item.fullpath
-                imgui.SetDragDropPayload("CONTENT_ITEM", &path, len(path), .Once)
+                imgui.SetDragDropPayload("CONTENT_ITEM", raw_data(path), len(path) * size_of(byte), .Once)
 
                 imgui.EndDragDropSource()
             }
@@ -606,7 +605,7 @@ editor_log_window :: proc(e: ^Editor) {
         if child_opened {
             width := imgui.GetContentRegionAvail().x
             for entry, i in e.log_entries {
-                if !strings.contains(entry.text, filter) {
+                if !strings.contains(entry.text, filter) || entry.text == "" {
                     continue
                 }
                 text := raw_data(entry.text)
@@ -1083,12 +1082,20 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
             imgui.ImageEx(
                 transmute(rawptr)u64(texture.handle), region, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
         case typeid_of(Model):
-            imgui.Button(cstr(field.name))
+            model := &value.(Model)
+
+            imgui.Button(cstr(model.path) if model.path != "" else "nil")
+
             if imgui.BeginDragDropTarget() {
                 if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
-                    file := cast(^string)payload.Data
-                    defer delete(file^)
-                    log.debug("Load model from", file)
+                    data := transmute(^byte)payload.Data
+                    path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
+
+                    log.debug("Load model from", path)
+
+                    if m := get_asset(&e.engine.asset_manager, path, Model); m != nil {
+                        model^ = m^
+                    }
                 }
                 imgui.EndDragDropTarget()
             }

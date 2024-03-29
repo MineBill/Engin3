@@ -70,6 +70,7 @@ Entity :: struct {
     world: ^World,
     handle: Handle,
     id: UUID,
+    local_id: int,
 
     enabled: bool,
     name: DynamicString,
@@ -196,6 +197,8 @@ World :: struct {
     file_path: string,
 
     objects: map[Handle]Entity,
+    local_id_to_uuid: map[int]UUID,
+    next_local_id: int,
     root: Handle,
 }
 
@@ -209,6 +212,7 @@ create_world :: proc(world: ^World, name: string = "World") {
         transform = default_transform(),
         world = world,
     }
+    world.next_local_id = 1
 
     return
 }
@@ -287,8 +291,12 @@ new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Han
     go.world = world
     go.handle = id
     go.id = id
+    go.local_id = world.next_local_id
     go.enabled = true
     go.transform.local_scale = vec3{1, 1, 1}
+
+    world.next_local_id += 1
+    world.local_id_to_uuid[go.local_id] = go.id
 
     return id
 }
@@ -313,6 +321,10 @@ new_object_with_uuid :: proc(world: ^World, name: string = "New Entity", uuid: U
     go.id = uuid
     go.enabled = true
     go.transform.local_scale = vec3{1, 1, 1}
+
+    go.local_id = world.next_local_id
+    world.next_local_id += 1
+    world.local_id_to_uuid[go.local_id] = go.id
 
     return uuid
 }

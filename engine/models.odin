@@ -140,6 +140,8 @@ destroy_image :: proc(image: ^Image) {
 }
 
 Model :: struct {
+    using base: Asset,
+
     name:           string,
     vertex_buffer:  u32,
     index_buffer:   u32,
@@ -148,7 +150,7 @@ Model :: struct {
 }
 
 is_model_valid :: proc(model: Model) -> bool {
-    return model.vertex_array != 0
+    return model.num_indices > 0
 }
 
 model_deinit :: proc(model: ^Model) {
