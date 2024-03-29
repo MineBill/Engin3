@@ -497,8 +497,8 @@ editor_content_browser :: proc(e: ^Editor) {
     {
         imgui.BeginChild("content view root", vec2{0, 0}, {.Border}, {})
         relative, _ := filepath.rel(e.content_browser.root_dir, e.content_browser.current_dir, allocator = context.temp_allocator)
-        imgui.TextUnformatted(fmt.ctprintf("root://%v", relative))
-        imgui.TextUnformatted(cstr(e.content_browser.current_dir))
+        relative, _ = filepath.to_slash(relative, allocator = context.temp_allocator)
+        imgui.TextUnformatted(fmt.ctprintf("Project://%v", relative))
 
         imgui.SameLineEx(imgui.GetContentRegionAvail().x - 40, 0)
         if imgui.Button("Options") {
