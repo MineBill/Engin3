@@ -14,9 +14,36 @@ Event :: union {
     WindowPositionEvent,
 }
 
+KeyMod :: enum {
+    Alt,
+    Super,
+    Control,
+    CapsLock,
+    Shift,
+}
+
+KeyMods :: bit_set[KeyMod]
+
+glfw_mod_to_key_mod :: proc(mods: i32) -> (key_mods: KeyMods) {
+    switch {
+    case mods & glfw.MOD_ALT != 0:
+        key_mods += {.Alt}
+    case mods & glfw.MOD_SUPER != 0:
+        key_mods += {.Super}
+    case mods & glfw.MOD_CAPS_LOCK != 0:
+        key_mods += {.CapsLock}
+    case mods & glfw.MOD_CONTROL != 0:
+        key_mods += {.Control}
+    case mods & glfw.MOD_SHIFT != 0:
+        key_mods += {.Shift}
+    }
+    return
+}
+
 KeyEvent :: struct {
     key: Key,
     state: InputState,
+    mods: KeyMods,
 }
 
 CharEvent :: struct {
@@ -116,6 +143,7 @@ glfw_key_callback :: proc "c" (win: glfw.WindowHandle, key, scancode, action, mo
     append(&game.events, KeyEvent{
         key = key,
         state = state,
+        mods = glfw_mod_to_key_mod(mods),
     })
     #partial switch (state) {
         case .pressed:

@@ -113,6 +113,15 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         case MouseWheelEvent:
             CAMERA_SPEED += ev.delta.y
             CAMERA_SPEED = math.clamp(CAMERA_SPEED, 1, 100)
+        case KeyEvent:
+            if ev.state == .pressed {
+                if e.capture_mouse do break
+                // Save scene
+                if ev.key == .s && .Control in ev.mods {
+                    log.debug("Save!")
+                    serialize_world(e.engine.world, e.engine.world.file_path)
+                }
+            }
         }
     }
 
