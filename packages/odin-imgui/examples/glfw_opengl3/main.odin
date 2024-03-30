@@ -5,7 +5,7 @@ package imgui_example_glfw_opengl3
 // https://github.com/ocornut/imgui/blob/docking/examples/example_glfw_opengl3/main.cpp
 // (for updating: based on https://github.com/ocornut/imgui/blob/96839b445e32e46d87a44fd43a9cdd60c806f7e1/examples/example_glfw_opengl3/main.cpp)
 
-import imgui "../.."
+import im "../.."
 import "../../imgui_impl_glfw"
 import "../../imgui_impl_opengl3"
 
@@ -32,21 +32,21 @@ main :: proc() {
 		(cast(^rawptr)p)^ = glfw.GetProcAddress(name)
 	})
 
-	imgui.CHECKVERSION()
-	imgui.CreateContext(nil)
-	defer imgui.DestroyContext(nil)
-	io := imgui.GetIO()
+	im.CHECKVERSION()
+	im.CreateContext()
+	defer im.DestroyContext()
+	io := im.GetIO()
 	io.ConfigFlags += {.NavEnableKeyboard, .NavEnableGamepad}
-	when imgui.IMGUI_BRANCH == "docking" {
+	when im.IMGUI_BRANCH == "docking" {
 		io.ConfigFlags += {.DockingEnable}
 		io.ConfigFlags += {.ViewportsEnable}
 
-		style := imgui.GetStyle()
+		style := im.GetStyle()
 		style.WindowRounding = 0
-		style.Colors[imgui.Col.WindowBg].w = 1
+		style.Colors[im.Col.WindowBg].w = 1
 	}
 
-	imgui.StyleColorsDark(nil)
+	im.StyleColorsDark()
 
 	imgui_impl_glfw.InitForOpenGL(window, true)
 	defer imgui_impl_glfw.Shutdown()
@@ -58,28 +58,28 @@ main :: proc() {
 
 		imgui_impl_opengl3.NewFrame()
 		imgui_impl_glfw.NewFrame()
-		imgui.NewFrame()
+		im.NewFrame()
 
-		imgui.ShowDemoWindow(nil)
+		im.ShowDemoWindow()
 
-		if imgui.Begin("Window containing a quit button", nil, {}) {
-			if imgui.Button("The quit button in question") {
+		if im.Begin("Window containing a quit button") {
+			if im.Button("The quit button in question") {
 				glfw.SetWindowShouldClose(window, true)
 			}
 		}
-		imgui.End()
+		im.End()
 
-		imgui.Render()
+		im.Render()
 		display_w, display_h := glfw.GetFramebufferSize(window)
 		gl.Viewport(0, 0, display_w, display_h)
 		gl.ClearColor(0, 0, 0, 1)
 		gl.Clear(gl.COLOR_BUFFER_BIT)
-		imgui_impl_opengl3.RenderDrawData(imgui.GetDrawData())
+		imgui_impl_opengl3.RenderDrawData(im.GetDrawData())
 
-		when imgui.IMGUI_BRANCH == "docking" {
+		when im.IMGUI_BRANCH == "docking" {
 			backup_current_window := glfw.GetCurrentContext()
-			imgui.UpdatePlatformWindows()
-			imgui.RenderPlatformWindowsDefault()
+			im.UpdatePlatformWindows()
+			im.RenderPlatformWindowsDefault()
 			glfw.MakeContextCurrent(backup_current_window)
 		}
 

@@ -10,7 +10,7 @@ else when ODIN_OS == .Darwin {
 }
 
 // imgui_impl_vulkan.h
-// Last checked 357f752b
+// Last checked 4778560
 InitInfo :: struct {
 	Instance:        vk.Instance,
 	PhysicalDevice:  vk.PhysicalDevice,
@@ -29,8 +29,9 @@ InitInfo :: struct {
 	ColorAttachmentFormat: vk.Format, // Required for dynamic rendering
 
 	// Allocation, Debugging
-	Allocator:       ^vk.AllocationCallbacks,
-	CheckVkResultFn: proc "c" (err: vk.Result),
+	Allocator:         ^vk.AllocationCallbacks,
+	CheckVkResultFn:   proc "c" (err: vk.Result),
+	MinAllocationSize: vk.DeviceSize, // Minimum allocation size. Set to 1024*1024 to satisfy zealous best practices validation layer and waste a little memory.
 }
 
 @(link_prefix="ImGui_ImplVulkan_")
@@ -40,12 +41,9 @@ foreign lib {
 	Shutdown                 :: proc() ---
 	NewFrame                 :: proc() ---
 	RenderDrawData           :: proc(draw_data: ^imgui.DrawData, command_buffer: vk.CommandBuffer, pipeline: vk.Pipeline = {}) ---
-	CreateFontsTexture       :: proc(command_buffer: vk.CommandBuffer) -> bool ---
-	DestroyFontUploadObjects :: proc() ---
+	CreateFontsTexture       :: proc() -> bool ---
+	DestroyFontsTexture      :: proc() ---
 	SetMinImageCount         :: proc(min_image_count: u32) --- // To override MinImageCount after initialization (e.g. if swap chain is recreated)
-
-    AddTexture               :: proc(sampler: vk.Sampler, image_view: vk.ImageView, image_layout: vk.ImageLayout) -> vk.DescriptorSet ---
-    RemoveTexture            :: proc(descriptor_set: vk.DescriptorSet) ---
 
 	LoadFunctions :: proc(loader_func: proc "c" (function_name: cstring, user_data: rawptr) -> vk.ProcVoidFunction, user_data: rawptr = nil) -> bool ---
 }

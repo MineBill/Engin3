@@ -24,15 +24,6 @@ CAMERA_DEFAULT_POSITION :: vec3{0, 3, 10}
 
 SHADOW_MAP_RES :: 4096
 
-Camera :: struct {
-    position:       vec3,
-    rotation:       quaternion128,
-    euler_angles:   vec3,
-    fov:            f32,
-
-    projection: mat4,
-}
-
 Scene_Data :: struct {
     using block : struct {
         view_position: vec4,
@@ -96,11 +87,15 @@ Engine :: struct {
     light_entity: int,
     box_entity: int,
 
-    previouse_mouse: vec2,
-    camera:          Camera,
-    editor:          Editor,
-    game:            Game,
-    run_mode:        EngineMode,
+    previouse_mouse:   vec2,
+    editor:            Editor,
+    // camera:          EditorCamera,
+    camera_projection: mat4,
+    camera_view:       mat4,
+    camera_position:   vec3,
+    camera_rotation:   quaternion128,
+    game:              Game,
+    run_mode:          EngineMode,
 
     world: World,
 
@@ -241,13 +236,13 @@ void main() {
         gl.CreateBuffers(1, &e.ubo)
         gl.NamedBufferData(e.ubo, size_of(Uniform), nil, gl.DYNAMIC_DRAW)
 
-        e.camera.fov = 45.0;
-        e.camera.projection = linalg.matrix4_perspective_f32(e.camera.fov, 16.0 / 9.0, 0.1, 1000.0)
-        gl.NamedBufferSubData(e.ubo, 0, size_of(mat4), &e.camera.projection)
+        // e.camera.fov = 45.0;
+        // e.camera.projection = linalg.matrix4_perspective_f32(e.camera.fov, 16.0 / 9.0, 0.1, 1000.0)
+        // gl.NamedBufferSubData(e.ubo, 0, size_of(mat4), &e.camera.projection)
 
         // view := linalg.matrix4_translate(vec3{0, 3, -10})
         // gl.NamedBufferSubData(e.ubo, size_of(mat4), size_of(mat4), &view)
-        e.camera.position = CAMERA_DEFAULT_POSITION
+        // e.camera.position = CAMERA_DEFAULT_POSITION
 
         gl.BindBufferBase(gl.UNIFORM_BUFFER, 0, e.ubo)
     }
@@ -294,21 +289,6 @@ void main() {
     // e.depth_fb             = gen_framebuffer(SHADOW_MAP_RES, SHADOW_MAP_RES, pure_depth = true)
     e.width = 800
     e.height = 800
-
-    imgui.CreateContext(nil)
-    io := imgui.GetIO()
-    io.ConfigFlags += {.DockingEnable, .ViewportsEnable}
-    io.IniFilename = nil
-    imgui.LoadIniSettingsFromDisk("editor_layout.ini")
-
-    setup_imgui_style()
-
-    // imgui.FontAtlas_AddFont(io.Fonts, )
-    inter_font :: #load("../assets/fonts/inter/Inter-Regular.ttf")
-    imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(inter_font), cast(i32)len(inter_font), 16, nil, nil)
-
-    imgui_impl_glfw.InitForOpenGL(e.window, true)
-    imgui_impl_opengl3.Init("#version 450 core")
 
     nk_init(e.window)
     atlas: ^nk.Font_Atlas
@@ -424,7 +404,6 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
 
         editor_update(&e.editor, _delta)
     }
-    world_update(&e.world, _delta)
 
     engine_draw(e)
 
@@ -442,7 +421,7 @@ engine_draw :: proc(e: ^Engine) {
         tracy.ZoneN("Mesh Collection")
         for handle, &go in e.world.objects do if go.enabled && has_component(&e.world, handle, MeshRenderer) {
             mr := get_component(&e.world, handle, MeshRenderer)
-            if is_model_valid(mr.model) {
+            if mr.model != nil && is_model_valid(mr.model^) {
                 append(&mesh_components, mr)
             }
         }
@@ -476,9 +455,9 @@ engine_draw :: proc(e: ^Engine) {
             proj: mat4,
         }
 
-        camera_view := linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
-        camera_proj := linalg.matrix4_perspective_f32(math.to_radians(f32(45.0)), f32(e.width) / f32(e.height), 0.1, 20.0)
-        corners := get_frustum_corners_world_space(camera_proj, camera_view)
+        // camera_view := linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
+        // camera_proj := linalg.matrix4_perspective_f32(math.to_radians(f32(45.0)), f32(e.width) / f32(e.height), 0.1, 20.0)
+        corners := get_frustum_corners_world_space(e.camera_projection, e.camera_view)
 
         center := vec3{}
 
@@ -582,10 +561,10 @@ engine_draw :: proc(e: ^Engine) {
 
     // view := linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
     // gl.NamedBufferSubData(e.ubo, size_of(mat4), size_of(mat4), &view)
-    e.camera.projection = linalg.matrix4_perspective_f32(math.to_radians(f32(45.0)), f32(e.width) / f32(e.height), 0.1, 1000.0)
-    gl.NamedBufferSubData(e.ubo, 0, size_of(mat4), &e.camera.projection)
+    // e.camera.projection = linalg.matrix4_perspective_f32(math.to_radians(f32(45.0)), f32(e.width) / f32(e.height), 0.1, 1000.0)
+    gl.NamedBufferSubData(e.ubo, 0, size_of(mat4), &e.camera_projection)
 
-    e.scene_data.view_position.xyz = e.camera.position
+    e.scene_data.view_position.xyz = e.camera_position
     gl.NamedBufferSubData(
         e.scene_data.ubo,
         int(offset_of(e.scene_data.view_position)),
@@ -606,7 +585,7 @@ engine_draw :: proc(e: ^Engine) {
     gl.Disable(gl.DEPTH_TEST)
     // === SKYBOX ===
     if cubemap := find_first_component(&e.world, CubemapComponent); cubemap != nil {
-        view := linalg.matrix4_from_quaternion(e.camera.rotation)
+        view := linalg.matrix4_from_quaternion(e.camera_rotation)
         gl.NamedBufferSubData(e.ubo, size_of(mat4), size_of(mat4), &view)
 
         gl.UseProgram(cubemap.shader.program)
@@ -616,8 +595,7 @@ engine_draw :: proc(e: ^Engine) {
     }
     gl.Enable(gl.DEPTH_TEST)
 
-    view := linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
-    gl.NamedBufferSubData(e.ubo, size_of(mat4), size_of(mat4), &view)
+    gl.NamedBufferSubData(e.ubo, size_of(mat4), size_of(mat4), &e.camera_view)
 
     gl.UseProgram(e.triangle_shader.program)
 
@@ -869,17 +847,17 @@ setup_imgui_style :: proc() {
     style.Alpha                     = 1.0
     style.DisabledAlpha             = 1.0
     style.WindowPadding             = vec2{12.0, 12.0}
-    style.WindowRounding            = 5.0
+    style.WindowRounding            = 2.0
     style.WindowBorderSize          = 1.0
     style.WindowMinSize             = vec2{20.0, 20.0}
     style.WindowTitleAlign          = vec2{0.5, 0.5}
     style.WindowMenuButtonPosition  = .None;
     style.ChildRounding             = 2.0
     style.ChildBorderSize           = 1.0
-    style.PopupRounding             = 3.0
+    style.PopupRounding             = 2.0
     style.PopupBorderSize           = 1.0
     style.FramePadding              = vec2{4.0, 2.0}
-    style.FrameRounding             = 3.0
+    style.FrameRounding             = 2.0
     style.FrameBorderSize           = 0.0
     style.ItemSpacing               = vec2{6.0, 3.0}
     style.ItemInnerSpacing          = vec2{6.0, 3.0}

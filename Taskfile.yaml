@@ -71,8 +71,8 @@ tasks:
     cmds:
       - ./out/debug/engin3{{.EXE_EXT}}
 
-  debugger:
+  debug:
     platforms: [windows]
-    deps: [build-loader, build, build-shaders]
+    deps: [build]
     cmds:
-      - raddbg.exe --profile:vulkan_test.raddbgprofile
+      - raddbg.exe --profile:engin3.raddbg_profile --auto_run

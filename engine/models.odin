@@ -19,6 +19,10 @@ Material :: struct {
         roughness_factor: f32 `range:"0.0, 1.0"`,
     },
 
+    albedo_image: ^Image,
+    normal_image: ^Image,
+    height_image: ^Image,
+
     albedo_texture: Texture2D,
     normal_texture: Texture2D,
     height_texture: Texture2D,
@@ -37,20 +41,71 @@ default_material :: proc() -> Material {
         block = {
             albedo_color = Color{1, 1, 1, 1},
             metallic_factor = 0,
-            roughness_factor = 0,
+            roughness_factor = 0.5,
         },
     }
 }
 
 clone_material :: proc(m: Material) -> (clone: Material) {
     clone = m
-    update_material(&clone, nil, nil, nil)
+    create_material(&clone)
+    update_material_new(&clone)
     return
 }
 
 upload_material :: proc(m: Material) {
     m := m
     gl.NamedBufferSubData(m.ubo, 0, size_of(m.block), &m.block)
+}
+
+create_material :: proc(m: ^Material) {
+    gl.CreateBuffers(1, &m.ubo)
+    gl.NamedBufferStorage(m.ubo, size_of(m.block), &m.block, gl.DYNAMIC_STORAGE_BIT)
+}
+
+update_material_new :: proc(m: ^Material) {
+    if m.albedo_image == nil {
+        m.albedo_image = cast(^Image)image_loader(WHITE_TEXTURE)
+    }
+    if m.normal_image == nil {
+        m.normal_image = cast(^Image)image_loader(NORMAL_MAP)
+    }
+    if m.height_image == nil {
+        m.height_image = cast(^Image)image_loader(BLACK_TEXTURE)
+    }
+
+    albedo := m.albedo_image
+    normal := m.normal_image
+    height := m.height_image
+
+    m.albedo_texture = create_texture(albedo.width, albedo.height, {
+        samples = 1,
+        format = gl.SRGB8_ALPHA8,
+        min_filter = .MipMapLinear,
+        mag_filter = .Linear,
+        anisotropy = 4,
+    })
+
+    set_texture_data(m.albedo_texture, albedo.data)
+
+    m.normal_texture = create_texture(normal.width, normal.height, {
+        samples = 1,
+        format = gl.RGBA8,
+        min_filter = .MipMapLinear,
+        mag_filter = .Linear,
+        anisotropy = 4,
+    })
+    set_texture_data(m.normal_texture, normal.data)
+
+    m.height_texture = create_texture(height.width, height.height, {
+        samples = 1,
+        format = gl.RGBA8,
+        min_filter = .Linear,
+        mag_filter = .Linear,
+        anisotropy = 1,
+    })
+    set_texture_data(m.height_texture, height.data)
+    upload_material(m^)
 }
 
 update_material :: proc(m: ^Material, albedo, normal, height: []byte) {
@@ -91,11 +146,15 @@ update_material :: proc(m: ^Material, albedo, normal, height: []byte) {
     })
     set_texture_data(m.height_texture, i3.data)
 
+    buffer: [1024]int
+
     gl.CreateBuffers(1, &m.ubo)
     gl.NamedBufferStorage(m.ubo, size_of(m.block), &m.block, gl.DYNAMIC_STORAGE_BIT)
 }
 
 Image :: struct {
+    using base: Asset,
+
     data: []byte,
     width, height: int,
     channels: int,

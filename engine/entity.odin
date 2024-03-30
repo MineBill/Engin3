@@ -32,7 +32,11 @@ ComponentVTable :: struct {
     // Called when a component property changes.
     prop_changed: #type proc(this: rawptr, prop: any),
 
+    // @Editor: Editor only field, allows a component to have custom imgui.
     editor_ui: #type proc(this: rawptr),
+
+    // Copies the component and returns a new instance.
+    copy: #type proc(this: rawptr) -> rawptr,
 }
 
 component_default_init :: proc(this: rawptr) {}
@@ -40,18 +44,29 @@ component_default_update :: proc(this: rawptr, delta: f64) {}
 component_default_destroy :: proc(this: rawptr) {
     free(this)
 }
-component_default_prop_changed :: proc(this: rawptr, prop: any) {}
+
+component_default_prop_changed :: proc(this: rawptr, prop: any) {
+    this := cast(^Component)this
+    this.world.modified = true
+}
+
 component_default_editor_ui :: proc(this: rawptr) {}
+
+component_default_copy :: proc(this: rawptr) -> rawptr {
+    assert(false, "Copy needs to be implemented")
+    return nil
+}
 
 default_component_constructor :: proc() -> Component {
     tracy.Zone()
     return {
-        enabled = true,
-        init = component_default_init,
-        update = component_default_update,
-        destroy = component_default_destroy,
+        enabled      = true,
+        init         = component_default_init,
+        update       = component_default_update,
+        destroy      = component_default_destroy,
         prop_changed = component_default_prop_changed,
-        editor_ui = component_default_editor_ui,
+        editor_ui    = component_default_editor_ui,
+        copy         = component_default_copy,
     }
 }
 
@@ -83,8 +98,43 @@ Entity :: struct {
 
 Handle :: UUID
 
+duplicate_entity :: proc(world: ^World, entity: Handle) -> Handle {
+    en := get_object(world, entity)
+    new := new_object(world, ds_to_string(en.name), en.parent)
+    new_en := get_object(world, new)
+
+    new_en.transform = en.transform
+    new_en.flags = en.flags
+    new_en.enabled = en.enabled
+
+    for id, component in en.components {
+        copy_component(world, new, entity, id)
+    }
+    return new
+}
+
 @(private = "file")
 NOT_REGISTERED_MESSAGE :: "Component %v is not registered. Register the component with @(component) and define a constructor proc with @(constructor=<C>)"
+
+copy_component :: proc(w: ^World, handle, target: Handle, id: typeid) {
+    tracy.Zone()
+    assert(id in COMPONENT_INDICES, fmt.tprintf(NOT_REGISTERED_MESSAGE, id))
+
+    go := get_object(w, handle)
+
+    target_component := get_component_typeid(w, target, id)
+    if target_component == nil {
+        log.errorf("Cannot copy component %v from entity %v because it doesn't exist.", id, target)
+        return
+    }
+
+    // go.components[id] = cast(^Component)get_component_constructor(id)()
+    go.components[id] = cast(^Component)target_component->copy()
+    go.components[id].owner = handle
+    go.components[id].world = w
+
+    go.components[id]->init()
+}
 
 add_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) {
     tracy.Zone()
@@ -189,6 +239,14 @@ has_component :: proc {
     has_component_typeid,
 }
 
+when USE_EDITOR {
+    WorldEditorData :: struct {
+        modified: bool,
+    }
+} else {
+    WorldEditorData :: struct {}
+}
+
 World :: struct {
     // The name of this world/level.
     name: string,
@@ -200,6 +258,8 @@ World :: struct {
     local_id_to_uuid: map[int]UUID,
     next_local_id: int,
     root: Handle,
+
+    using editor_data: WorldEditorData,
 }
 
 create_world :: proc(world: ^World, name: string = "World") {
@@ -224,23 +284,35 @@ destroy_world :: proc(world: ^World) {
     delete(world.file_path)
 }
 
-world_update :: proc(world: ^World, delta: f64) {
+copy_world :: proc(source: ^World) -> (new: World) {
+    new.name = strings.clone(source.name)
+    new.root = source.root
+
+    new.file_path = source.file_path
+    new.next_local_id = source.next_local_id
+
+    return
+}
+
+world_update :: proc(world: ^World, delta: f64, update_components := true) {
     tracy.Zone()
-    update_object :: proc(go: ^Entity, handle: Handle, delta: f64) {
+    update_object :: proc(go: ^Entity, handle: Handle, delta: f64, update_components: bool) {
         tracy.Zone()
         update_transform(go, &go.transform, delta)
         for child_handle in go.children {
             child := get_object(go.world, child_handle)
-            update_object(child, child_handle, delta)
+            update_object(child, child_handle, delta, update_components)
         }
 
-        for id, component in go.components {
-            component->update(delta)
+        if update_components {
+            for id, component in go.components {
+                component->update(delta)
+            }
         }
     }
 
     root := &world.objects[world.root]
-    update_object(root, world.root, delta)
+    update_object(root, world.root, delta, update_components)
 }
 
 get_object :: proc(world: ^World, handle: Handle) -> ^Entity {
@@ -272,6 +344,13 @@ remove_child :: proc(world: ^World, parent: Handle, child: Handle) {
     }
 }
 
+reparent_entity :: proc(world: ^World, entity_h, new_parent_h: Handle) {
+    entity := get_object(world, entity_h)
+
+    remove_child(world, entity.parent, entity_h)
+    add_child(world, new_parent_h, entity_h)
+}
+
 new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Handle) = nil) -> Handle {
     tracy.Zone()
     // handle := world.next_handle
@@ -299,6 +378,21 @@ new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Han
     world.local_id_to_uuid[go.local_id] = go.id
 
     return id
+}
+
+copy_entity :: proc(from_world, new_world: ^World, from_entity, new_entity: UUID) {
+    // new.id = from.id
+    // new.name = from.name // TODO: Wrong
+    // new.flags = from.flags
+    // new.world = from.world
+
+    from := get_object(from_world, from_entity)
+
+    for type, component in from.components {
+        add_component(new_world, new_entity, type)
+    }
+
+    return
 }
 
 new_object_with_uuid :: proc(world: ^World, name: string = "New Entity", uuid: UUID, parent: Maybe(Handle) = nil) -> Handle {
@@ -412,16 +506,16 @@ deserialize_world :: proc(world: ^World, file: string) -> (ok: bool) {
     tracy.Zone()
     log.debugf("Deserializing world from file: %v", file)
 
-    destroy_world(world)
-    create_world(world)
-    world.file_path = strings.clone(file)
-
     scene_data := os.read_entire_file(file) or_return
     defer delete(scene_data)
 
     value, err := json.parse(scene_data, .MJSON, parse_integers = true)
     if err != nil do return false
     defer json.destroy_value(value)
+
+    destroy_world(world)
+    create_world(world)
+    world.file_path = strings.clone(file)
 
     ResolvePair :: struct {entity, parent: UUID}
     parents_to_resolve := make([dynamic]ResolvePair)

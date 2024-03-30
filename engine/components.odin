@@ -145,7 +145,7 @@ printer_update :: proc(this: rawptr, delta: f64) {
 MeshRenderer :: struct {
     using base: Component,
 
-    model:    Model,
+    model:    ^Model,
     material: Material,
 }
 
@@ -157,12 +157,19 @@ make_mesh_renderer :: proc() -> rawptr {
         material = default_material(),
     }
 
-    update_material(&mr.material, nil, nil, nil)
+    create_material(&mr.material)
+    update_material_new(&mr.material)
+
+    // update_material(&mr.material,
+    //     mr.material.albedo_image.data,
+    //     mr.material.normal_image.data,
+    //     mr.material.height_image.data)
 
     mr.init         = mesh_renderer_init
     mr.update       = mesh_renderer_update
     mr.destroy      = mesh_renderer_destroy
     mr.prop_changed = mesh_renderer_prop_changed
+    mr.copy         = mesh_renderer_copy
     return mr
 }
 
@@ -178,6 +185,19 @@ mesh_renderer_destroy :: proc(this: rawptr) {
     component_default_destroy(this)
 }
 
+mesh_renderer_copy :: proc(this: rawptr) -> rawptr {
+    this := cast(^MeshRenderer)this
+
+    new := cast(^MeshRenderer)make_mesh_renderer()
+
+    // TODO: make MeshRenderer.model a pointer
+    new.model = get_asset(&g_engine.asset_manager, this.model.path, Model)
+    new.material = clone_material(this.material)
+    mesh_renderer_update_material(new)
+
+    return new
+}
+
 mesh_renderer_prop_changed :: proc(this: rawptr, prop: any) {
     this := cast(^MeshRenderer)this
     field, ok := prop.(reflect.Struct_Field)
@@ -185,15 +205,24 @@ mesh_renderer_prop_changed :: proc(this: rawptr, prop: any) {
 
     switch field.name {
     case "material":
+        log.debug("Material")
         upload_material(this.material)
     }
+}
+
+mesh_renderer_set_model :: proc(this: ^MeshRenderer, model: ^Model) {
+    this.model = model
 }
 
 @(serializer=MeshRenderer)
 serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
     this := cast(^MeshRenderer)this
     am := &g_engine.asset_manager
-    serialize_asset(am, s, serialize, &this.model)
+    serialize_asset(am, s, serialize, "Model", &this.model)
+
+    serialize_asset(am, s, serialize, "Material_Albedo_Image", &this.material.albedo_image)
+    serialize_asset(am, s, serialize, "Material_Normal_Image", &this.material.normal_image)
+    serialize_asset(am, s, serialize, "Material_Height_Image", &this.material.height_image)
     if serialize {
         w := s.writer
         opt := s.opt
@@ -224,7 +253,7 @@ serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
             this.material.metallic_factor = f32(s.object["MaterialMetalness"].(json.Float))
         }
 
-        update_material(&this.material, nil, nil, nil)
+        update_material_new(&this.material)
     }
 }
 
@@ -554,4 +583,81 @@ bg_editor_ui :: proc(this: rawptr) {
     }
 }
 
+}
+
+@(component="Core")
+Camera :: struct {
+    using base: Component,
+
+    fov: f32,
+    near_plane: f32 `range: "0.1, 1000.0"`,
+    far_plane: f32 `range: "0.1, 1000.0"`,
+
+    projection: mat4 `hide:""`,
+}
+
+@(constructor=Camera)
+make_camera :: proc() -> rawptr {
+    camera := new(Camera)
+    camera.base = default_component_constructor()
+
+    camera.fov = 50
+    camera.near_plane = 0.1
+    camera.far_plane = 100.0
+    aspect := f32(g_engine.width) / f32(g_engine.height)
+    camera.projection = linalg.matrix4_perspective_f32(camera.fov, aspect, 0.1, 1000.0)
+
+    return camera
+}
+
+camera_prop_changed :: proc(this: rawptr, prop: any) {
+    this := cast(^Camera)this
+    field, ok := prop.(reflect.Struct_Field)
+    if !ok do return
+
+    switch field.name {
+    case "fov":
+    case "near_plane":
+    case "far_plane":
+        aspect := f32(g_engine.width) / f32(g_engine.height)
+        this.projection = linalg.matrix4_perspective_f32(this.fov, aspect, this.near_plane, this.far_plane)
+        // upload_material(this.material)
+    }
+}
+
+@(serializer=Camera)
+serialize_camera :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+    this := cast(^Camera)this
+    if serialize {
+        w := s.writer
+        opt := s.opt
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "Fov")
+        json.marshal_to_writer(w, this.fov, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "NearPlane")
+        json.marshal_to_writer(w, this.near_plane, opt)
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "FarPlane")
+        json.marshal_to_writer(w, this.far_plane, opt)
+    } else {
+        if "Fov" in s.object {
+            fov := f32(s.object["Fov"].(json.Float))
+            this.fov = fov
+        }
+
+        if "NearPlane" in s.object {
+            this.near_plane = f32(s.object["NearPlane"].(json.Float))
+        }
+
+        if "FarPlane" in s.object {
+            this.far_plane = f32(s.object["FarPlane"].(json.Float))
+        }
+
+        aspect := f32(g_engine.width) / f32(g_engine.height)
+        this.projection = linalg.matrix4_perspective_f32(this.fov, aspect, this.near_plane, this.far_plane)
+    }
 }

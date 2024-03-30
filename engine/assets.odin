@@ -23,16 +23,17 @@ Asset :: struct {
     path: string,
 }
 
-get_asset :: proc(am: ^AssetManager, asset: Path, $T: typeid) -> ^T {
+get_asset :: proc(am: ^AssetManager, asset: Path, $T: typeid, id: Maybe(UUID) = nil) -> ^T 
+    where intrinsics.type_is_subtype_of(T, Asset) {
     if asset in am.assets {
         return cast(^T)am.assets[asset]
     }
 
-    am.assets[asset] = load_asset(asset, T)
+    am.assets[asset] = load_asset(asset, T, id)
     return cast(^T)am.assets[asset]
 }
 
-load_asset :: proc(path: Path, type: typeid) -> ^Asset {
+load_asset :: proc(path: Path, type: typeid, id: Maybe(UUID) = nil) -> ^Asset {
     if path == "" {
         return nil
     }
@@ -51,7 +52,11 @@ load_asset :: proc(path: Path, type: typeid) -> ^Asset {
 
         asset := loader(data)
         asset.path = strings.clone(path)
-        asset.id = generate_uuid()
+        if id, ok := id.?; ok {
+            asset.id = id
+        } else {
+            asset.id = generate_uuid()
+        }
         return asset
     }
 
@@ -60,18 +65,41 @@ load_asset :: proc(path: Path, type: typeid) -> ^Asset {
     return nil
 }
 
-serialize_asset :: proc(am: ^AssetManager, s: ^Serializer, serialize: bool, asset: ^$T) {
+serialize_asset :: proc(am: ^AssetManager, s: ^Serializer, serialize: bool, key: string, asset: ^^$T)
+    where intrinsics.type_is_subtype_of(T, Asset) {
     if serialize {
+        if asset^ == nil || asset^.path == "" || asset^.id == 0 {
+            return
+        }
         w := s.writer
         opt := s.opt
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, key)
+        json.opt_write_start(w, opt, '{')
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "UUID")
+        json.marshal_to_writer(w, asset^.id, opt)
+
         json.opt_write_iteration(w, opt, 1)
         json.opt_write_key(w, opt, "Path")
-        json.marshal_to_writer(w, asset.path, opt)
+        json.marshal_to_writer(w, asset^.path, opt)
+
+        json.opt_write_end(w, opt, '}')
     } else {
-        path := s.object["Path"].(json.String)
-        if ass := get_asset(am, path, T); ass != nil {
-            log.debug("Setting ass", ass^)
-            asset^ = ass^
+        if object, ok := s.object[key].(json.Object); ok {
+            id: Maybe(UUID) = nil
+
+            if uuid, ok := object["UUID"].(json.Integer); ok {
+                id = UUID(uuid)
+            }
+
+            if path, ok := object["Path"].(json.String); ok {
+                if ass := get_asset(am, path, T, id); ass != nil {
+                    asset^ = ass
+                }
+            }
         }
     }
 }

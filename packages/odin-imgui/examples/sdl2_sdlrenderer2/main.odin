@@ -5,7 +5,7 @@ package imgui_example_sdl2_sdlrenderer2
 // https://github.com/ocornut/imgui/blob/docking/examples/example_sdl2_sdlrenderer2/main.cpp
 // (for updating: based on https://github.com/ocornut/imgui/blob/96839b445e32e46d87a44fd43a9cdd60c806f7e1/examples/example_sdl2_sdlrenderer2/main.cpp)
 
-import imgui "../.."
+import im "../.."
 import "../../imgui_impl_sdl2"
 import "../../imgui_impl_sdlrenderer2"
 
@@ -32,13 +32,13 @@ main :: proc() {
 	assert(renderer != nil)
 	defer sdl.DestroyRenderer(renderer)
 
-	imgui.CHECKVERSION()
-	imgui.CreateContext(nil)
-	defer imgui.DestroyContext(nil)
-	io := imgui.GetIO()
+	im.CHECKVERSION()
+	im.CreateContext()
+	defer im.DestroyContext()
+	io := im.GetIO()
 	io.ConfigFlags += {.NavEnableKeyboard, .NavEnableGamepad}
 
-	imgui.StyleColorsDark(nil)
+	im.StyleColorsDark()
 
 	imgui_impl_sdl2.InitForSDLRenderer(window, renderer)
 	defer imgui_impl_sdl2.Shutdown()
@@ -58,22 +58,22 @@ main :: proc() {
 
 		imgui_impl_sdlrenderer2.NewFrame()
 		imgui_impl_sdl2.NewFrame()
-		imgui.NewFrame()
+		im.NewFrame()
 
-		imgui.ShowDemoWindow(nil)
+		im.ShowDemoWindow()
 
-		if imgui.Begin("Window containing a quit button", nil, {}) {
-			if imgui.Button("The quit button in question") {
+		if im.Begin("Window containing a quit button") {
+			if im.Button("The quit button in question") {
 				running = false
 			}
 		}
-		imgui.End()
+		im.End()
 
-		imgui.Render()
+		im.Render()
 		sdl.RenderSetScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y)
 		sdl.SetRenderDrawColor(renderer, 0, 0, 0, 255)
 		sdl.RenderClear(renderer)
-		imgui_impl_sdlrenderer2.RenderDrawData(imgui.GetDrawData())
+		imgui_impl_sdlrenderer2.RenderDrawData(im.GetDrawData())
 		sdl.RenderPresent(renderer)
 	}
 }

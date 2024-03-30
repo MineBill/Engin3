@@ -4,36 +4,36 @@ package imgui_example_null
 // https://github.com/ocornut/imgui/blob/docking/examples/example_null/main.cpp
 // (for updating: based on https://github.com/ocornut/imgui/blob/96839b445e32e46d87a44fd43a9cdd60c806f7e1/examples/example_null/main.cpp)
 
-import imgui "../.."
+import im "../.."
 
 import "core:fmt"
 
 main :: proc() {
-	imgui.CHECKVERSION()
-	imgui.CreateContext(nil)
+	im.CHECKVERSION()
+	im.CreateContext()
 	defer {
 		fmt.println("DestroyContext()")
-		imgui.DestroyContext(nil)
+		im.DestroyContext()
 	}
-	io := imgui.GetIO()
+	io := im.GetIO()
 
 	// Build atlas
 	tex_pixels: ^u8
 	tex_w, tex_h: i32
-	imgui.FontAtlas_GetTexDataAsRGBA32(io.Fonts, &tex_pixels, &tex_w, &tex_h, nil)
+	im.FontAtlas_GetTexDataAsRGBA32(io.Fonts, &tex_pixels, &tex_w, &tex_h)
 
 	for i in 0..<20 {
 		fmt.printf("NewFrame() {}\n", i)
 		io.DisplaySize = {1920, 1080}
 		io.DeltaTime = 1.0 / 60.0
-		imgui.NewFrame()
+		im.NewFrame()
 
 		@(static) f: f32
-		imgui.Text("Hello, world!")
-		imgui.SliderFloat("float", &f, 0, 1)
-		imgui.Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0 / io.Framerate, io.Framerate)
-		imgui.ShowDemoWindow(nil)
+		im.Text("Hello, world!")
+		im.SliderFloat("float", &f, 0, 1)
+		im.Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0 / io.Framerate, io.Framerate)
+		im.ShowDemoWindow()
 
-		imgui.Render()
+		im.Render()
 	}
 }

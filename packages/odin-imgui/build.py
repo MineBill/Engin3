@@ -203,7 +203,7 @@ def main():
 	# Basic flags
 	compile_flags = platform_select({
 		"windows": ['/DIMGUI_IMPL_API=extern\\\"C\\\"'],
-		"linux, darwin": ['-DIMGUI_IMPL_API=extern\"C\"', "-fPIC", "-fno-exceptions", "-fno-rtti", "-fno-threadsafe-statics"],
+		"linux, darwin": ['-DIMGUI_IMPL_API=extern\"C\"', "-fPIC", "-fno-exceptions", "-fno-rtti", "-fno-threadsafe-statics", "-std=c++11"],
 	})
 
 	# Optimization flags

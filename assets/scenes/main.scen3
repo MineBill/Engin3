@@ -1,11 +1,137 @@
 Name: "Test World"
 Entities: [
 	{
-		UUID: 18365496378108575934
-		Name: "Environment"
+		UUID: 4723970445347275476
+		Name: "New Entity"
+		Flags: 0
+		Enabled: true
+		Parent: 11112826187318486903
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 16355351371188371809
+		Name: "Visuals"
 		Flags: 0
 		Enabled: true
 		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 11112826187318486903
+		Name: "New Entity"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 7906161655014231741
+		Name: "Small Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				-0.73000002
+				1.15183902
+				-3.31999993
+			]
+			LocalRotation: [
+				0.00000000
+				0.56999999
+				9.02000046
+			]
+			LocalScale: [
+				1.23000002
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 16401345901566762450
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					0.81690145
+					0.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.53600001
+				MaterialMetalness: 0.58300000
+			}
+			MoverComponent: {
+				Enabled: true
+			}
+		}
+	}
+	{
+		UUID: 18365496378108575934
+		Name: "Environment"
+		Flags: 2
+		Enabled: true
+		Parent: 16355351371188371809
 		Transform: {
 			LocalPosition: [
 				0.00000000
@@ -38,7 +164,7 @@ Entities: [
 		Transform: {
 			LocalPosition: [
 				0.00000000
-				0.00000000
+				7.61000013
 				0.00000000
 			]
 			LocalRotation: [
@@ -47,22 +173,26 @@ Entities: [
 				0.00000000
 			]
 			LocalScale: [
-				11.19999981
-				0.50000000
+				1.00000000
+				1.00000000
 				15.09000015
 			]
 		}
 		Components: {
 			MeshRenderer: {
 				Enabled: true
-				Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				Model: {
+
+					UUID: 16401345901566762450
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				}
 				MaterialAlbedoColor: [
 					1.00000000
 					1.00000000
 					1.00000000
 					1.00000000
 				]
-				MaterialRoughness: 0.00000000
+				MaterialRoughness: 0.50000000
 				MaterialMetalness: 0.00000000
 			}
 		}
@@ -72,7 +202,7 @@ Entities: [
 		Name: "Directional Light"
 		Flags: 0
 		Enabled: true
-		Parent: 0
+		Parent: 16355351371188371809
 		Transform: {
 			LocalPosition: [
 				0.00000000
@@ -80,7 +210,7 @@ Entities: [
 				0.00000000
 			]
 			LocalRotation: [
-				23.79999924
+				167.61000061
 				0.00000000
 				0.00000000
 			]
@@ -103,16 +233,16 @@ Entities: [
 		}
 	}
 	{
-		UUID: 8963890802913270757
-		Name: "Small Box"
-		Flags: 2
+		UUID: 15728031585902198275
+		Name: "Box"
+		Flags: 0
 		Enabled: true
 		Parent: 0
 		Transform: {
 			LocalPosition: [
-				0.20999999
-				1.55999994
-				-3.27999997
+				0.00000000
+				-0.13000000
+				0.00000000
 			]
 			LocalRotation: [
 				0.00000000
@@ -120,23 +250,74 @@ Entities: [
 				0.00000000
 			]
 			LocalScale: [
-				1.23000002
-				1.00000000
-				1.00000000
+				11.19999981
+				0.50000000
+				15.09000015
 			]
 		}
 		Components: {
 			MeshRenderer: {
 				Enabled: true
-				Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				Model: {
+
+					UUID: 9589176826099041080
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\plane.glb"
+				}
+				Material_Albedo_Image: {
+
+					UUID: 12190382511333340346
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\white_texture.png"
+				}
+				Material_Normal_Image: {
+
+					UUID: 1598793490672065358
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\default_normal_map.png"
+				}
+				Material_Height_Image: {
+
+					UUID: 9058953085965596843
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\black_texture.png"
+				}
 				MaterialAlbedoColor: [
 					1.00000000
-					0.81690145
-					0.00000000
+					1.00000000
+					1.00000000
 					1.00000000
 				]
-				MaterialRoughness: 0.53600001
-				MaterialMetalness: 0.58300000
+				MaterialRoughness: 0.50000000
+				MaterialMetalness: 0.00000000
+			}
+		}
+	}
+	{
+		UUID: 15789518256198705497
+		Name: "Camera"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				-0.01000000
+				7.03000021
+				6.32999992
+			]
+			LocalRotation: [
+				33.02000046
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			Camera: {
+				Enabled: true
+				Fov: 60.00000000
+				NearPlane: 0.10000000
+				FarPlane: 100.00000000
 			}
 		}
 	}

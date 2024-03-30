@@ -10,7 +10,7 @@ package imgui_example_sdl2_metal
 
 #assert(ODIN_OS == .Darwin)
 
-import imgui "../.."
+import im "../.."
 import "../../imgui_impl_sdl2"
 import "../../imgui_impl_metal"
 
@@ -20,20 +20,20 @@ import CA "vendor:darwin/QuartzCore"
 import NS "vendor:darwin/Foundation"
 
 main :: proc() {
-	imgui.CHECKVERSION()
-	imgui.CreateContext(nil)
-	defer imgui.DestroyContext(nil)
-	io := imgui.GetIO()
+	im.CHECKVERSION()
+	im.CreateContext()
+	defer im.DestroyContext()
+	io := im.GetIO()
 	io.ConfigFlags += {.NavEnableKeyboard, .NavEnableGamepad}
-	when imgui.IMGUI_BRANCH == "docking" {
+	when im.IMGUI_BRANCH == "docking" {
 		io.ConfigFlags += {.DockingEnable}
 		io.ConfigFlags += {.ViewportsEnable}
 
-		style := imgui.GetStyle()
+		style := im.GetStyle()
 		style.WindowRounding = 0
-		style.Colors[imgui.Col.WindowBg].w = 1
+		style.Colors[im.Col.WindowBg].w = 1
 	}
-	imgui.StyleColorsDark(nil)
+	im.StyleColorsDark()
 
 	assert(sdl.Init(sdl.INIT_EVERYTHING) == 0)
 	defer sdl.Quit()
@@ -90,23 +90,23 @@ main :: proc() {
 
 		imgui_impl_metal.NewFrame(render_pass_descriptor)
 		imgui_impl_sdl2.NewFrame()
-		imgui.NewFrame()
+		im.NewFrame()
 
-		imgui.ShowDemoWindow(nil)
+		im.ShowDemoWindow()
 
-		if imgui.Begin("Window containing a quit button", nil, {}) {
-			if imgui.Button("The quit button in question") {
+		if im.Begin("Window containing a quit button") {
+			if im.Button("The quit button in question") {
 				running = false
 			}
 		}
-		imgui.End()
+		im.End()
 
-		imgui.Render()
-		imgui_impl_metal.RenderDrawData(imgui.GetDrawData(), command_buffer, render_encoder)
+		im.Render()
+		imgui_impl_metal.RenderDrawData(im.GetDrawData(), command_buffer, render_encoder)
 
-		when imgui.IMGUI_BRANCH == "docking" {
-			imgui.UpdatePlatformWindows()
-			imgui.RenderPlatformWindowsDefault()
+		when im.IMGUI_BRANCH == "docking" {
+			im.UpdatePlatformWindows()
+			im.RenderPlatformWindowsDefault()
 		}
 
 		render_encoder->endEncoding()

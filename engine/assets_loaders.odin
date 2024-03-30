@@ -184,3 +184,13 @@ model_loader :: proc(data: []byte) -> ^Asset {
     }
     return model
 }
+
+@(loader=Image)
+image_loader :: proc(data: []byte) -> ^Asset {
+    image := new(Image)
+
+    ok: bool
+    image^, ok = load_image_memory(data)
+
+    return image
+}

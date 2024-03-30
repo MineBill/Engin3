@@ -22,8 +22,39 @@ USE_EDITOR :: true
 
 POPUP_PADDING :: vec2{6, 6}
 
+EditorState :: enum {
+    Edit,
+    Play,
+    Paused,
+}
+
+EditorIcon :: enum {
+    PlayButton,
+    PauseButton,
+    StopButton,
+}
+
+EditorCamera :: struct {
+    position:       vec3,
+    rotation:       quaternion128,
+    euler_angles:   vec3,
+    fov:            f32,
+
+    projection: mat4,
+}
+
+EditorFont :: enum {
+    Light,
+    Normal,
+    Bold,
+}
+
 Editor :: struct {
     engine: ^Engine,
+    state: EditorState,
+    camera: EditorCamera,
+
+    entity_selection: map[UUID]bool,
     selected_entity: Maybe(Handle),
 
     viewport_size: vec2,
@@ -40,11 +71,25 @@ Editor :: struct {
     allocator: mem.Allocator,
 
     content_browser: ContentBrowser,
+
+    editor_world: World,
+    runtime_world: World,
+    icons: [EditorIcon]Texture2D,
+    fonts: [EditorFont]^imgui.Font,
+
+    texture_previews: map[UUID]Texture2D,
 }
 
 editor_init :: proc(e: ^Editor, engine: ^Engine) {
     tracy.ZoneN("Editor Init")
     e.engine = engine
+    e.state = .Edit
+    // TODO(minebill):  Save the editor camera for each scene in a cache somewhere
+    //                  so that we can open the editor in that location/rotation next time.
+    e.camera = EditorCamera {
+        position = vec3{0, 0, 0},
+        fov = f32(60.0),
+    }
 
     e.logger = create_capture_logger(&e.log_entries)
 
@@ -55,6 +100,34 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.content_browser.textures[.FolderBack] = load_texture_from_file("assets/textures/ui/folder_back.png")
     e.content_browser.textures[.File] = load_texture_from_file("assets/textures/ui/file.png")
     e.content_browser.textures[.World] = load_texture_from_file("assets/textures/ui/world.png")
+
+    e.icons[.PlayButton] = load_texture_from_file("assets/editor/icons/play_button.png")
+    e.icons[.PauseButton] = load_texture_from_file("assets/editor/icons/pause_button.png")
+    e.icons[.StopButton] = load_texture_from_file("assets/editor/icons/stop_button.png")
+
+    imgui.CreateContext(nil)
+    io := imgui.GetIO()
+    io.ConfigFlags += {.DockingEnable, .ViewportsEnable, .IsSRGB}
+    io.IniFilename = nil
+    imgui.LoadIniSettingsFromDisk("editor_layout.ini")
+
+    setup_imgui_style()
+
+    // imgui.FontAtlas_AddFont(io.Fonts, )
+    // inter_font :: #load("../assets/fonts/inter/Inter-Regular.ttf")
+    // imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(inter_font), cast(i32)len(inter_font), 16, nil, nil)
+
+    imgui_impl_glfw.InitForOpenGL(e.engine.window, true)
+    imgui_impl_opengl3.Init("#version 450 core")
+
+    LIGHT_FONT :: #load("../assets/fonts/inter/Inter-Light.ttf")
+    NORMAL_FONT :: #load("../assets/fonts/inter/Inter-Regular.ttf")
+    BOLD_FONT :: #load("../assets/fonts/inter/Inter-Bold.ttf")
+    e.fonts[.Light] = imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(LIGHT_FONT), i32(len(LIGHT_FONT)), 14)
+    e.fonts[.Normal] = imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(NORMAL_FONT), i32(len(NORMAL_FONT)), 16)
+    e.fonts[.Bold] = imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(BOLD_FONT), i32(len(BOLD_FONT)), 16)
+
+    io.FontDefault = e.fonts[.Normal]
 }
 
 editor_deinit :: proc(e: ^Editor) {
@@ -107,7 +180,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
                     id := color[0]
                     handle := e.engine.world.local_id_to_uuid[int(id)]
-                    select_entity(e, handle)
+                    select_entity(e, handle, !is_key_pressed(.left_shift))
                 }
             }
         case MouseWheelEvent:
@@ -116,40 +189,83 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         case KeyEvent:
             if ev.state == .pressed {
                 if e.capture_mouse do break
-                // Save scene
-                if ev.key == .s && .Control in ev.mods {
-                    log.debug("Save!")
-                    serialize_world(e.engine.world, e.engine.world.file_path)
+
+                if .Control in ev.mods {
+                    #partial switch ev.key {
+                    case .s:
+                        log.debug("Saving world!")
+                        serialize_world(e.engine.world, e.engine.world.file_path)
+                        e.engine.world.modified = false
+                    case .d:
+                        // Create a local copy before reseting the selection
+                        selection :=  clone_map(e.entity_selection)
+                        defer delete(selection)
+                        reset_selection(e)
+                        for entity, _ in selection {
+                            new_entity := duplicate_entity(&e.engine.world, entity)
+                            select_entity(e, new_entity)
+                        }
+                    }
+                }
+
+                if ev.key == .delete {
+                    for entity, _ in e.entity_selection {
+                        delete_object(&e.engine.world, entity)
+                    }
                 }
             }
         }
     }
 
     {
-        engine := e.engine
-        if e.capture_mouse {
-            engine.camera.euler_angles.xy += get_mouse_delta().yx * 25 * delta
-            engine.camera.euler_angles.x = math.clamp(engine.camera.euler_angles.x, -80, 80)
-        }
+        #partial switch e.state {
+        case .Edit:
+            engine := e.engine
+            if e.capture_mouse {
+                e.camera.euler_angles.xy += get_mouse_delta().yx * 25 * delta
+                e.camera.euler_angles.x = math.clamp(e.camera.euler_angles.x, -80, 80)
+            }
 
-        if is_key_just_pressed(.escape) {
-            engine.quit = true
-            return
-        }
+            // if is_key_just_pressed(.escape) {
+            //     engine.quit = true
+            //     return
+            // }
 
-        if e.capture_mouse {
-            input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
-            up_down := get_axis(.space, .left_control) * CAMERA_SPEED
-            e.engine.camera.position.xz += ( vec4{input.x, 0, -input.y, 0} * linalg.matrix4_from_quaternion(e.engine.camera.rotation)).xz * f32(delta)
-            e.engine.camera.position.y += up_down * f32(delta)
-        }
+            if e.capture_mouse {
+                input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
+                up_down := get_axis(.space, .left_control) * CAMERA_SPEED
+                e.camera.position.xz += ( vec4{input.x, 0, -input.y, 0} * linalg.matrix4_from_quaternion(e.camera.rotation)).xz * f32(delta)
+                e.camera.position.y += up_down * f32(delta)
+            }
 
-        euler := e.engine.camera.euler_angles
-        e.engine.camera.rotation = linalg.quaternion_from_euler_angles(
-            euler.x * math.RAD_PER_DEG,
-            euler.y * math.RAD_PER_DEG,
-            euler.z * math.RAD_PER_DEG,
-            .XYZ)
+            euler := e.camera.euler_angles
+            e.camera.rotation = linalg.quaternion_from_euler_angles(
+                euler.x * math.RAD_PER_DEG,
+                euler.y * math.RAD_PER_DEG,
+                euler.z * math.RAD_PER_DEG,
+                .XYZ)
+
+            e.engine.camera_position   = e.camera.position
+            e.engine.camera_view       = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
+            e.engine.camera_projection = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), 0.1, 200.0)
+            e.engine.camera_rotation   = e.camera.rotation
+        case .Play:
+            if camera := find_first_component(&e.engine.world, Camera); camera != nil {
+                go := get_object(&e.engine.world, camera.owner)
+                e.engine.camera_position   = go.transform.position
+
+                euler := go.transform.local_rotation
+                rotation := linalg.quaternion_from_euler_angles(
+                    euler.x * math.RAD_PER_DEG,
+                    euler.y * math.RAD_PER_DEG,
+                    euler.z * math.RAD_PER_DEG,
+                    .XYZ)
+
+                e.engine.camera_view       = linalg.matrix4_from_quaternion(rotation) * linalg.inverse(linalg.matrix4_translate(go.transform.position))
+                e.engine.camera_projection = linalg.matrix4_perspective_f32(math.to_radians(f32(camera.fov)), f32(e.engine.width) / f32(e.engine.height), camera.near_plane, camera.far_plane)
+                e.engine.camera_rotation   = rotation
+            }
+        }
     }
 
     @(static) show_depth_buffer := false
@@ -169,7 +285,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
         if imgui.BeginMenu("Options") {
             @(static) top_most := false
-            if imgui.MenuItemEx("Top Most", nil, top_most, true) {
+            if imgui.MenuItem("Top Most", nil, top_most, true) {
                 top_most = !top_most
                 glfw.SetWindowAttrib(e.engine.window, glfw.FLOATING, i32(top_most))
             }
@@ -192,24 +308,50 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         imgui.ShowDemoWindow(&show_imgui_demo)
     }
 
-    imgui.DockSpaceOverViewportEx(imgui.GetMainViewport(), {.PassthruCentralNode}, nil)
+    imgui.DockSpaceOverViewport(imgui.GetMainViewport(), {.PassthruCentralNode})
 
     if show_depth_buffer && imgui.Begin("Depth Buffer", &show_depth_buffer, {}) {
         size := imgui.GetContentRegionAvail()
 
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
-        imgui.ImageEx(transmute(rawptr)u64(get_depth_attachment(e.engine.depth_fb)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        imgui.Image(transmute(rawptr)u64(get_depth_attachment(e.engine.depth_fb)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
         imgui.End()
     }
 
     editor_env_panel(e)
-    editor_scene_tree(e)
     editor_entidor(e)
     editor_viewport(e)
     editor_gameobjects(e)
     editor_log_window(e)
     editor_content_browser(e)
+    editor_ui_toolstrip(e)
+
+    world_update(&e.engine.world, _delta, e.state == .Play)
+}
+
+editor_render_scene :: proc(e: ^Editor) {
+
+}
+
+runtime_render_scene :: proc(e: ^Editor) {
+
+}
+
+editor_on_scene_play :: proc(e: ^Editor) {
+    e.state = .Play
+    log.debug("On Scene Play")
+
+    deserialize_world(&e.runtime_world, e.engine.world.file_path)
+    e.editor_world = e.engine.world
+    e.engine.world = e.runtime_world
+}
+
+editor_on_scene_stop :: proc(e: ^Editor) {
+    e.state = .Edit
+    log.debug("On Scene Stop")
+
+    e.engine.world = e.editor_world
 }
 
 editor_env_panel :: proc(e: ^Editor) {
@@ -225,56 +367,6 @@ editor_env_panel :: proc(e: ^Editor) {
         }
     }
     imgui.End()
-}
-
-editor_scene_tree :: proc(e: ^Editor) {
-    // if imgui.Begin("Scene", nil, {}) {
-    //     // @(static) test: string
-    //     // imgui_text("Test", &test)
-
-    //     @(static) selection: EntityType
-    //     // imgui_union_combo("Type", &selection)
-    //     imgui_enum_combo("Type", &selection)
-    //     if imgui.Button("Add Entity") {
-    //         // v := reflect.get_union_variant(selection)
-    //         // add_entity(v)
-    //         add_entity("New Entity", selection)
-    //         // a := add_entity("Test", Test_Entity)
-    //         // get_entity(a, Test_Entity).array_of_stuff = [5]i32 {1, 1, 2, 3, 1}
-    //     }
-
-    //     imgui.Separator()
-
-    //     for &en, i in g_entities[:g_entity_count] {
-    //         en := cast(^Entity)&en
-
-    //         if len(en.name.s) == 0 do continue
-    //         flags := imgui.TreeNodeFlags{}
-    //         flags += {.SpanAvailWidth, .FramePadding, .OpenOnArrow}
-    //         if e.selected_entity == i {
-    //             flags += {.Selected}
-    //         }
-
-    //         opened := imgui.TreeNodeEx(cstr(en.name.s), flags)
-
-    //         if imgui.IsItemClicked() {
-    //             e.selected_entity = i
-    //         }
-
-    //         if opened {
-    //             imgui.TreePop()
-    //         }
-    //     }
-
-    //     imgui.PushID("##$$")
-    //     if imgui.BeginPopupContextItem() {
-
-    //         imgui.Text("hmm")
-    //         imgui.EndPopup()
-    //     }
-    //     imgui.PopID()
-    // }
-    // imgui.End()
 }
 
 MSAA_Level :: enum {
@@ -316,14 +408,27 @@ editor_viewport :: proc(e: ^Editor) {
 
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
-        imgui.ImageEx(transmute(rawptr)u64(get_color_attachment(e.engine.scene_fb, 0)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        imgui.Image(transmute(rawptr)u64(get_color_attachment(e.engine.scene_fb, 0)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
 
         if imgui.BeginDragDropTarget() {
-            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
+            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM_SCENE", {}); payload != nil {
                 data := transmute(^byte)payload.Data
                 path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
                 deserialize_world(&e.engine.world, path)
+            }
+
+            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
+                data := transmute(^byte)payload.Data
+                path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
+
+                log.debug("Load model from", path)
+
+                if model := get_asset(&e.engine.asset_manager, path, Model); model != nil {
+                    entity := new_object(&e.engine.world, "New Model")
+                    mesh_component := get_or_add_component(&e.engine.world, entity, MeshRenderer)
+                    mesh_renderer_set_model(mesh_component, model)
+                }
             }
             imgui.EndDragDropTarget()
         }
@@ -337,13 +442,13 @@ editor_viewport :: proc(e: ^Editor) {
         imgui.SetNextWindowBgAlpha(0.35)
 
         imgui.PushStyleVarImVec2(.WindowPadding, vec2{10, 10})
-        if imgui.Begin("Render Stats", nil, flags) {
+        if imgui.Begin("Render Stats", flags = flags) {
             imgui.TextUnformatted(fmt.ctprintf("MSAA Level: %v", g_msaa_level))
             imgui.TextUnformatted(fmt.ctprintf("Viewport Size: %v", e.viewport_size))
             imgui.TextUnformatted(fmt.ctprintf("Viewport Position: %v", e.viewport_position))
             global_mouse := g_event_ctx.mouse + g_event_ctx.window_position
             imgui.TextUnformatted(fmt.ctprintf("Mouse Position(global): %v", global_mouse))
-            imgui.TextUnformatted(fmt.ctprintf("Item Rect Min: %v", global_mouse - e.viewport_position))
+            imgui.TextUnformatted(fmt.ctprintf("Editor State: %v", e.state))
             imgui.End()
         }
         imgui.PopStyleVar()
@@ -353,62 +458,72 @@ editor_viewport :: proc(e: ^Editor) {
 }
 
 editor_entidor :: proc(e: ^Editor) {
-    window: if imgui.Begin("Properties", nil, {}) {
-        // go := get_gameobject(&e.engine.world, e.selected_entity)
-        selected_handle, ok := e.selected_entity.(Handle)
-        if !ok {
+    window: if imgui.Begin("Properties") {
+        // selected_handle, ok := e.selected_entity.(Handle)
+        if len(e.entity_selection) == 0 {
             imgui.TextUnformatted("No entity selected")
             break window
         }
-        go := get_object(&e.engine.world, selected_handle)
-        if go == nil {
-            // Entity selection is invalide, reset it
-            e.selected_entity = nil
-            break window
-        }
 
-        // imgui.AlignTextToFramePadding()
-        // imgui.TextUnformatted(ds_to_cstring(go.name))
-        imgui_text("Name", &go.name, {})
+        // Single selection
+        if len(e.entity_selection) == 1 {
+            for handle, _ in e.entity_selection {
+                go := get_object(&e.engine.world, handle)
+                if go == nil {
+                    // Entity selection is invalide, reset it
+                    e.selected_entity = nil
+                    break window
+                }
 
-        imgui_flags_box("Flags", &go.flags)
+                // imgui.AlignTextToFramePadding()
+                // imgui.TextUnformatted(ds_to_cstring(go.name))
+                imgui_text("Name", &go.name, {})
 
-        imgui.SameLine()
-        imgui.Checkbox("Enabled", &go.enabled)
+                imgui.PushFont(e.fonts[.Light])
+                imgui.TextDisabled(fmt.ctprintf("UUID: %v", go.id))
+                imgui.TextDisabled(fmt.ctprintf("Local ID: %v", go.local_id))
+                imgui.PopFont()
 
-        imgui.Separator()
+                imgui_flags_box("Flags", &go.flags)
 
-        // help_marker("The Transfrom component is a special component that is included by default" + 
-        //     " in every gameobject and as such, it has special drawing code.")
-        if imgui.CollapsingHeader("Transform", {.Framed, .DefaultOpen}) {
-            imgui.Indent()
-            if imgui.BeginChild("Transformm", vec2{}, {.AutoResizeY}, {}) {
-                // TOOD(minebill):  Add some kind of 'debug' view to view global position as well?
-                imgui.TextUnformatted("Position")
-                imgui_vec3("position", &go.transform.local_position)
+                imgui.SameLine()
+                imgui.Checkbox("Enabled", &go.enabled)
 
-                imgui.TextUnformatted("Rotation")
-                imgui_vec3("rotation", &go.transform.local_rotation)
+                imgui.Separator()
 
-                imgui.TextUnformatted("Scale")
-                imgui_vec3("scale", &go.transform.local_scale)
+                // help_marker("The Transfrom component is a special component that is included by default" + 
+                //     " in every gameobject and as such, it has special drawing code.")
+                if imgui.CollapsingHeader("Transform", {.Framed, .DefaultOpen}) {
+                    imgui.Indent()
+                    if imgui.BeginChild("Transformm", vec2{}, {.AutoResizeY}, {}) {
+                        // TOOD(minebill):  Add some kind of 'debug' view to view global position as well?
+                        imgui.TextUnformatted("Position")
+                        imgui_vec3("position", &go.transform.local_position)
+
+                        imgui.TextUnformatted("Rotation")
+                        imgui_vec3("rotation", &go.transform.local_rotation)
+
+                        imgui.TextUnformatted("Scale")
+                        imgui_vec3("scale", &go.transform.local_scale)
+                    }
+                    imgui.EndChild()
+                    imgui.Unindent()
+                }
+
+                imgui.SeparatorText("Components")
+
+                for id, component in go.components {
+                    draw_component(e, id, component)
+                    imgui.Separator()
+                }
+
+                if centered_button("Add Component") {
+                    imgui.OpenPopup("component_popup", {})
+                }
+            
             }
-            imgui.EndChild()
-            imgui.Unindent()
-        }
-
-        imgui.SeparatorText("Components")
-
-        for id, component in go.components {
-            draw_component(e, id, component)
-            imgui.Spacing()
-            imgui.Spacing()
-        }
-
-        imgui.Separator()
-
-        if centered_button("Add Component") {
-            imgui.OpenPopup("component_popup", {})
+        } else {
+            imgui.TextUnformatted("Multiple selection")
         }
 
         // Draws a component to a popup and draws submenus for categories if neccessary.
@@ -450,6 +565,68 @@ editor_entidor :: proc(e: ^Editor) {
     imgui.End()
 }
 
+editor_ui_toolstrip :: proc(e: ^Editor) {
+    ImGuiDockNodeFlags_CentralNode              :: 1 << 11  // Local, Saved  // The central node has 2 main properties: stay visible when empty, only use "remaining" spaces from its neighbor.
+    ImGuiDockNodeFlags_NoTabBar                 :: 1 << 12  // Local, Saved  // Tab bar is completely unavailable. No triangle in the corner to enable it back.
+    ImGuiDockNodeFlags_HiddenTabBar             :: 1 << 13  // Local, Saved  // Tab bar is hidden, with a triangle in the corner to show it again (NB: actual tab-bar instance may be destroyed as this is only used for single-window tab bar)
+    ImGuiDockNodeFlags_NoWindowMenuButton       :: 1 << 14  // Local, Saved  // Disable window/docking menu (that one that appears instead of the collapse button)
+    ImGuiDockNodeFlags_NoCloseButton            :: 1 << 15  // Local, Saved  //
+    ImGuiDockNodeFlags_NoDocking                :: 1 << 16  // Local, Saved  // Disable any form of docking in this dockspace or individual node. (On a whole dockspace, this pretty much defeat the purpose of using a dockspace at all). Note: when turned on, existing docked nodes will be preserved.
+    ImGuiDockNodeFlags_NoDockingSplitMe         :: 1 << 17  // [EXPERIMENTAL] Prevent another window/node from splitting this node.
+    ImGuiDockNodeFlags_NoDockingSplitOther      :: 1 << 18  // [EXPERIMENTAL] Prevent this node from splitting another window/node.
+    ImGuiDockNodeFlags_NoDockingOverMe          :: 1 << 19  // [EXPERIMENTAL] Prevent another window/node to be docked over this node.
+    ImGuiDockNodeFlags_NoDockingOverOther       :: 1 << 20  // [EXPERIMENTAL] Prevent this node to be docked over another window or non-empty node.
+    ImGuiDockNodeFlags_NoDockingOverEmpty       :: 1 << 21  // [EXPERIMENTAL] Prevent this node to be docked over an empty node (e.g. DockSpace with no other windows)
+    ImGuiDockNodeFlags_NoResizeX                :: 1 << 22  // [EXPERIMENTAL]
+    ImGuiDockNodeFlags_NoResizeY                :: 1 << 23  // [EXPERIMENTAL]
+
+    flags: i32 = 
+        ImGuiDockNodeFlags_NoTabBar |
+        ImGuiDockNodeFlags_HiddenTabBar |
+        ImGuiDockNodeFlags_NoDockingSplitMe |
+        ImGuiDockNodeFlags_NoDockingOverMe |
+        ImGuiDockNodeFlags_NoDockingOverOther
+
+    class: imgui.WindowClass
+    class.DockNodeFlagsOverrideSet = transmute(imgui.DockNodeFlags)flags
+
+    imgui.SetNextWindowClass(&class)
+
+    y :: 4
+    imgui.PushStyleVarImVec2(.WindowPadding, vec2{0, y})
+
+    imgui.Begin("##toolbar", flags = imgui.WindowFlags_NoDecoration)
+
+    icon := EditorIcon.StopButton if e.state == .Play else EditorIcon.PlayButton
+    size := imgui.GetWindowHeight() - y * 2
+
+    pos := imgui.GetWindowContentRegionMax().x * 0.5 - size * 0.5
+    imgui.SetCursorPosX(pos)
+    imgui.PushStyleVarImVec2(.FramePadding, vec2{0, 0})
+    imgui.PushStyleColorImVec4(.Button, vec4{0, 0, 0, 0})
+    if imgui.ImageButton("##play_button", transmute(rawptr)u64(e.icons[icon].handle), vec2{size, size}) {
+        #partial switch e.state {
+        case .Edit:
+            editor_on_scene_play(e)
+        case .Play:
+            editor_on_scene_stop(e)
+        }
+    }
+
+    imgui.SameLine()
+
+    imgui.BeginDisabled()
+    if imgui.ImageButton("##pause_button", transmute(rawptr)u64(e.icons[.PauseButton].handle), vec2{size, size}) {
+
+    }
+    imgui.EndDisabled()
+
+    imgui.PopStyleVar(2)
+    imgui.PopStyleColor(1)
+
+    imgui.End()
+}
+
 Folder :: struct {
     path: string,
     opened: bool,
@@ -469,9 +646,12 @@ ContentBrowser :: struct {
     items: []os.File_Info,
 
     textures: [ContentBrowserTexture]Texture2D,
+
+    renaming_item: Maybe(int),
 }
 
 cb_navigate_to_folder :: proc(cb: ^ContentBrowser, folder: string) {
+    cb.renaming_item = nil
     os.file_info_slice_delete(cb.items[:])
 
     // clear(&cb.items)
@@ -483,7 +663,6 @@ cb_navigate_to_folder :: proc(cb: ^ContentBrowser, folder: string) {
     slice.sort_by(cb.items, proc(i, j: os.File_Info) -> bool {
         return int(i.is_dir) > int(j.is_dir)
     })
-    // delete(cb.current_dir)
     cb.current_dir = folder
 }
 
@@ -500,9 +679,15 @@ editor_content_browser :: proc(e: ^Editor) {
         relative, _ = filepath.to_slash(relative, allocator = context.temp_allocator)
         imgui.TextUnformatted(fmt.ctprintf("Project://%v", relative))
 
-        imgui.SameLineEx(imgui.GetContentRegionAvail().x - 40, 0)
+        imgui.SameLine(imgui.GetContentRegionAvail().x - 80)
         if imgui.Button("Options") {
             imgui.OpenPopup("ContentBrowserSettings", {})
+        }
+
+        imgui.SameLine()
+
+        if imgui.Button("New") {
+            imgui.OpenPopup("ContentBrowserNewItem", {})
         }
 
         @(static) padding := i32(8)
@@ -511,6 +696,20 @@ editor_content_browser :: proc(e: ^Editor) {
         if imgui.BeginPopup("ContentBrowserSettings", {}) {
             imgui.DragInt("Padding", &padding)
             imgui.DragInt("Thumbnail Size", &thumbnail_size)
+            imgui.EndPopup()
+        }
+
+        if imgui.BeginPopup("ContentBrowserNewItem") {
+            if imgui.BeginMenu("Create") {
+                if imgui.MenuItem("New World") {
+                    world: World
+                    create_world(&world, "New World")
+                    path := filepath.join({e.content_browser.current_dir, "New World.world"})
+                    defer delete(path)
+                    serialize_world(world, path)
+                }
+                imgui.EndMenu()
+            }
             imgui.EndPopup()
         }
 
@@ -525,7 +724,7 @@ editor_content_browser :: proc(e: ^Editor) {
             columns = 1
         }
 
-        imgui.ColumnsEx(columns, "awd", false)
+        imgui.Columns(columns, "awd", false)
 
         imgui.PushStyleColorImVec4(.Button, vec4{0, 0, 0, 0})
 
@@ -559,7 +758,12 @@ editor_content_browser :: proc(e: ^Editor) {
 
             if imgui.BeginDragDropSource({}) {
                 path := item.fullpath
-                imgui.SetDragDropPayload("CONTENT_ITEM", raw_data(path), len(path) * size_of(byte), .Once)
+
+                type := "CONTENT_ITEM_SCENE" if texture == .World else "CONTENT_ITEM"
+
+                imgui.SetDragDropPayload(cstr(type), raw_data(path), len(path) * size_of(byte), .Once)
+
+                imgui.TextUnformatted(cstr(item.name))
 
                 imgui.EndDragDropSource()
             }
@@ -569,24 +773,74 @@ editor_content_browser :: proc(e: ^Editor) {
                     cb_navigate_to_folder(&e.content_browser, strings.clone(item.fullpath))
                 }
             }
-            imgui.TextWrapped(cstr(item.name))
+
+            open_popup := false
+            if imgui.BeginPopupContextItem() {
+                if imgui.MenuItem("Delete") {
+                    open_popup = true
+                } 
+                if imgui.MenuItem("Rename") {
+                    e.content_browser.renaming_item = i
+                }
+                imgui.EndPopup()
+            }
+
+            if open_popup {
+                imgui.OpenPopup("ConfirmDeletion")
+            }
+
+            center := imgui.Viewport_GetCenter(imgui.GetMainViewport())
+            imgui.SetNextWindowPos(center, .Appearing, vec2{0.5, 0.5})
+            if imgui.BeginPopupModal("ConfirmDeletion", nil, {.AlwaysAutoResize}) {
+                if imgui.Button("Yes") {
+                    imgui.CloseCurrentPopup()
+                }
+                if imgui.Button("No") {
+                    imgui.CloseCurrentPopup()
+                }
+                imgui.EndPopup()
+            }
+
+            if item_index, ok := e.content_browser.renaming_item.?; ok && item_index == i {
+                @(static) buffer: [256]byte
+
+                // imgui.SetKeyboardFocusHere(0)
+                input: if imgui.InputText("##rename_label", cstring(&buffer[0]), size_of(buffer), {.EnterReturnsTrue, .EscapeClearsAll}) {
+                    new_name := string(buffer[:])
+                    if new_name == "" do break input
+
+                    dir := filepath.dir(item.fullpath, context.temp_allocator)
+                    new_path := filepath.join({dir, new_name}, context.temp_allocator)
+
+                    err := os.rename(item.fullpath, new_path)
+                    if err != 0 {
+                        log.errorf("Failed to rename content item: '%v'", err)
+                    }
+
+                    e.content_browser.renaming_item = nil
+                    cb_navigate_to_folder(&e.content_browser, e.content_browser.current_dir)
+
+                    buffer = {}
+                }
+
+                if imgui.IsItemActive() {
+                    log.debug("FUCK")
+                } else {
+                    log.debug("NO FUCK")
+                }
+            } else {
+                imgui.TextWrapped(cstr(item.name))
+            }
+
             imgui.NextColumn()
         }
         imgui.PopStyleColor()
 
-        if imgui.BeginPopupContextWindow() {
-            if imgui.MenuItem("New World") {
-                world: World
-                create_world(&world, "New World")
-                path := filepath.join({e.content_browser.current_dir, "New World.world"})
-                defer delete(path)
-                serialize_world(world, path)
-            }
-            imgui.EndPopup()
-        }
+
 
         imgui.EndChild()
         imgui.EndChild()
+
     }
 
     imgui.End()
@@ -639,7 +893,7 @@ editor_log_window :: proc(e: ^Editor) {
                 imgui.PushItemWidth(width)
                 imgui.InputText("##", start, len(entry.text), {.ReadOnly})
                 imgui.PopStyleColor()
-                imgui.PopStyleVarEx(2)
+                imgui.PopStyleVar(2)
                 imgui.PopID()
 
                 if auto_scroll && imgui.GetScrollY() >= imgui.GetScrollMaxY() {
@@ -653,6 +907,22 @@ editor_log_window :: proc(e: ^Editor) {
 }
 
 editor_gameobjects :: proc(e: ^Editor) {
+    entity_create_menu :: proc(e: ^Editor, parent: Handle) {
+        if imgui.BeginMenu("New") {
+            if imgui.MenuItem("Empty Entity") {
+                new_object(&e.engine.world, parent = parent)
+            }
+            if imgui.MenuItem("Point Light") {
+                go := new_object(&e.engine.world, "Point Light", parent)
+                add_component(&e.engine.world, go, PointLightComponent)
+            }
+            if imgui.MenuItem("Camera") {
+                go := new_object(&e.engine.world, "Camera", parent)
+                add_component(&e.engine.world, go, Camera)
+            }
+            imgui.EndMenu()
+        }
+    }
     tree_node_gameobject :: proc(e: ^Editor, handle: Handle) {
         flags := imgui.TreeNodeFlags{}
         flags += {.SpanAvailWidth, .FramePadding, .OpenOnDoubleClick, .OpenOnArrow}
@@ -669,23 +939,33 @@ editor_gameobjects :: proc(e: ^Editor) {
         go, ok := &e.engine.world.objects[handle]
         if !ok do return
 
-        if e.selected_entity == handle {
+        // if e.selected_entity == handle {
+        //     flags += {.Selected}
+        // }
+        if handle in e.entity_selection {
             flags += {.Selected}
         }
 
         imgui.PushIDInt(i32(handle))
+
+        if !go.enabled {
+            imgui.PushStyleColorImVec4(.Text, vec4{0.3, 0.3, 0.3, 1})
+            imgui.PushStyleColorImVec4(.TextSelectedBg, vec4{0.5, 0.5, 0.5, 1})
+        }
+
         opened := imgui.TreeNodeEx(ds_to_cstring(go.name), flags)
+
+        if !go.enabled {
+            imgui.PopStyleColor(2)
+        }
 
         // NOTE(minebill): The context menu needs to be created before drawing the children tree nodes
         imgui.PushStyleVarImVec2(.WindowPadding, POPUP_PADDING)
         if imgui.BeginPopupContextItem() {
-            if imgui.BeginMenu("Create") {
-                if imgui.MenuItem("New empty object") {
-                    new_object(&e.engine.world, parent = handle)
-                }
+            entity_create_menu(e, handle)
 
-                imgui.EndMenu()
-            }
+            imgui.Separator()
+
             if imgui.MenuItem(fmt.ctprintf("Destroy '%v'", ds_to_string(go.name))) {
                 delete_object(&e.engine.world, handle)
             }
@@ -696,7 +976,22 @@ editor_gameobjects :: proc(e: ^Editor) {
         imgui.PopID()
 
         if imgui.IsItemClicked() {
-            select_entity(e, handle)
+            shift := imgui.IsKeyDown(.LeftShift)
+            select_entity(e, handle, !shift)
+        }
+
+        if imgui.BeginDragDropSource() {
+            imgui.SetDragDropPayload("WORLD_TREENODE", &go.handle, size_of(go.handle))
+            imgui.TextUnformatted(ds_to_cstring(go.name))
+            imgui.EndDragDropSource()
+        }
+
+        if imgui.BeginDragDropTarget() {
+            if payload := imgui.AcceptDragDropPayload("WORLD_TREENODE"); payload != nil {
+                id := (cast(^UUID)payload.Data)^
+                reparent_entity(&e.engine.world, id, go.id)
+            }
+            imgui.EndDragDropTarget()
         }
 
         if opened {
@@ -708,7 +1003,11 @@ editor_gameobjects :: proc(e: ^Editor) {
 
     }
 
-    if imgui.Begin("Entities", nil, {}) {
+    flags: imgui.WindowFlags
+    if e.engine.world.modified {
+        flags += {.UnsavedDocument}
+    }
+    if imgui.Begin("Entities", flags = flags) {
         imgui.TextUnformatted(cstr(e.engine.world.name))
         imgui.Separator()
 
@@ -717,13 +1016,7 @@ editor_gameobjects :: proc(e: ^Editor) {
         children := &get_object(&e.engine.world, go).children
 
         if imgui.BeginPopupContextWindow() {
-            if imgui.Selectable("New Object") {
-                new_object(&e.engine.world)
-            }
-            if imgui.Selectable("New Point Light") {
-                go := new_object(&e.engine.world, "Point Light")
-                add_component(&e.engine.world, go, PointLightComponent)
-            }
+            entity_create_menu(e, 0)
             imgui.EndPopup()
         }
         for child in children {
@@ -731,22 +1024,41 @@ editor_gameobjects :: proc(e: ^Editor) {
         }
 
         if len(children) == 0 {
-            imgui.TextUnformatted("No game objects. Right click to create a new one.")
+            imgui.TextWrapped("No entities. Right click to create a new one.")
+        }
+
+        imgui.Dummy(imgui.GetContentRegionAvail())
+        if imgui.BeginDragDropTarget() {
+            if payload := imgui.AcceptDragDropPayload("WORLD_TREENODE"); payload != nil {
+                id := (cast(^UUID)payload.Data)^
+                reparent_entity(&e.engine.world, id, 0)
+            }
+            imgui.EndDragDropTarget()
         }
     }
     imgui.End()
 }
 
-select_entity :: proc(e: ^Editor, entity: Handle) {
+reset_selection :: proc(e: ^Editor) {
+    for entity, _ in e.entity_selection {
+        if go := get_object(&e.engine.world, entity); go != nil {
+            go.flags -= {.Outlined}
+        }
+    }
+    clear(&e.entity_selection)
+}
+
+select_entity :: proc(e: ^Editor, entity: Handle, should_reset_selection := false) {
     selected_handle, ok := e.selected_entity.?
 
-    if ok {
-        get_object(&e.engine.world, selected_handle).flags -= {.Outlined}
+    if should_reset_selection {
+        reset_selection(e)
     }
 
     e.selected_entity = nil
     if entity != 0 {
         e.selected_entity = entity
+        e.entity_selection[entity] = true
         get_object(&e.engine.world, entity).flags += {.Outlined}
     }
 }
@@ -819,7 +1131,7 @@ imgui_enum_combo_id :: proc(name: string, selection: any, enum_type_info: ^refle
                 value, ok := reflect.enum_from_name_any(enum_type_info.id, field.name)
                 assert(ok)
 
-                if imgui.SelectableEx(
+                if imgui.Selectable(
                     cstr(field.name),
                     value == (cast(^reflect.Type_Info_Enum_Value)selection.data)^,
                     {}, vec2{}) {
@@ -861,7 +1173,7 @@ imgui_flags_box :: proc(name: string,  flags: ^$B/bit_set[$E]) {
         loop: for field in reflect.enum_fields_zipped(E) {
             value := E(field.value)
             has_flag := value in flags
-            if imgui.SelectableEx(
+            if imgui.Selectable(
                 cstr(field.name),
                 has_flag,
                 {.DontClosePopups}, vec2{}) {
@@ -905,8 +1217,8 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) {
     imgui.SetNextItemWidth(width)
     imgui.PushStyleColorImVec4(.FrameBg, X_COLOR)
     imgui.PushStyleColorImVec4(.FrameBgHovered, X_COLOR_HOVER)
-    imgui.DragFloatEx("##x", &v.x, 0.01, min(f32), max(f32), "%.2f", {})
-    imgui.PopStyleColorEx(2)
+    imgui.DragFloat("##x", &v.x, 0.01, min(f32), max(f32), "%.2f", {})
+    imgui.PopStyleColor(2)
 
     imgui.SameLine()
 
@@ -918,8 +1230,8 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) {
     imgui.SetNextItemWidth(width)
     imgui.PushStyleColorImVec4(.FrameBg, Y_COLOR)
     imgui.PushStyleColorImVec4(.FrameBgHovered, Y_COLOR_HOVER)
-    imgui.DragFloatEx("##y", &v.y, 0.01, min(f32), max(f32), "%.2f", {})
-    imgui.PopStyleColorEx(2)
+    imgui.DragFloat("##y", &v.y, 0.01, min(f32), max(f32), "%.2f", {})
+    imgui.PopStyleColor(2)
 
     imgui.SameLine()
 
@@ -932,8 +1244,8 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) {
     imgui.SetNextItemWidth(width)
     imgui.PushStyleColorImVec4(.FrameBg, Z_COLOR)
     imgui.PushStyleColorImVec4(.FrameBgHovered, Z_COLOR_HOVER)
-    imgui.DragFloatEx("##z", &v.z, 0.01, min(f32), max(f32), "%.2f", {})
-    imgui.PopStyleColorEx(2)
+    imgui.DragFloat("##z", &v.z, 0.01, min(f32), max(f32), "%.2f", {})
+    imgui.PopStyleColor(2)
 
     // imgui.DrawList_ChannelsMerge(list)
 
@@ -1075,25 +1387,21 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
         modified = imgui_draw_slice(field.name, value)
     case reflect.is_struct(field.type):
         switch field.type.id {
-        case typeid_of(Texture2D):
-            // imgui
-            texture := value.(Texture2D)
-            if texture.type == .CubeMap do break
-            aspect := f32(texture.height) / f32(texture.width)
-            region := imgui.GetContentRegionAvail()
-            region.y = aspect * region.x
 
-            MIN_IMAGE_SIZE :: vec2{128, 128}
-            region = linalg.min(region, MIN_IMAGE_SIZE)
+        case:
+            if imgui.TreeNodeEx(cstr(field.name), {.FramePadding}) {
+                modified = imgui_draw_struct(e, value)
+                imgui.TreePop()
+            }
+        }
+    case reflect.is_pointer(field.type):
+        pointer := reflect.type_info_base(field.type).variant.(runtime.Type_Info_Pointer)
 
-            uv0 := vec2{0, 1}
-            uv1 := vec2{1, 0}
-            imgui.ImageEx(
-                transmute(rawptr)u64(texture.handle), region, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        switch pointer.elem.id {
         case typeid_of(Model):
-            model := &value.(Model)
+            model := &value.(^Model)
 
-            imgui.Button(cstr(model.path) if model.path != "" else "nil")
+            imgui.Button(cstr(model^.path) if model^ != nil else "nil")
 
             if imgui.BeginDragDropTarget() {
                 if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
@@ -1103,23 +1411,70 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
                     log.debug("Load model from", path)
 
                     if m := get_asset(&e.engine.asset_manager, path, Model); m != nil {
-                        model^ = m^
+                        model^ = m
+                        modified = true
                     }
                 }
                 imgui.EndDragDropTarget()
             }
-        case:
-            if imgui.TreeNodeEx(cstr(field.name), {.FramePadding}) {
-                modified = imgui_draw_struct(e, value)
-                imgui.TreePop()
+        case typeid_of(Image):
+            MIN_IMAGE_SIZE :: vec2{128, 128}
+            // imgui
+            image := &value.(^Image)
+
+            if image^ == nil {
+                imgui.Button("Empty Image", MIN_IMAGE_SIZE)
+            } else {
+                texture: Texture2D = editor_get_preview_texture(e, image^)
+                if texture.type == .CubeMap do break
+                aspect := f32(texture.height) / f32(texture.width)
+                region := imgui.GetContentRegionAvail()
+                region.y = aspect * region.x
+
+                region = linalg.min(region, MIN_IMAGE_SIZE)
+
+                uv0 := vec2{0, 1}
+                uv1 := vec2{1, 0}
+                imgui.Image(
+                    transmute(rawptr)u64(texture.handle), region, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+            }
+
+            if imgui.BeginDragDropTarget() {
+                if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM"); payload != nil {
+                    data := transmute(^byte)payload.Data
+                    path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
+
+                    log.debug(path)
+
+                    if asset := get_asset(&e.engine.asset_manager, path, Image); asset != nil {
+                        image^ = asset
+                        modified = true
+                    }
+                }
+                imgui.EndDragDropTarget()
             }
         }
+
     case reflect.is_string(field.type):
-        imgui.TextUnformatted(fmt.ctprintf("String len: %v", len(value.(string))))
+        imgui.TextUnformatted(fmt.ctprintf("%v", value.(string)))
     }
 
     return
 }
+
+editor_get_preview_texture :: proc(e: ^Editor, image: ^Image) -> Texture2D {
+    if image.id in e.texture_previews {
+        return e.texture_previews[image.id]
+    }
+
+    params := DEFAULT_TEXTURE_PARAMS
+    params.format = gl.RGBA8
+    e.texture_previews[image.id] = create_texture(image.width, image.height, params)
+    set_texture_data(e.texture_previews[image.id], image.data)
+
+    return e.texture_previews[image.id]
+}
+
 import "core:intrinsics"
 
 number_to_imgui_scalar :: proc(number: any) -> imgui.DataType {
@@ -1263,7 +1618,7 @@ imgui_text :: proc(label: cstring, ds: ^DynamicString, flags : imgui.InputTextFl
     }
 
     c := ds_to_cstring(ds^)
-    return imgui.InputTextEx(label, c, uint(ds_len(ds^) + 1), flags, text_callback, &data)
+    return imgui.InputText(label, c, uint(ds_len(ds^) + 1), flags, text_callback, &data)
 }
 
 HelpMode :: enum {

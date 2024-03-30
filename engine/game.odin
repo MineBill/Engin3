@@ -71,15 +71,15 @@ game_update :: proc(g: ^Game, _delta: f64) {
 
         input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
         up_down := get_axis(.space, .left_control) * CAMERA_SPEED
-        g.engine.camera.position.xz += ( vec4{input.x, 0, -input.y, 0} * linalg.matrix4_from_quaternion(g.engine.camera.rotation)).xz * delta
-        g.engine.camera.position.y += up_down * f32(delta)
+        // g.engine.camera.position.xz += ( vec4{input.x, 0, -input.y, 0} * linalg.matrix4_from_quaternion(g.engine.camera.rotation)).xz * delta
+        // g.engine.camera.position.y += up_down * f32(delta)
 
-        euler := g.engine.camera.euler_angles
-        g.engine.camera.rotation = linalg.quaternion_from_euler_angles(
-            euler.x * math.RAD_PER_DEG,
-            euler.y * math.RAD_PER_DEG,
-            euler.z * math.RAD_PER_DEG,
-            .XYZ)
+        // euler := g.engine.camera.euler_angles
+        // g.engine.camera.rotation = linalg.quaternion_from_euler_angles(
+        //     euler.x * math.RAD_PER_DEG,
+        //     euler.y * math.RAD_PER_DEG,
+        //     euler.z * math.RAD_PER_DEG,
+        //     .XYZ)
     }
 
     n := &nk_context.ctx

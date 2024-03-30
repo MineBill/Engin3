@@ -50,14 +50,30 @@ def write_line(file: typing.IO, line: str = "", indent = 0):
 	file.writelines(["\t" * indent, line, "\n"])
 
 def strip_prefix_optional(prefix: str, string: str) -> str:
-	if string.startswith(prefix):
-		return string.removeprefix(prefix)
-	else:
-		return None
+	if string.startswith(prefix): return string.removeprefix(prefix)
+	return None
 
 def strip_prefix(prefix: str, string: str) -> str:
 	stripped = strip_prefix_optional(prefix, string)
 	assert stripped != None, f'"{string}" did not start with "{prefix}"'
+	return stripped
+
+def strip_suffix_optional(suffix: str, string: str) -> str:
+	if string.endswith(suffix): return string.removesuffix(suffix)
+	return None
+
+def strip_suffix(suffix: str, string: str) -> str:
+	stripped = strip_suffix_optional(suffix, string)
+	assert stripped != None, f'"{string}" did not end with "{suffix}"'
+	return stripped
+
+def strip_circumfix_optional(prefix: str, suffix: str, string: str) -> str:
+	if string.startswith(prefix) and string.endswith(suffix): return string.removeprefix(prefix).removesuffix(suffix)
+	return None
+
+def strip_circumfix(prefix: str, suffix: str, string: str) -> str:
+	stripped = strip_circumfix_optional(prefix, suffix, string)
+	assert stripped != None, f'"{string}" did not have circumfix "{prefix}" and "{suffix}'
 	return stripped
 
 def str_to_int(string: str):
@@ -268,6 +284,37 @@ def write_line_with_comments(file: typing.IO, str: str, comment_parent, indent =
 		attached_comment = " " + comment["attached"]
 
 	write_line(file, str + attached_comment, indent)
+
+_odin_value_aliases = {
+	"NULL": "nil",
+	"-FLT_MIN": "-min(f32)",
+	"FLT_MAX": "max(f32)",
+	"sizeof(float)": "size_of(f32)",
+	"IM_COL32_WHITE": "0xff_ff_ff_ff",
+}
+
+def type_is_int(type: str) -> bool:
+	return type in ["u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64", "u128", "i128", "int", "uint", "byte", "char", "rune", "uintptr"]
+
+def convert_imvec_value(value: str, components: int) -> str:
+	stripped = strip_circumfix(f"ImVec{components}(", ")", value)
+	values = stripped.split(",")
+	assert len(values) == components
+	for i in range(len(values)):
+		values[i] = make_value_odiney(values[i].strip(), "int") # We say "int" here to imply that it's numeric
+		assert len(values[i]) > 0
+
+	return "{" + ", ".join(values) + "}"
+
+def make_value_odiney(value: str, type_hint: str = None) -> str:
+	if value.endswith("f"): return value.removesuffix("f")
+	if value in _odin_value_aliases: return _odin_value_aliases[value]
+	if type_hint == "Vec2": return convert_imvec_value(value, 2)
+	if type_hint == "Vec4": return convert_imvec_value(value, 4)
+
+	if value == "0" and not type_is_int(type_hint): return "{}"
+
+	return value
 
 # HEADER
 def write_header(file: typing.IO):
@@ -712,8 +759,8 @@ def write_structs(file: typing.IO, structs):
 		write_line(file)
 
 # FUNCTIONS
-def function_to_string(function, explicit_cconv=True) -> str:
-	proc_decl = 'proc "c" (' if explicit_cconv else "proc("
+def function_to_string(function, as_type=True) -> str:
+	proc_decl = 'proc "c" (' if as_type else "proc("
 
 	argument_list = []
 	arguments = function["arguments"]
@@ -732,7 +779,13 @@ def function_to_string(function, explicit_cconv=True) -> str:
 			argument_name = make_identifier_valid(argument_name)
 			argument_type = parse_type(argument["type"], in_function=True)
 
-		argument_list.append(f'{argument_name}: {argument_type}')
+		default_value = None
+		if "default_value" in argument:
+			default_value = make_value_odiney(argument["default_value"], argument_type)
+			assert not as_type, "Not possible to have default args in type!"
+
+		if default_value: argument_list.append(f'{argument_name}: {argument_type} = {default_value}')
+		else:             argument_list.append(f'{argument_name}: {argument_type}')
 
 	proc_decl += ", ".join(argument_list)
 
@@ -764,21 +817,44 @@ _imgui_functions_skip = [
 	"ImStr_FromCharStr",
 ]
 
-_imgui_function_prefixes = [ "ImGui_", "ImGui", "Im" ]
+_imgui_function_prefixes = ["ImGui_", "ImGui", "Im"]
+
+# Functions which have a corresponding default argument helper. Functions in this
+# list will all end in Ex, which should be stripped.
+_imgui_extended_arg_funcs = []
+
+def find_default_arg_funcs(functions):
+	for function in functions:
+		if function["is_default_argument_helper"]:
+			_imgui_extended_arg_funcs.append(function["name"] + "Ex")
+
+def function_has_default_args(function) -> bool:
+	for argument in function["arguments"]:
+		if "default_value" in argument:
+			return True
+
+	return False
 
 def write_functions(file: typing.IO, functions):
 	write_section(file, "Functions")
 	write_line(file, "foreign lib {")
 
+	find_default_arg_funcs(functions)
+
 	aligned = []
 
 	for function in functions:
 		entire_name = function["name"]
+
 		if entire_name in _imgui_functions_skip: continue
 		if not passes_conditionals(function): continue
 		if function_uses_va_list(function): continue
+		if function["is_default_argument_helper"]: continue
 
 		[_prefix, remainder] = strip_list(entire_name, _imgui_function_prefixes)
+
+		if entire_name in _imgui_extended_arg_funcs:
+			remainder = strip_suffix("Ex", remainder)
 
 		aligned_components = []
 
