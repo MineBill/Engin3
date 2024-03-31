@@ -86,7 +86,7 @@ load_shader :: proc(path: string, type: u32) -> (u32, bool) {
     cwd := os.get_current_directory()
     defer delete(cwd)
 
-    full := slashpath.join({cwd, slashpath.dir(path, allocator = context.temp_allocator)}, allocator = context.temp_allocator)
+    full := slashpath.join({cwd, slashpath.dir(path, context.temp_allocator)}, context.temp_allocator)
 
     included_files := map[string]int{}
     defer delete(included_files)
@@ -114,7 +114,7 @@ load_shader_memory :: proc(src: []byte, type: u32) -> (u32, bool) {
         log_buffer: [512]byte
         length: i32
         gl.GetShaderInfoLog(shader, len(log_buffer), &length, raw_data(log_buffer[:]))
-        log.errorf("Error compiling shader: \n%v", string(log_buffer[:length]))
+        log.errorf("Error compiling %v shader: \n%v", "vertex" if type == gl.VERTEX_SHADER else "fragment", string(log_buffer[:length]))
         return {}, false
     }
 
@@ -124,7 +124,7 @@ load_shader_memory :: proc(src: []byte, type: u32) -> (u32, bool) {
 uniform :: #force_inline proc(s: ^Shader, name: string) -> i32 {
     loc, ok := s.uniforms[name]
     if !ok {
-        loc = gl.GetUniformLocation(s.program, strings.clone_to_cstring(name, context.temp_allocator))
+        loc = gl.GetUniformLocation(s.program, cstr(name))
     }
     return loc
 }
