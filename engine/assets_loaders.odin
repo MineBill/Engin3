@@ -12,7 +12,6 @@ model_loader :: proc(data: []byte) -> ^Asset {
     }
 
     options := gltf.options{}
-    // options.file.read = 
 
     data, res := gltf.parse(options, raw_data(data), len(data))
     if res != .success {
@@ -38,17 +37,7 @@ model_loader :: proc(data: []byte) -> ^Asset {
     node := s.nodes[0]
 
     log.debugf("Processing gltf node '%v'", node.name)
-    // if node.name != "Cube.002" do continue
     mesh := node.mesh
-    // model := Model {}
-    // append(&scene.models, new(Model))
-    // model := scene.models[len(scene.models) - 1]
-    // model.name = strings.clone_from(node.name)
-
-    // model.material = default_material()
-    // init_material(&app.device, &model.material, app.material_layout)
-    // eh := add_entity(string(node.name), Model_Entity)
-    // e := get_entity(eh, Model_Entity)
 
     for primitive in mesh.primitives {
         get_buffer_data :: proc(attributes: []gltf.attribute, index: u32, $T: typeid) -> []T {
@@ -107,8 +96,6 @@ model_loader :: proc(data: []byte) -> ^Asset {
         count := accessor.count
         indices := indices_raw[:count]
 
-        // model.vertex_buffer = create_vertex_buffer(&app.device, vertices)
-        // model.index_buffer = create_index_buffer(&app.device, indices)
         model.num_indices = i32(len(indices))
         gl.CreateBuffers(1, &model.vertex_buffer)
         gl.NamedBufferStorage(model.vertex_buffer, size_of(Vertex) * len(vertices), raw_data(vertices), gl.DYNAMIC_STORAGE_BIT)

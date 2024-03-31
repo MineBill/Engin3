@@ -4,7 +4,6 @@ layout(location = 0) in VS_IN {
     vec2 uv;
 } IN;
 
-layout(binding = 1) uniform sampler2D screen_texture;
 layout(binding = 0) uniform usampler2D stencil_texture;
 
 layout(location = 0) out vec4 out_color;

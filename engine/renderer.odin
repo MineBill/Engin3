@@ -8,10 +8,6 @@ Box :: struct {
     pos, size: vec2,
 }
 
-// read_pixel :: proc(framebuffer: Frame_Buffer, attachment: int, x, y: i32) -> u32 {
-//     gl.ReadPixels()
-// }
-
 RenderHandle :: u32
 
 FrameBufferTextureFormat :: enum {
@@ -156,13 +152,6 @@ invalidate_framebuffer :: proc(fb: ^FrameBuffer) {
         case .DEPTH32F:
             attach_depth_texture(fb.handle, fb.depth_attachment, fb.spec.samples, gl.DEPTH_COMPONENT32F, fb.spec.width, fb.spec.height)
         }
-
-        // gl.TextureStorage2D(fb.depth_attachment, 1, gl_format, i32(fb.spec.width), i32(fb.spec.height))
-        // gl.TextureParameteri(fb.depth_attachment, gl.DEPTH_STENCIL_TEXTURE_MODE, gl.STENCIL_INDEX)
-
-        // // Attach
-        // gl.NamedFramebufferTexture(fb.handle, gl.DEPTH_STENCIL_ATTACHMENT, fb.depth_attachment, 0)
-
     }
 
     if array.len(fb.color_attachments) > 1 {
@@ -226,14 +215,6 @@ read_pixel :: proc(fb: FrameBuffer, x, y: int, attachment := 0) -> [4]byte {
     case .RED_INTEGER:
         gl_format = gl.RED_INTEGER
     }
-    // data := make([]byte, size)
-    // defer delete(data)
-
-    // gl.GetTextureImage(get_color_attachment(temp_fb, 0), 0, gl_format, gl.UNSIGNED_BYTE, i32(size), raw_data(data))
-
-    // pixel := x + y * spec.width
-
-    // return {data[pixel], data[pixel + 1], data[pixel + 2], data[pixel + 3]}
 
     pixel: [4]byte
 
