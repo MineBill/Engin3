@@ -227,6 +227,15 @@ blit_framebuffer :: proc(from, to: FrameBuffer, src_box, dst_box: Box, index := 
         gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT, gl.NEAREST)
 }
 
+blit_framebuffer_depth :: proc(from, to: FrameBuffer, src_box, dst_box: Box) {
+    gl.BlitNamedFramebuffer(
+        from.handle,
+        to.handle,
+        i32(src_box.pos.x), i32(src_box.pos.y), i32(src_box.size.x), i32(src_box.size.y),
+        i32(dst_box.pos.x), i32(dst_box.pos.y), i32(dst_box.size.x), i32(dst_box.size.y),
+        gl.DEPTH_BUFFER_BIT, gl.NEAREST)
+}
+
 resize_framebuffer :: proc(fb: ^FrameBuffer, width, height: int) {
     fb.spec.width = width
     fb.spec.height = height

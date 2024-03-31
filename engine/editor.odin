@@ -83,6 +83,9 @@ Editor :: struct {
     outline_frame_buffer: FrameBuffer,
 
     outline_shader: Shader,
+    grid_shader: Shader,
+
+    editor_va: RenderHandle,
 }
 
 editor_init :: proc(e: ^Editor, engine: ^Engine) {
@@ -95,6 +98,8 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
         position = vec3{0, 0, 0},
         fov = f32(60.0),
     }
+
+    gl.CreateVertexArrays(1, &e.editor_va)
 
     e.logger = create_capture_logger(&e.log_entries)
 
@@ -114,6 +119,11 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.outline_shader, ok = shader_load_from_file(
         "assets/shaders/screen.vert.glsl",
         "assets/shaders/outline.frag.glsl",
+    )
+    assert(ok)
+    e.grid_shader, ok = shader_load_from_file(
+        "assets/shaders/grid.vert.glsl",
+        "assets/shaders/grid.frag.glsl",
     )
     assert(ok)
 
@@ -313,7 +323,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
-        imgui.Image(transmute(rawptr)u64(get_depth_attachment(e.engine.depth_fb)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        imgui.Image(transmute(rawptr)u64(get_depth_attachment(e.renderer.depth_frame_buffer)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
         imgui.End()
     }
 
@@ -342,23 +352,25 @@ editor_render_scene :: proc(e: ^Editor) {
     }
 
     // Render world normally
-    gl.DepthFunc(gl.LESS)
-    gl.FrontFace(gl.CW)
-
     render_world(&e.renderer, packet)
 
     // Render editor stuff (grid, outlines, gizmo)
+    gl.BindFramebuffer(gl.FRAMEBUFFER, e.renderer.final_frame_buffer.handle)
+    gl.BindVertexArray(e.editor_va)
+    // Grid
+    {
+        gl.UseProgram(e.grid_shader.program)
+        draw_arrays(gl.TRIANGLES, 0, 6)
+    }
 
+    gl.Disable(gl.DEPTH_TEST)
     // Mesh Outline
     {
-        tracy.ZoneN("Editor Outline")
-        world := &e.engine.world
-
         gl.UseProgram(e.outline_shader.program)
         gl.BindTextureUnit(0, get_depth_attachment(e.renderer.resolved_frame_buffer))
         draw_arrays(gl.TRIANGLES, 0, 6)
     }
-
+    gl.Enable(gl.DEPTH_TEST)
     // Copy framebuffer stuff
 }
 

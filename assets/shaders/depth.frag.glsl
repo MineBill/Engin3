@@ -9,6 +9,5 @@ float LinearizeDepth(float depth, float near, float far) {
 
 void main () {
     float z = LinearizeDepth(gl_FragCoord.z, 0.1, 1000.0);
-    // color = material.albedo_color;
     color = vec4(z, z, z, 1.0);
 }

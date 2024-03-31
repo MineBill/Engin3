@@ -72,7 +72,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     spec.attachments = attachment_list(.RGBA16F, .DEPTH)
     renderer.resolved_frame_buffer = create_framebuffer(spec)
 
-    spec.attachments = attachment_list(.RGBA8)
+    spec.attachments = attachment_list(.RGBA8, .DEPTH)
     renderer.final_frame_buffer = create_framebuffer(spec)
 
     spec.width       = SHADOW_MAP_RES
@@ -85,6 +85,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     renderer.scene_data = create_uniform_buffer(SceneData, 1)
     renderer.light_data = create_uniform_buffer(LightData, 3)
 
+    // TODO(minebill): These shaders should probably be loaded from the asset system.
     ok: bool
     renderer.depth_shader, ok = shader_load_from_file(
         "assets/shaders/depth.vert.glsl",
@@ -166,6 +167,8 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
 
     gl.BindFramebuffer(gl.FRAMEBUFFER, world_fb.handle)
     gl.Viewport(0, 0, packet.size.x, packet.size.y)
+
+    gl.ClearDepth(1.0)
     gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 
     scene_data.view_position = packet.camera.position
@@ -257,14 +260,23 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
     // NOTE(minebill): I guess this is where a post-processing stack would go.
     {
         gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.final_frame_buffer.handle)
+        gl.Clear(gl.COLOR_BUFFER_BIT)
+
+        blit_framebuffer_depth(
+            world_renderer.world_frame_buffer,
+            world_renderer.final_frame_buffer,
+            {{0, 0}, {width, height}},
+            {{0, 0}, {width, height}},
+        )
 
         PLANE_VERT_COUNT :: 6
 
         gl.UseProgram(world_renderer.screen_shader.program)
         gl.BindTextureUnit(0, get_color_attachment(world_renderer.resolved_frame_buffer))
 
+        gl.Disable(gl.DEPTH_TEST)
         draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
-    }
+        gl.Enable(gl.DEPTH_TEST)    }
 }
 
 do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRenderer, packet: RenderPacket) {

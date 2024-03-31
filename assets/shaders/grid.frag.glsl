@@ -31,7 +31,7 @@ vec4 grid(vec3 frag_pos, float scale) {
 }
 
 const float near = 0.1;
-const float far = 1000;
+const float far = 200;
 
 float compute_depth(vec3 pos) {
     vec4 clip_space_pos = IN.projection * IN.view * vec4(pos.xyz, 1.0);
@@ -53,16 +53,11 @@ void main() {
 
     float d = compute_depth(frag_pos);
     // gl_FragDepth =  (((1 - 0) * d) + (1 + 0)) / 2.0;
-    gl_FragDepth = (d + 1) / 2;
-    /* gl_FragDepth = ((gl_DepthRange.diff * compute_depth(frag_pos)) +
-        gl_DepthRange.near + gl_DepthRange.far) / 2.0; */
-    // gl_FragDepth = compute_linear_depth(frag_pos);
+    gl_FragDepth = (d + 1.0) / 2.0;
 
     float linear_depth = compute_linear_depth(frag_pos);
     float fading = max(0, (0.5 - linear_depth));
 
     out_color = (grid(frag_pos, 1) + grid(frag_pos, 0.1)) * float(t > 0);
     out_color.a *= fading;
-
-    // out_color = vec4(gl_FragDepth, gl_FragDepth, gl_FragDepth, gl_FragDepth);
 }
