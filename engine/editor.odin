@@ -337,6 +337,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     editor_content_browser(e)
     editor_ui_toolstrip(e)
 
+    reset_draw_stats()
 }
 
 editor_render_scene :: proc(e: ^Editor) {
@@ -371,7 +372,6 @@ editor_render_scene :: proc(e: ^Editor) {
         draw_arrays(gl.TRIANGLES, 0, 6)
     }
     gl.Enable(gl.DEPTH_TEST)
-    // Copy framebuffer stuff
 }
 
 runtime_render_scene :: proc(e: ^Editor) {
@@ -521,6 +521,7 @@ editor_viewport :: proc(e: ^Editor) {
             global_mouse := g_event_ctx.mouse + g_event_ctx.window_position
             imgui.TextUnformatted(fmt.ctprintf("Mouse Position(global): %v", global_mouse))
             imgui.TextUnformatted(fmt.ctprintf("Editor State: %v", e.state))
+            imgui.TextUnformatted(fmt.ctprintf("Draw calls: %v", g_render_stats.draw_calls))
             imgui.Separator()
             @(static) show_camera_stats := false
             imgui.Checkbox("Editor Camera Stats", &show_camera_stats)
