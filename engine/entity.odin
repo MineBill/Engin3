@@ -593,7 +593,9 @@ serialize_gameobject :: proc(w: io.Writer, go: Entity, opt: ^json.Marshal_Option
     json.opt_write_iteration(w, opt, 2)
 
     json.opt_write_key(w, opt, "Flags")
-    json.marshal_to_writer(w, go.flags, opt)
+    flags := go.flags
+    flags -= {.Outlined}
+    json.marshal_to_writer(w, flags, opt)
 
     json.opt_write_iteration(w, opt, 3)
 
