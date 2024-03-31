@@ -323,9 +323,9 @@ void main() {
 // This is its own separate proc, so it can be called from
 // the editor during viewport resize.
 engine_resize :: proc(e: ^Engine, width, height: int) {
-    _destroy_framebuffer(e.viewport_fb)
-    _destroy_framebuffer(e.viewport_resolved_fb)
-    _destroy_framebuffer(e.scene_fb)
+    destroy_framebuffer(e.viewport_fb)
+    destroy_framebuffer(e.viewport_resolved_fb)
+    destroy_framebuffer(e.scene_fb)
     // destroy_framebuffer(e.depth_fb)
 
     // e.viewport_fb = gen_framebuffer(width, height, i32(g_msaa_level), format = gl.RGBA16F)
@@ -657,7 +657,7 @@ engine_draw :: proc(e: ^Engine) {
     gl.DrawArrays(gl.TRIANGLES, 0, 6)
 
     width, height := f32(e.width), f32(e.height)
-    blit_framebuffer_new(e.viewport_fb, e.viewport_resolved_fb, {{0, 0}, {width, height}}, {{0, 0}, {width, height}}, 0)
+    blit_framebuffer(e.viewport_fb, e.viewport_resolved_fb, {{0, 0}, {width, height}}, {{0, 0}, {width, height}}, 0)
 
     final_fb: u32
     switch e.run_mode {
@@ -928,142 +928,6 @@ setup_imgui_style :: proc() {
     style.Colors[imgui.Col.NavWindowingHighlight] = vec4{0.4980392158031464,  0.5137255191802979,  1.0,                 1.0}
     style.Colors[imgui.Col.NavWindowingDimBg]     = vec4{0.196078434586525,   0.1764705926179886,  0.5450980663299561,  0.501960813999176}
     style.Colors[imgui.Col.ModalWindowDimBg]      = vec4{0.196078434586525,   0.1764705926179886,  0.5450980663299561,  0.501960813999176}
-}
-
-Frame_Buffer :: struct {
-    handle:         u32,
-    texture:        u32,
-    depth_stencil:  u32,
-}
-
-gen_framebuffer :: proc(width, height: i32, samples: i32 = 1, pure_depth := false, format: u32 = gl.RGB8) -> (buffer: Frame_Buffer) {
-    gl.CreateFramebuffers(1, &buffer.handle)
-    id: u32
-
-    if samples == 1 {
-        gl.CreateTextures(gl.TEXTURE_2D, 1, &buffer.texture)
-        gl.TextureStorage2D(buffer.texture, 1, format, width, height)
-
-        gl.TextureParameteri(buffer.texture, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-        gl.TextureParameteri(buffer.texture, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    } else {
-        gl.CreateTextures(gl.TEXTURE_2D_MULTISAMPLE, 1, &buffer.texture)
-        gl.TextureStorage2DMultisample(buffer.texture, samples, format, width, height, true)
-    }
-    // gl.TextureParameteri(buffer.texture, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-
-    gl.NamedFramebufferTexture(buffer.handle, gl.COLOR_ATTACHMENT0, buffer.texture, 0)
-
-    // gl.CreateRenderbuffers(1, &buffer.depth_stencil)
-
-    if samples == 1 {
-        gl.CreateTextures(gl.TEXTURE_2D, 1, &buffer.depth_stencil)
-        format := gl.DEPTH_COMPONENT32F if pure_depth else gl.DEPTH24_STENCIL8
-        gl.TextureStorage2D(buffer.depth_stencil, 1, u32(format), width, height)
-        // gl.NamedRenderbufferStorage(buffer.depth_stencil, gl.DEPTH24_STENCIL8, width, height)
-        gl.TextureParameteri(buffer.depth_stencil, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-        gl.TextureParameteri(buffer.depth_stencil, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-    } else {
-        gl.CreateTextures(gl.TEXTURE_2D_MULTISAMPLE, 1, &buffer.depth_stencil)
-        gl.TextureStorage2DMultisample(buffer.depth_stencil, samples, gl.DEPTH24_STENCIL8, width, height, true)
-        // gl.NamedRenderbufferStorageMultisample(buffer.depth_stencil, samples, gl.DEPTH24_STENCIL8, width, height)
-    }
-    if !pure_depth {
-
-        gl.TextureParameteri(buffer.depth_stencil, gl.DEPTH_STENCIL_TEXTURE_MODE, gl.STENCIL_INDEX)
-        // gl.NamedFramebufferRenderbuffer(buffer.handle, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, buffer.depth_stencil)
-        gl.NamedFramebufferTexture(buffer.handle, gl.DEPTH_STENCIL_ATTACHMENT, buffer.depth_stencil, 0)
-    } else {
-        // Probably it's just the shadow map, so we might as well clamp the texture.
-        gl.TextureParameteri(buffer.depth_stencil, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-        gl.TextureParameteri(buffer.depth_stencil, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-        col := []f32{1, 1, 1, 1}
-        gl.TextureParameterfv(buffer.depth_stencil, gl.TEXTURE_BORDER_COLOR, &col[0])
-
-        gl.NamedFramebufferTexture(buffer.handle, gl.DEPTH_ATTACHMENT, buffer.depth_stencil, 0)
-    }
-
-    assert(gl.CheckNamedFramebufferStatus(buffer.handle, gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE)
-    return
-}
-
-gen_color_framebuffer :: proc(width, height: i32) -> (buffer: Frame_Buffer) {
-    gl.CreateFramebuffers(1, &buffer.handle)
-    id: u32
-    gl.CreateTextures(gl.TEXTURE_2D, 1, &buffer.texture)
-
-    gl.TextureStorage2D(buffer.texture, 1, gl.RGB8, width, height)
-    gl.TextureParameteri(buffer.texture, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.TextureParameteri(buffer.texture, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-
-    gl.NamedFramebufferTexture(buffer.handle, gl.COLOR_ATTACHMENT0, buffer.texture, 0)
-
-    assert(gl.CheckNamedFramebufferStatus(buffer.handle, gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE)
-    return
-}
-
-gen_depth_framebuffer :: proc(width, height: i32) -> (buffer: Frame_Buffer) {
-    gl.CreateFramebuffers(1, &buffer.handle)
-
-    gl.CreateTextures(gl.TEXTURE_2D, 1, &buffer.depth_stencil)
-    gl.TextureStorage2D(buffer.depth_stencil, 1, gl.DEPTH24_STENCIL8, width, height)
-    // gl.NamedRenderbufferStorage(buffer.depth_stencil, gl.DEPTH24_STENCIL8, width, height)
-    gl.TextureParameteri(buffer.depth_stencil, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-    gl.TextureParameteri(buffer.depth_stencil, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-
-    gl.TextureParameteri(buffer.depth_stencil, gl.DEPTH_STENCIL_TEXTURE_MODE, gl.STENCIL_INDEX)
-    // gl.NamedFramebufferRenderbuffer(buffer.handle, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, buffer.depth_stencil)
-    gl.NamedFramebufferTexture(buffer.handle, gl.DEPTH_STENCIL_ATTACHMENT, buffer.depth_stencil, 0)
-
-    assert(gl.CheckNamedFramebufferStatus(buffer.handle, gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE)
-    return
-}
-
-destroy_framebuffer :: proc(fb: Frame_Buffer) {
-    fb := fb
-    gl.DeleteTextures(1, &fb.texture)
-    gl.DeleteTextures(1, &fb.depth_stencil)
-    gl.DeleteFramebuffers(1, &fb.handle)
-}
-
-
-GBuffer :: struct {
-    handle: u32,
-
-    position: u32,
-    normal: u32,
-    albedo_specular: u32,
-}
-
-gen_gbuffer :: proc(width, height: i32) -> (buffer: GBuffer) {
-    width, height := i32(width), i32(height)
-    gl.CreateFramebuffers(1, &buffer.handle)
-
-    gl.CreateTextures(gl.TEXTURE_2D, 1, &buffer.position)
-    gl.TextureStorage2D(buffer.position, 1, gl.RGBA16F, width, height)
-    gl.TextureParameteri(buffer.position, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-    gl.TextureParameteri(buffer.position, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-    gl.NamedFramebufferTexture(buffer.handle, gl.COLOR_ATTACHMENT0, buffer.position, 0)
-
-    gl.CreateTextures(gl.TEXTURE_2D, 1, &buffer.normal)
-    gl.TextureStorage2D (buffer.normal, 1, gl.RGBA16F, width, height)
-    gl.TextureParameteri(buffer.normal, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-    gl.TextureParameteri(buffer.normal, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-    gl.NamedFramebufferTexture(buffer.handle, gl.COLOR_ATTACHMENT1, buffer.normal, 0)
-
-    gl.CreateTextures(gl.TEXTURE_2D, 1, &buffer.albedo_specular)
-    gl.TextureStorage2D (buffer.albedo_specular, 1, gl.RGBA, width, height)
-    gl.TextureParameteri(buffer.albedo_specular, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-    gl.TextureParameteri(buffer.albedo_specular, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-    gl.NamedFramebufferTexture(buffer.handle, gl.COLOR_ATTACHMENT2, buffer.albedo_specular, 0)
-    return
-}
-
-destroy_gbuffer :: proc(g: ^GBuffer) {
-    gl.DeleteTextures(1, &g.position)
-    gl.DeleteTextures(1, &g.normal)
-    gl.DeleteTextures(1, &g.albedo_specular)
-    gl.DeleteFramebuffers(1, &g.handle)
 }
 
 get_frustum_corners_world_space :: proc(proj, view: mat4) -> (corners: [8]vec4) {

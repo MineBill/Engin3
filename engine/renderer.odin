@@ -8,15 +8,6 @@ Box :: struct {
     pos, size: vec2,
 }
 
-blit_framebuffer :: proc(from, to: Frame_Buffer, src_box, dst_box: Box) {
-    gl.BlitNamedFramebuffer(
-        from.handle,
-        to.handle,
-        i32(src_box.pos.x), i32(src_box.pos.y), i32(src_box.size.x), i32(src_box.size.y),
-        i32(dst_box.pos.x), i32(dst_box.pos.y), i32(dst_box.size.x), i32(dst_box.size.y),
-        gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT, gl.NEAREST)
-}
-
 // read_pixel :: proc(framebuffer: Frame_Buffer, attachment: int, x, y: i32) -> u32 {
 //     gl.ReadPixels()
 // }
@@ -82,7 +73,7 @@ create_framebuffer :: proc(spec: FrameBufferSpecification) -> (fb: FrameBuffer) 
     return
 }
 
-_destroy_framebuffer :: proc(fb: FrameBuffer) {
+destroy_framebuffer :: proc(fb: FrameBuffer) {
     fb := fb
     gl.DeleteTextures(cast(i32)array.len(fb.color_attachments), raw_data(array.slice(&fb.color_attachments)))
     gl.DeleteTextures(1, &fb.depth_attachment)
@@ -90,7 +81,7 @@ _destroy_framebuffer :: proc(fb: FrameBuffer) {
 }
 
 invalidate_framebuffer :: proc(fb: ^FrameBuffer) {
-    _destroy_framebuffer(fb^)
+    destroy_framebuffer(fb^)
 
     gl.CreateFramebuffers(1, &fb.handle)
 
@@ -194,7 +185,7 @@ get_depth_attachment :: proc(fb: FrameBuffer) -> RenderHandle {
     return fb.depth_attachment
 }
 
-blit_framebuffer_new :: proc(from, to: FrameBuffer, src_box, dst_box: Box, index := 0) {
+blit_framebuffer :: proc(from, to: FrameBuffer, src_box, dst_box: Box, index := 0) {
     gl.NamedFramebufferReadBuffer(from.handle, u32(gl.COLOR_ATTACHMENT0 + index))
 
     gl.BlitNamedFramebuffer(
@@ -218,10 +209,10 @@ read_pixel :: proc(fb: FrameBuffer, x, y: int, attachment := 0) -> [4]byte {
     spec.samples = 1
 
     temp_fb := create_framebuffer(spec)
-    defer _destroy_framebuffer(temp_fb)
+    defer destroy_framebuffer(temp_fb)
 
     box := Box{{0, 0}, {f32(spec.width), f32(spec.height)}}
-    blit_framebuffer_new(fb, temp_fb, box, box, attachment)
+    blit_framebuffer(fb, temp_fb, box, box, attachment)
 
     size := spec.width * spec.height
     gl_format: u32 = ---
