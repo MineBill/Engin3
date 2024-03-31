@@ -33,9 +33,6 @@ Scene_Data :: struct {
     ubo: u32,
 }
 
-MAX_SPOTLIGHTS :: 10
-MAX_POINTLIGHTS :: 10
-
 Lights_Data :: struct {
     using block : struct {
         directional: struct {
@@ -151,6 +148,10 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
     gl.Enable(gl.STENCIL_TEST)
     gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
 
+    gl.Enable(gl.BLEND)
+    gl.BlendEquation(gl.FUNC_ADD)
+    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+
     asset_manager_init(&e.asset_manager)
 
     editor_init(&e.editor, e)
@@ -231,6 +232,8 @@ void main() {
 
     }
 
+    /*
+
     // View_Data UBO
     {
         gl.CreateBuffers(1, &e.ubo)
@@ -262,9 +265,12 @@ void main() {
         gl.BindBufferBase(gl.UNIFORM_BUFFER, 3, e.lights.ubo)
     }
 
+    */
+
     // model_loc := gl.GetUniformLocation(e.triangle_shader.program, "model")
     // e.triangle_shader.uniforms["model"] = model_loc
 
+    /*
     spec := FrameBufferSpecification {
         width = 800,
         height = 800,
@@ -282,6 +288,7 @@ void main() {
     spec.attachments = attachment_list(.DEPTH32F)
     spec.samples = 1
     e.depth_fb       = create_framebuffer(spec)
+    */
 
     // e.viewport_fb          = gen_framebuffer(800, 800, format = gl.RGBA16F)
     // e.viewport_resolved_fb = gen_framebuffer(800, 800, format = gl.RGBA16F)
@@ -323,20 +330,14 @@ void main() {
 // This is its own separate proc, so it can be called from
 // the editor during viewport resize.
 engine_resize :: proc(e: ^Engine, width, height: int) {
-    destroy_framebuffer(e.viewport_fb)
-    destroy_framebuffer(e.viewport_resolved_fb)
-    destroy_framebuffer(e.scene_fb)
-    // destroy_framebuffer(e.depth_fb)
+    // destroy_framebuffer(e.viewport_fb)
+    // destroy_framebuffer(e.viewport_resolved_fb)
+    // destroy_framebuffer(e.scene_fb)
 
-    // e.viewport_fb = gen_framebuffer(width, height, i32(g_msaa_level), format = gl.RGBA16F)
-    e.viewport_fb.spec.samples = int(g_msaa_level)
-    resize_framebuffer(&e.viewport_fb, width, height)
-    resize_framebuffer(&e.viewport_resolved_fb, width, height)
-    resize_framebuffer(&e.scene_fb, width, height)
-
-    // e.viewport_resolved_fb = gen_framebuffer(width, height, format = gl.RGBA16F)
-    // e.scene_fb = gen_framebuffer(width, height)
-    // e.depth_fb = gen_framebuffer(width, height)
+    // e.viewport_fb.spec.samples = int(g_msaa_level)
+    // resize_framebuffer(&e.viewport_fb, width, height)
+    // resize_framebuffer(&e.viewport_resolved_fb, width, height)
+    // resize_framebuffer(&e.scene_fb, width, height)
 
     e.width = i32(width)
     e.height = i32(height)
@@ -415,6 +416,7 @@ engine_draw :: proc(e: ^Engine) {
     tracy.Zone()
     i: int
 
+    /*
     // Collect all meshes
     mesh_components := make([dynamic]^MeshRenderer, allocator = context.temp_allocator)
     {
@@ -589,7 +591,6 @@ engine_draw :: proc(e: ^Engine) {
         gl.NamedBufferSubData(e.ubo, size_of(mat4), size_of(mat4), &view)
 
         gl.UseProgram(cubemap.shader.program)
-        gl.BindVertexArray(e.grid_va)
         gl.BindTextureUnit(6, cubemap.texture.handle)
         gl.DrawArrays(gl.TRIANGLES, 0, 36)
     }
@@ -658,7 +659,9 @@ engine_draw :: proc(e: ^Engine) {
 
     width, height := f32(e.width), f32(e.height)
     blit_framebuffer(e.viewport_fb, e.viewport_resolved_fb, {{0, 0}, {width, height}}, {{0, 0}, {width, height}}, 0)
+    */
 
+    /*
     final_fb: u32
     switch e.run_mode {
     case .Game: final_fb = 0
@@ -707,19 +710,20 @@ engine_draw :: proc(e: ^Engine) {
         gl.BindTextureUnit(0, get_color_attachment(e.viewport_resolved_fb))
         gl.DrawArrays(gl.TRIANGLES, 0, i32(len(vertices)))
 
-        #partial switch e.run_mode {
-        case .Editor:
-            gl.UseProgram(e.outline_shader.program)
-            gl.BindTextureUnit(1, get_color_attachment(e.viewport_resolved_fb))
-            gl.BindTextureUnit(0, get_depth_attachment(e.viewport_resolved_fb))
-            gl.DrawArrays(gl.TRIANGLES, 0, i32(len(vertices)))
-        }
+        // #partial switch e.run_mode {
+        // case .Editor:
+        //     gl.UseProgram(e.outline_shader.program)
+        //     gl.BindTextureUnit(0, get_depth_attachment(e.viewport_resolved_fb))
+        //     gl.BindTextureUnit(1, get_color_attachment(e.viewport_resolved_fb))
+        //     gl.DrawArrays(gl.TRIANGLES, 0, i32(len(vertices)))
+        // }
 
         // if !blend do gl.Disable(gl.BLEND)
         gl.Enable(gl.DEPTH_TEST)
     }
+    */
 
-    nk_render()
+    // nk_render()
 
     switch e.run_mode {
     case .Game:

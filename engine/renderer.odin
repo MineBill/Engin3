@@ -4,6 +4,48 @@ import array "core:container/small_array"
 import "core:log"
 _ :: log
 
+RenderStats :: struct {
+    draw_calls: int,
+}
+
+g_render_stats: RenderStats
+
+reset_draw_stats :: proc() {
+    g_render_stats = {}
+}
+
+// Simple wrapper, mostly used to collect stats.
+draw_elements :: proc(mode: u32, count: i32, type: u32) {
+    g_render_stats.draw_calls += 1
+    gl.DrawElements(mode, count, type, nil)
+}
+
+draw_arrays :: proc(mode: u32, first, count: int) {
+    g_render_stats.draw_calls += 1
+    gl.DrawArrays(mode, i32(first), i32(count))
+}
+
+UniformBuffer :: struct($T: typeid) {
+    handle: RenderHandle,
+
+    using data : T,
+}
+
+create_uniform_buffer :: proc($T: typeid, bind_index: int) -> (buffer: UniformBuffer(T)) {
+    gl.CreateBuffers(1, &buffer.handle)
+
+    gl.NamedBufferStorage(buffer.handle, size_of(T), nil, gl.DYNAMIC_STORAGE_BIT)
+
+    gl.BindBufferBase(gl.UNIFORM_BUFFER, u32(bind_index), buffer.handle)
+    return
+}
+
+uniform_buffer_upload :: proc(buffer: ^UniformBuffer($T), offset := uintptr(0), size := size_of(T)) {
+    // data := uintptr(&buffer.data) + 0
+    // gl.NamedBufferSubData(buffer.handle, int(offset), int(size), rawptr(data)):
+    gl.NamedBufferSubData(buffer.handle, 0, size_of(buffer.data), &buffer.data)
+}
+
 Box :: struct {
     pos, size: vec2,
 }

@@ -1,60 +1,6 @@
 Name: "Test World"
 Entities: [
 	{
-		UUID: 4723970445347275476
-		Name: "New Entity"
-		Flags: 0
-		Enabled: true
-		Parent: 11112826187318486903
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalRotation: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-
-		}
-	}
-	{
-		UUID: 16355351371188371809
-		Name: "Visuals"
-		Flags: 0
-		Enabled: true
-		Parent: 0
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalRotation: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-
-		}
-	}
-	{
 		UUID: 11112826187318486903
 		Name: "New Entity"
 		Flags: 0
@@ -79,51 +25,6 @@ Entities: [
 		}
 		Components: {
 
-		}
-	}
-	{
-		UUID: 7906161655014231741
-		Name: "Small Box"
-		Flags: 0
-		Enabled: true
-		Parent: 0
-		Transform: {
-			LocalPosition: [
-				-0.73000002
-				1.15183902
-				-3.31999993
-			]
-			LocalRotation: [
-				0.00000000
-				0.56999999
-				9.02000046
-			]
-			LocalScale: [
-				1.23000002
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-			MeshRenderer: {
-				Enabled: true
-				Model: {
-
-					UUID: 16401345901566762450
-					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
-				}
-				MaterialAlbedoColor: [
-					1.00000000
-					0.81690145
-					0.00000000
-					1.00000000
-				]
-				MaterialRoughness: 0.53600001
-				MaterialMetalness: 0.58300000
-			}
-			MoverComponent: {
-				Enabled: true
-			}
 		}
 	}
 	{
@@ -156,83 +57,6 @@ Entities: [
 		}
 	}
 	{
-		UUID: 8248514199953824040
-		Name: "Box"
-		Flags: 0
-		Enabled: true
-		Parent: 0
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				7.61000013
-				0.00000000
-			]
-			LocalRotation: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				15.09000015
-			]
-		}
-		Components: {
-			MeshRenderer: {
-				Enabled: true
-				Model: {
-
-					UUID: 16401345901566762450
-					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
-				}
-				MaterialAlbedoColor: [
-					1.00000000
-					1.00000000
-					1.00000000
-					1.00000000
-				]
-				MaterialRoughness: 0.50000000
-				MaterialMetalness: 0.00000000
-			}
-		}
-	}
-	{
-		UUID: 15453848323946505492
-		Name: "Directional Light"
-		Flags: 0
-		Enabled: true
-		Parent: 16355351371188371809
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalRotation: [
-				167.61000061
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-			DirectionalLight: {
-				Enabled: true
-				color: [
-					1.00000000
-					1.00000000
-					1.00000000
-					1.00000000
-				]
-			}
-		}
-	}
-	{
 		UUID: 15728031585902198275
 		Name: "Box"
 		Flags: 0
@@ -241,7 +65,7 @@ Entities: [
 		Transform: {
 			LocalPosition: [
 				0.00000000
-				-0.13000000
+				-2.52999997
 				0.00000000
 			]
 			LocalRotation: [
@@ -250,7 +74,7 @@ Entities: [
 				0.00000000
 			]
 			LocalScale: [
-				11.19999981
+				15.22000027
 				0.50000000
 				15.09000015
 			]
@@ -318,6 +142,187 @@ Entities: [
 				Fov: 60.00000000
 				NearPlane: 0.10000000
 				FarPlane: 100.00000000
+			}
+		}
+	}
+	{
+		UUID: 16355351371188371809
+		Name: "Visuals"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 15453848323946505492
+		Name: "Directional Light"
+		Flags: 0
+		Enabled: true
+		Parent: 16355351371188371809
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				18.70999908
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			DirectionalLight: {
+				Enabled: true
+				color: [
+					1.00000000
+					1.00000000
+					1.00000000
+					1.00000000
+				]
+			}
+		}
+	}
+	{
+		UUID: 8248514199953824040
+		Name: "Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				-0.97000003
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				15.09000015
+			]
+		}
+		Components: {
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 16401345901566762450
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				}
+				Material_Albedo_Image: {
+
+					UUID: 6095937700928346905
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\viking_room.png"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					0.00000000
+					0.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.45300001
+				MaterialMetalness: 0.00000000
+			}
+		}
+	}
+	{
+		UUID: 4723970445347275476
+		Name: "New Entity"
+		Flags: 0
+		Enabled: true
+		Parent: 11112826187318486903
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 7906161655014231741
+		Name: "Small Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				-6.15000010
+				-0.19000000
+				-3.31999993
+			]
+			LocalRotation: [
+				0.00000000
+				0.56999999
+				9.46000004
+			]
+			LocalScale: [
+				1.23000002
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 16401345901566762450
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					0.81690145
+					0.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.46300000
+				MaterialMetalness: 1.00000000
+			}
+			MoverComponent: {
+				Enabled: true
 			}
 		}
 	}

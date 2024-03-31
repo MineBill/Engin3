@@ -40,7 +40,7 @@ EditorCamera :: struct {
     euler_angles:   vec3,
     fov:            f32,
 
-    projection: mat4,
+    projection, view: mat4,
 }
 
 EditorFont :: enum {
@@ -72,12 +72,17 @@ Editor :: struct {
 
     content_browser: ContentBrowser,
 
+    renderer: WorldRenderer,
     editor_world: World,
     runtime_world: World,
     icons: [EditorIcon]Texture2D,
     fonts: [EditorFont]^imgui.Font,
 
     texture_previews: map[UUID]Texture2D,
+
+    outline_frame_buffer: FrameBuffer,
+
+    outline_shader: Shader,
 }
 
 editor_init :: proc(e: ^Editor, engine: ^Engine) {
@@ -105,6 +110,13 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.icons[.PauseButton] = load_texture_from_file("assets/editor/icons/pause_button.png")
     e.icons[.StopButton] = load_texture_from_file("assets/editor/icons/stop_button.png")
 
+    ok: bool
+    e.outline_shader, ok = shader_load_from_file(
+        "assets/shaders/screen.vert.glsl",
+        "assets/shaders/outline.frag.glsl",
+    )
+    assert(ok)
+
     imgui.CreateContext(nil)
     io := imgui.GetIO()
     io.ConfigFlags += {.DockingEnable, .ViewportsEnable, .IsSRGB}
@@ -128,6 +140,8 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.fonts[.Bold] = imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(BOLD_FONT), i32(len(BOLD_FONT)), 16)
 
     io.FontDefault = e.fonts[.Normal]
+
+    world_renderer_init(&e.renderer)
 }
 
 editor_deinit :: proc(e: ^Editor) {
@@ -174,9 +188,9 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                     io.ConfigFlags -= {.NoMouse}
                 }
             } else if ev.button == .left {
-                if ev.state == .pressed && e.is_viewport_focused {
+                if ev.state == .pressed && e.is_viewport_focused && e.state == .Edit {
                     mouse := g_event_ctx.mouse + g_event_ctx.window_position - e.viewport_position
-                    color := read_pixel(e.engine.viewport_fb, int(mouse.x), int(e.viewport_size.y) - int(mouse.y), 1)
+                    color := read_pixel(e.renderer.world_frame_buffer, int(mouse.x), int(e.viewport_size.y) - int(mouse.y), 1)
 
                     id := color[0]
                     handle := e.engine.world.local_id_to_uuid[int(id)]
@@ -226,11 +240,6 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 e.camera.euler_angles.x = math.clamp(e.camera.euler_angles.x, -80, 80)
             }
 
-            // if is_key_just_pressed(.escape) {
-            //     engine.quit = true
-            //     return
-            // }
-
             if e.capture_mouse {
                 input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
                 up_down := get_axis(.space, .left_control) * CAMERA_SPEED
@@ -246,25 +255,14 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 .XYZ)
 
             e.engine.camera_position   = e.camera.position
-            e.engine.camera_view       = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
-            e.engine.camera_projection = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), 0.1, 200.0)
+            e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
+            e.engine.camera_view       = e.camera.view
+            e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), 0.1, 200.0)
             e.engine.camera_rotation   = e.camera.rotation
+
+            editor_render_scene(e)
         case .Play:
-            if camera := find_first_component(&e.engine.world, Camera); camera != nil {
-                go := get_object(&e.engine.world, camera.owner)
-                e.engine.camera_position   = go.transform.position
-
-                euler := go.transform.local_rotation
-                rotation := linalg.quaternion_from_euler_angles(
-                    euler.x * math.RAD_PER_DEG,
-                    euler.y * math.RAD_PER_DEG,
-                    euler.z * math.RAD_PER_DEG,
-                    .XYZ)
-
-                e.engine.camera_view       = linalg.matrix4_from_quaternion(rotation) * linalg.inverse(linalg.matrix4_translate(go.transform.position))
-                e.engine.camera_projection = linalg.matrix4_perspective_f32(math.to_radians(f32(camera.fov)), f32(e.engine.width) / f32(e.engine.height), camera.near_plane, camera.far_plane)
-                e.engine.camera_rotation   = rotation
-            }
+            runtime_render_scene(e)
         }
     }
 
@@ -319,6 +317,8 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         imgui.End()
     }
 
+    world_update(&e.engine.world, _delta, e.state == .Play)
+
     editor_env_panel(e)
     editor_entidor(e)
     editor_viewport(e)
@@ -327,14 +327,70 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     editor_content_browser(e)
     editor_ui_toolstrip(e)
 
-    world_update(&e.engine.world, _delta, e.state == .Play)
 }
 
 editor_render_scene :: proc(e: ^Editor) {
+    packet := RenderPacket{
+        world = &e.engine.world,
+        size = vec2i{i32(e.viewport_size.x), i32(e.viewport_size.y)},
+        camera = RenderCamera {
+            projection = e.camera.projection,
+            view       = e.camera.view,
+            position   = e.camera.position,
+            rotation   = e.camera.rotation,
+        },
+    }
 
+    // Render world normally
+    gl.DepthFunc(gl.LESS)
+    gl.FrontFace(gl.CW)
+
+    render_world(&e.renderer, packet)
+
+    // Render editor stuff (grid, outlines, gizmo)
+
+    // Mesh Outline
+    {
+        tracy.ZoneN("Editor Outline")
+        world := &e.engine.world
+
+        gl.UseProgram(e.outline_shader.program)
+        gl.BindTextureUnit(0, get_depth_attachment(e.renderer.resolved_frame_buffer))
+        draw_arrays(gl.TRIANGLES, 0, 6)
+    }
+
+    // Copy framebuffer stuff
 }
 
 runtime_render_scene :: proc(e: ^Editor) {
+    if camera := find_first_component(&e.engine.world, Camera); camera != nil {
+        go := get_object(&e.engine.world, camera.owner)
+        e.engine.camera_position   = go.transform.position
+
+        euler := go.transform.local_rotation
+        rotation := linalg.quaternion_from_euler_angles(
+            euler.x * math.RAD_PER_DEG,
+            euler.y * math.RAD_PER_DEG,
+            euler.z * math.RAD_PER_DEG,
+            .XYZ)
+
+        camera_view       := linalg.matrix4_from_quaternion(rotation) * linalg.inverse(linalg.matrix4_translate(go.transform.position))
+        camera_projection := linalg.matrix4_perspective_f32(math.to_radians(f32(camera.fov)), f32(e.engine.width) / f32(e.engine.height), camera.near_plane, camera.far_plane)
+        camera_rotation   := rotation
+
+        packet := RenderPacket{
+            world = &e.engine.world,
+            size = vec2i{i32(e.viewport_size.x), i32(e.viewport_size.y)},
+            camera = RenderCamera {
+                projection = camera_projection,
+                view       = camera_view,
+                position   = go.transform.local_position,
+                rotation   = rotation,
+            },
+        }
+        // Render world normally
+        render_world(&e.renderer, packet)
+    }
 
 }
 
@@ -386,6 +442,7 @@ editor_viewport :: proc(e: ^Editor) {
 
                 width, height := int(e.viewport_size.x), int(e.viewport_size.y)
                 engine_resize(e.engine, width, height)
+                world_renderer_resize(&e.renderer, width, height)
             }
 
             imgui.EndMenuBar()
@@ -401,6 +458,7 @@ editor_viewport :: proc(e: ^Editor) {
 
             width, height := int(size.x), int(size.y)
             engine_resize(e.engine, width, height)
+            world_renderer_resize(&e.renderer, width, height)
         }
 
         // is this the correct place?
@@ -408,7 +466,9 @@ editor_viewport :: proc(e: ^Editor) {
 
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
-        imgui.Image(transmute(rawptr)u64(get_color_attachment(e.engine.scene_fb, 0)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+
+        texture_handle := get_color_attachment(e.renderer.final_frame_buffer, 0)
+        imgui.Image(rawptr(uintptr(texture_handle)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
 
         if imgui.BeginDragDropTarget() {
             if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM_SCENE", {}); payload != nil {
@@ -449,6 +509,12 @@ editor_viewport :: proc(e: ^Editor) {
             global_mouse := g_event_ctx.mouse + g_event_ctx.window_position
             imgui.TextUnformatted(fmt.ctprintf("Mouse Position(global): %v", global_mouse))
             imgui.TextUnformatted(fmt.ctprintf("Editor State: %v", e.state))
+            imgui.Separator()
+            @(static) show_camera_stats := false
+            imgui.Checkbox("Editor Camera Stats", &show_camera_stats)
+            if show_camera_stats {
+                imgui.TextUnformatted(fmt.ctprintf("Editor Camera: %#v", e.camera))
+            }
             imgui.End()
         }
         imgui.PopStyleVar()
