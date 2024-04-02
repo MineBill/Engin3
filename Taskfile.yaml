@@ -35,6 +35,27 @@ tasks:
     cmds:
       - ./out/debug/meta{{.EXE_EXT}} engine
 
+  build-mani:
+    cmds:
+      - |
+        odin build packages/mani/manigen \
+        -out:out/debug/mani{{.EXE_EXT}} \
+        -show-timings \
+        -o:none \
+        -collection:packages=packages \
+        -ignore-unknown-attributes
+    generates:
+      - out/debug/mani{{.EXE_EXT}}
+
+  run-mani:
+    deps: [build-mani]
+    cmds:
+      - ./out/debug/mani{{.EXE_EXT}} mani_config.json
+    sources:
+      - engine/*.odin
+    generates:
+      - engine/*_generated.odin
+
   test:
     deps: [run-meta]
     cmds:
@@ -48,6 +69,25 @@ tasks:
         -ignore-unknown-attributes
 
   build:
+    deps: [run-meta, run-mani]
+    cmds:
+      - |
+        odin build engine \
+        -build-mode:exe -define:VALIDATION=true \
+        -show-timings \
+        -out:out/debug/engin3{{.EXE_EXT}} \
+        -o:none \
+        -debug \
+        -use-separate-modules \
+        -collection:packages=packages \
+        -define:TRACY_ENABLE={{.USE_TRACY}} {{.USE_DEBUG}} \
+        -ignore-unknown-attributes
+    sources:
+      - engine/**/*.odin
+    generates:
+      - out/debug/engin3{{.EXE_EXT}}
+
+  build-no-mani:
     deps: [run-meta]
     cmds:
       - |
@@ -68,6 +108,11 @@ tasks:
 
   run:
     deps: [build]
+    cmds:
+      - ./out/debug/engin3{{.EXE_EXT}}
+
+  no-mani:
+    deps: [build-no-mani]
     cmds:
       - ./out/debug/engin3{{.EXE_EXT}}
 
