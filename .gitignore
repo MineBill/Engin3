@@ -3,6 +3,7 @@
 .vs/
 .idea/
 out/
+cache/
 **/*.raddbg_profile
 **/*_generated.odin
 **/*.a
