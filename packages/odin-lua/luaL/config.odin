@@ -1,0 +1,27 @@
+package luaL
+
+import lua "../lua"
+
+MAX_ODIN_STRLEN :: lua.MAX_ODIN_STRLEN
+
+JIT_ENABLED :: lua.JIT_ENABLED
+
+MAJOR_VERSION :: lua.MAJOR_VERSION
+MINOR_VERSION :: lua.MINOR_VERSION
+RELEASE_VERSION :: lua.RELEASE_VERSION
+
+
+
+// lua defines these as strings. The reverse name was used to define them as integers, which is more useful
+VERSION_MAJOR :: lua.VERSION_MAJOR
+VERSION_MINOR :: lua.VERSION_MINOR
+VERSION_RELEASE :: lua.VERSION_RELEASE
+
+VERSION_NUM :: lua.VERSION_NUM
+VERSION :: lua.VERSION
+RELEASE :: lua.RELEASE
+
+COPYRIGHT :: lua.COPYRIGHT
+AUTHORS :: lua.AUTHORS
+
+SIGNATURE :: lua.SIGNATURE
