@@ -1,0 +1,36 @@
+# Ignore everything
+*
+# But descend into directories
+!*/
+
+!.gitignore
+!build.bat
+!run.bat
+!ship.bat
+!ols.json
+!.vscode
+
+!foreign/**
+!test/**
+
+!manigen/**
+!mani/**
+!media/**
+
+!manigen2/**
+!build/**
+
+!odin-build
+!odin-lua
+
+# Mani generations
+*.mani.odin
+*.lsp.lua
+
+!copy_to_shared.bat
+
+!build_test.bat
+!run_test.bat
+!test.bat
+
+!mani_config.json
