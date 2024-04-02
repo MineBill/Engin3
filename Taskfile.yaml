@@ -44,13 +44,15 @@ tasks:
         -o:none \
         -collection:packages=packages \
         -ignore-unknown-attributes
+    sources:
+      - packages/mani/**/*.odin
     generates:
       - out/debug/mani{{.EXE_EXT}}
 
   run-mani:
     deps: [build-mani]
     cmds:
-      - ./out/debug/mani{{.EXE_EXT}} mani_config.json
+      - ./out/debug/mani{{.EXE_EXT}} mani_config.json -show-timings
     sources:
       - engine/*.odin
     generates:
