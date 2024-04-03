@@ -43,7 +43,7 @@ write_lua_array_index :: proc(sb: ^strings.Builder, exports: FileExports, arr: A
 _mani_index_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
 
     context = mani.default_context()
-    udata: {0:s}
+    udata: ^{0:s}
     mani.to_value(L, 1, &udata)
     // Note(Dragos): It should also accept indices
     key := lua.tostring(L, 2)
@@ -92,7 +92,7 @@ _mani_index_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
 _mani_index_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
 
     context = mani.default_context()
-    udata: {0:s}
+    udata: ^{0:s}
     mani.to_value(L, 1, &udata)
     // Note(Dragos): It should also accept indices
     key := lua.tostring(L, 2)
@@ -146,6 +146,7 @@ _mani_index_{0:s}_ref :: proc "c" (L: ^lua.State) -> c.int {{
     udata: ^{0:s}
     mani.to_value(L, 1, &udata)
     // Note(Dragos): It should also accept indices
+
     key := lua.tostring(L, 2)
     if method, found := _mani_methods_{0:s}[key]; found {{
         mani.push_value(L, method)
@@ -264,7 +265,7 @@ write_lua_array_newindex :: proc(sb: ^strings.Builder, exports: FileExports, arr
 _mani_newindex_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
 
     context = mani.default_context()
-    udata: {0:s} 
+    udata: ^{0:s} 
     mani.to_value(L, 1, &udata)
     // Note(Dragos): It should also accept indices
     key := lua.tostring(L, 2)
