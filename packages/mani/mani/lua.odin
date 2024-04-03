@@ -73,18 +73,16 @@ to_value :: proc "contextless"(L: ^lua.State, #any_int stack_pos: int, val: ^$T)
     } else when intr.type_is_boolean(Base) {
         val^ = cast(Base)luaL.checkboolean(L, cast(i32)stack_pos) 
     } else when Base == cstring {
-        str := luaL.checkstring(L, cast(i32)stack_pos)
-        raw := transmute(mem.Raw_String)str
-        val^ = cstring(raw.data)
+        val^ = cast(cstring)luaL.tolstring(L, cast(i32)stack_pos, nil)
     } else when Base == string {
-        val^ = luaL.checkstring(L, cast(i32)stack_pos)
+        val^ = cast(string)luaL.tolstring(L, cast(i32)stack_pos, nil)
     } else {
         fmeta, hasFulldata := global_state.udata_metatable_mapping[Base]
         lmeta, hasLightdata := global_state.udata_metatable_mapping[Ptr]
         assert_contextless(hasFulldata || hasLightdata, "Metatable not found for type")
 
         rawdata: rawptr
-    
+
         fdata := cast(Ptr)luaL.testudata(L, cast(i32)stack_pos, fmeta) if hasFulldata else nil
         ldata := cast(^Ptr)luaL.testudata(L, cast(i32)stack_pos, lmeta) if hasLightdata else nil
         when intr.type_is_pointer(type_of(val^)) { 
