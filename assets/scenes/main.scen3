@@ -1,6 +1,366 @@
 Name: "Test World"
 Entities: [
 	{
+		UUID: 12888568760664410830
+		Name: "New Model"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				1.11000001
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 4685659647142336555
+					Path: "W:\\source\\projects\\Engin3\\assets\\scenes\\simple_scene.glb"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					1.00000000
+					1.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.50000000
+				MaterialMetalness: 0.00000000
+			}
+		}
+	}
+	{
+		UUID: 8248514199953824040
+		Name: "Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				-7.36999989
+				1.57000005
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				15.09000015
+			]
+		}
+		Components: {
+			MoverComponent: {
+				Enabled: true
+			}
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 16401345901566762450
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				}
+				Material_Albedo_Image: {
+
+					UUID: 6095937700928346905
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\viking_room.png"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					0.00000000
+					0.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.45300001
+				MaterialMetalness: 0.00000000
+			}
+		}
+	}
+	{
+		UUID: 16355351371188371809
+		Name: "Visuals"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 11003251778909950967
+		Name: "Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				-4.05000019
+				2.84999990
+				0.00000000
+			]
+			LocalRotation: [
+				-70.01999664
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.64999998
+				1.00000000
+				2.09999990
+			]
+		}
+		Components: {
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 9589176826099041080
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\plane.glb"
+				}
+				Material_Albedo_Image: {
+
+					UUID: 12190382511333340346
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\white_texture.png"
+				}
+				Material_Normal_Image: {
+
+					UUID: 1598793490672065358
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\default_normal_map.png"
+				}
+				Material_Height_Image: {
+
+					UUID: 9058953085965596843
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\black_texture.png"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					0.00000000
+					0.81690168
+					1.00000000
+				]
+				MaterialRoughness: 0.71799999
+				MaterialMetalness: 0.79200000
+			}
+		}
+	}
+	{
+		UUID: 16827241826800986085
+		Name: "New Entity"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 7906161655014231741
+		Name: "Small Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.67000002
+				2.13000011
+				-5.26999998
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			ScriptComponent: {
+				Enabled: true
+				Script: {
+
+					UUID: 7880902796470870915
+					Path: "W:\\source\\projects\\Engin3\\assets\\scripts\\test.lua"
+				}
+				Exports: {
+					movement_speed: 9.9831254374294076
+					should_do_thing: false
+				}
+			}
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 16401345901566762450
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					0.94240832
+					0.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.67199999
+				MaterialMetalness: 0.00000000
+			}
+		}
+	}
+	{
+		UUID: 18365496378108575934
+		Name: "Environment"
+		Flags: 0
+		Enabled: true
+		Parent: 16355351371188371809
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+			CubemapComponent: {
+				Enabled: true
+			}
+		}
+	}
+	{
+		UUID: 4723970445347275476
+		Name: "Script"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				1.00000000
+			]
+		}
+		Components: {
+
+		}
+	}
+	{
+		UUID: 12098554421762976737
+		Name: "Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				8.92000008
+				0.00000000
+			]
+			LocalRotation: [
+				0.00000000
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.00000000
+				1.00000000
+				15.09000015
+			]
+		}
+		Components: {
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 16401345901566762450
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
+				}
+				Material_Albedo_Image: {
+
+					UUID: 6095937700928346905
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\viking_room.png"
+				}
+				MaterialAlbedoColor: [
+					1.00000000
+					0.00000000
+					0.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.45300001
+				MaterialMetalness: 0.00000000
+			}
+		}
+	}
+	{
 		UUID: 11112826187318486903
 		Name: "New Entity"
 		Flags: 0
@@ -28,9 +388,9 @@ Entities: [
 		}
 	}
 	{
-		UUID: 18365496378108575934
-		Name: "Environment"
-		Flags: 2
+		UUID: 15453848323946505492
+		Name: "Directional Light"
+		Flags: 0
 		Enabled: true
 		Parent: 16355351371188371809
 		Transform: {
@@ -40,7 +400,7 @@ Entities: [
 				0.00000000
 			]
 			LocalRotation: [
-				0.00000000
+				17.80999947
 				0.00000000
 				0.00000000
 			]
@@ -51,8 +411,14 @@ Entities: [
 			]
 		}
 		Components: {
-			CubemapComponent: {
+			DirectionalLight: {
 				Enabled: true
+				color: [
+					1.00000000
+					1.00000000
+					1.00000000
+					1.00000000
+				]
 			}
 		}
 	}
@@ -65,7 +431,7 @@ Entities: [
 		Transform: {
 			LocalPosition: [
 				0.00000000
-				-2.52999997
+				0.56999999
 				0.00000000
 			]
 			LocalRotation: [
@@ -114,6 +480,63 @@ Entities: [
 		}
 	}
 	{
+		UUID: 5963135913578474516
+		Name: "Box"
+		Flags: 0
+		Enabled: true
+		Parent: 0
+		Transform: {
+			LocalPosition: [
+				0.00000000
+				5.09000015
+				0.00000000
+			]
+			LocalRotation: [
+				-58.70000076
+				0.00000000
+				0.00000000
+			]
+			LocalScale: [
+				1.64999998
+				1.00000000
+				2.09999990
+			]
+		}
+		Components: {
+			MeshRenderer: {
+				Enabled: true
+				Model: {
+
+					UUID: 9589176826099041080
+					Path: "W:\\source\\projects\\Engin3\\assets\\models\\plane.glb"
+				}
+				Material_Albedo_Image: {
+
+					UUID: 12190382511333340346
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\white_texture.png"
+				}
+				Material_Normal_Image: {
+
+					UUID: 1598793490672065358
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\default_normal_map.png"
+				}
+				Material_Height_Image: {
+
+					UUID: 9058953085965596843
+					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\black_texture.png"
+				}
+				MaterialAlbedoColor: [
+					0.00000000
+					0.16901422
+					1.00000000
+					1.00000000
+				]
+				MaterialRoughness: 0.71799999
+				MaterialMetalness: 0.79200000
+			}
+		}
+	}
+	{
 		UUID: 15789518256198705497
 		Name: "Camera"
 		Flags: 0
@@ -122,12 +545,12 @@ Entities: [
 		Transform: {
 			LocalPosition: [
 				-0.01000000
-				7.03000021
-				6.32999992
+				8.46000004
+				-13.56999969
 			]
 			LocalRotation: [
 				33.02000046
-				0.00000000
+				177.97000122
 				0.00000000
 			]
 			LocalScale: [
@@ -142,187 +565,6 @@ Entities: [
 				Fov: 60.00000000
 				NearPlane: 0.10000000
 				FarPlane: 100.00000000
-			}
-		}
-	}
-	{
-		UUID: 16355351371188371809
-		Name: "Visuals"
-		Flags: 0
-		Enabled: true
-		Parent: 0
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalRotation: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-
-		}
-	}
-	{
-		UUID: 15453848323946505492
-		Name: "Directional Light"
-		Flags: 0
-		Enabled: true
-		Parent: 16355351371188371809
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalRotation: [
-				18.70999908
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-			DirectionalLight: {
-				Enabled: true
-				color: [
-					1.00000000
-					1.00000000
-					1.00000000
-					1.00000000
-				]
-			}
-		}
-	}
-	{
-		UUID: 8248514199953824040
-		Name: "Box"
-		Flags: 0
-		Enabled: true
-		Parent: 0
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				-0.97000003
-				0.00000000
-			]
-			LocalRotation: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				15.09000015
-			]
-		}
-		Components: {
-			MeshRenderer: {
-				Enabled: true
-				Model: {
-
-					UUID: 16401345901566762450
-					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
-				}
-				Material_Albedo_Image: {
-
-					UUID: 6095937700928346905
-					Path: "W:\\source\\projects\\Engin3\\assets\\textures\\viking_room.png"
-				}
-				MaterialAlbedoColor: [
-					1.00000000
-					0.00000000
-					0.00000000
-					1.00000000
-				]
-				MaterialRoughness: 0.45300001
-				MaterialMetalness: 0.00000000
-			}
-		}
-	}
-	{
-		UUID: 4723970445347275476
-		Name: "New Entity"
-		Flags: 0
-		Enabled: true
-		Parent: 11112826187318486903
-		Transform: {
-			LocalPosition: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalRotation: [
-				0.00000000
-				0.00000000
-				0.00000000
-			]
-			LocalScale: [
-				1.00000000
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-
-		}
-	}
-	{
-		UUID: 7906161655014231741
-		Name: "Small Box"
-		Flags: 0
-		Enabled: true
-		Parent: 0
-		Transform: {
-			LocalPosition: [
-				-6.15000010
-				-0.19000000
-				-3.31999993
-			]
-			LocalRotation: [
-				0.00000000
-				0.56999999
-				9.46000004
-			]
-			LocalScale: [
-				1.23000002
-				1.00000000
-				1.00000000
-			]
-		}
-		Components: {
-			MeshRenderer: {
-				Enabled: true
-				Model: {
-
-					UUID: 16401345901566762450
-					Path: "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb"
-				}
-				MaterialAlbedoColor: [
-					1.00000000
-					0.81690145
-					0.00000000
-					1.00000000
-				]
-				MaterialRoughness: 0.46300000
-				MaterialMetalness: 1.00000000
-			}
-			MoverComponent: {
-				Enabled: true
 			}
 		}
 	}

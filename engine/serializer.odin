@@ -1,0 +1,538 @@
+package engine
+import "packages:odin-lua/lua"
+import "packages:odin-lua/luaL"
+import "core:runtime"
+import "core:strings"
+import "core:fmt"
+import "core:os"
+import "core:reflect"
+import "core:math/bits"
+import "core:log"
+import c "core:c/libc"
+import intr "base:intrinsics"
+
+SerializationMode :: enum {
+    Serialize,
+    Deserialize,
+}
+
+SerializeContext :: struct {
+    L: ^lua.State,
+
+    mode: SerializationMode,
+    global_table: i64,
+    is_global: bool,
+
+    // Serialization Data
+    array_index: int,
+    table_count: int,
+    table_names: [dynamic]string,
+}
+
+serialize_init :: proc(s: ^SerializeContext) {
+    s.L = luaL.newstate()
+    luaL.openlibs(s.L)
+    s.is_global = true
+    s.mode = .Serialize
+}
+
+serialize_init_data :: proc(s: ^SerializeContext, data: []byte) {
+    s.L = luaL.newstate()
+    L := s.L
+
+    bytecode := cstring(&data[0])
+    if luaL.loadbufferx(L, bytecode, c.ptrdiff_t(len(data)), "Config", "b") != lua.OK {
+        log.error("Error reading bytecode")
+        return
+    }
+
+    if lua.pcall(L, 0, 0, 0) != lua.OK {
+        log.errorf("Error executing bytecode: %v", lua.tostring(L, -1))
+        return
+    }
+
+    s.mode = .Deserialize
+    s.is_global = true
+}
+
+serialize_init_file :: proc(s: ^SerializeContext, file_name: string) {
+    s.L = luaL.newstate()
+    L := s.L
+
+    if luaL.loadfile(L, strings.clone_to_cstring(file_name, context.temp_allocator)) != lua.OK {
+        log.error("Error reading bytecode")
+        return
+    }
+
+    if lua.pcall(L, 0, 0, 0) != lua.OK {
+        log.errorf("Error executing bytecode: %v", lua.tostring(L, -1))
+        return
+    }
+
+    s.mode = .Deserialize
+    s.is_global = true
+}
+
+serialize_deinit :: proc(s: ^SerializeContext) {
+    lua.close(s.L)
+    delete(s.table_names)
+}
+
+serialize_begin_table :: proc(s: ^SerializeContext, name: string) {
+    L := s.L
+    switch s.mode {
+    case .Serialize:
+        // begin_stack(L)
+        lua.newtable(L)
+        append(&s.table_names, name)
+        s.table_count += 1
+
+        if s.is_global {
+            s.is_global = false
+            s.global_table = i64(luaL.ref(L, lua.REGISTRYINDEX))
+            lua.rawgeti(L, lua.REGISTRYINDEX, s.global_table)
+        }
+    case .Deserialize:
+        name := strings.clone_to_cstring(name, context.temp_allocator)
+        if s.is_global {
+            lua.getglobal(L, name)
+            s.is_global = false
+        } else {
+            lua.getfield(L, -1, name)
+        }
+    }
+}
+
+serialize_end_table :: proc(s: ^SerializeContext) {
+    L := s.L
+    switch s.mode {
+    case .Serialize:
+        s.table_count -= 1
+
+        name := strings.clone_to_cstring(s.table_names[s.table_count], context.temp_allocator)
+        if s.table_count == 0 {
+            lua.setglobal(L, name)
+        } else {
+            lua.setfield(L, -2, name)
+        }
+    case .Deserialize:
+        lua.pop(L, 1)
+    }
+}
+
+serialize_begin_table_int :: proc(s: ^SerializeContext, key: int) {
+    L := s.L
+    assert(!s.is_global)
+
+    switch s.mode {
+    case .Serialize:
+        lua.pushinteger(L, i64(key))
+        lua.newtable(L)
+    case .Deserialize:
+        lua.pushinteger(L, i64(key))
+        lua.gettable(L, -2)
+    }
+}
+
+serialize_end_table_int :: proc(s: ^SerializeContext) {
+    L := s.L
+
+    switch s.mode {
+    case .Serialize:
+        lua.settable(L, -3)
+    case .Deserialize:
+        lua.pop(L, 1)
+    }
+}
+
+serialize_begin_array :: proc(s: ^SerializeContext, name: string) {
+    switch s.mode {
+    case .Serialize:
+        s.array_index += 1
+    case .Deserialize:
+    }
+    serialize_begin_table(s, name)
+}
+
+serialize_end_array :: proc(s: ^SerializeContext) {
+    serialize_end_table(s)
+    switch s.mode {
+    case .Serialize:
+        s.array_index -= 1
+    case .Deserialize:
+    }
+}
+
+serialize_do_field_int :: proc(s: ^SerializeContext, key: int, value: any) {
+    rt :: runtime
+    L := s.L
+    switch s.mode {
+    case .Serialize:
+        begin_stack(L)
+
+        lua.pushinteger(L, i64(key))
+
+        serialize_actually_do_field(s, value)
+    case .Deserialize:
+        begin_stack(L)
+
+        lua.pushinteger(L, i64(key))
+        lua.gettable(L, -2)
+
+        serialize_read_field(s, value)
+    }
+}
+
+serialize_do_field_string :: proc(s: ^SerializeContext, name: string, value: any) {
+    rt :: runtime
+    L := s.L
+    switch s.mode {
+    case .Serialize:
+        begin_stack(L)
+
+        lua.pushstring(L, name)
+
+        serialize_actually_do_field(s, value)
+    case .Deserialize:
+        begin_stack(L)
+
+        type := lua.getfield(L, -1, strings.clone_to_cstring(name, context.temp_allocator))
+
+        fmt.println("Before: ", value)
+        serialize_read_field(s, value)
+        fmt.println("After: ", value)
+    }
+}
+
+serialize_do_field_type :: proc(s: ^SerializeContext, name: string, value: ^$T) where intr.type_is_bit_set(T) {
+    rt :: runtime
+    L := s.L
+    switch s.mode {
+    case .Serialize:
+        begin_stack(L)
+
+        lua.pushstring(L, name)
+
+        serialize_actually_do_field(s, any{value, typeid_of(T)})
+    case .Deserialize:
+        begin_stack(L)
+
+        type := lua.getfield(L, -1, strings.clone_to_cstring(name, context.temp_allocator))
+
+        // serialize_read_field(s, value)
+        bit_data := lua.tointeger(L, -1)
+        value^ = transmute(T)bit_data
+    }
+}
+
+serialize_do_field :: proc {
+    serialize_do_field_int,
+    serialize_do_field_string,
+    serialize_do_field_type,
+}
+
+assign_int :: proc(val: any, i: $T) -> bool {
+    v := reflect.any_core(val)
+    switch &dst in v {
+    case i8:      dst = i8     (i)
+    case i16:     dst = i16    (i)
+    case i16le:   dst = i16le  (i)
+    case i16be:   dst = i16be  (i)
+    case i32:     dst = i32    (i)
+    case i32le:   dst = i32le  (i)
+    case i32be:   dst = i32be  (i)
+    case i64:     dst = i64    (i)
+    case i64le:   dst = i64le  (i)
+    case i64be:   dst = i64be  (i)
+    case i128:    dst = i128   (i)
+    case i128le:  dst = i128le (i)
+    case i128be:  dst = i128be (i)
+    case u8:      dst = u8     (i)
+    case u16:     dst = u16    (i)
+    case u16le:   dst = u16le  (i)
+    case u16be:   dst = u16be  (i)
+    case u32:     dst = u32    (i)
+    case u32le:   dst = u32le  (i)
+    case u32be:   dst = u32be  (i)
+    case u64:     dst = u64    (i)
+    case u64le:   dst = u64le  (i)
+    case u64be:   dst = u64be  (i)
+    case u128:    dst = u128   (i)
+    case u128le:  dst = u128le (i)
+    case u128be:  dst = u128be (i)
+    case int:     dst = int    (i)
+    case uint:    dst = uint   (i)
+    case uintptr: dst = uintptr(i)
+    case: return false
+    }
+    return true
+}
+
+serialize_read_field :: proc(s: ^SerializeContext, value: any) {
+    rt :: runtime
+    L := s.L
+
+    ti := rt.type_info_base(type_info_of(value.id))
+    a := any{value.data, ti.id}
+
+    #partial switch info in ti.variant {
+    case rt.Type_Info_Named:
+        unreachable()
+    case rt.Type_Info_Integer:
+        u := lua.tointeger(L, -1)
+
+        assign_int(value, u)
+
+    case rt.Type_Info_Float:
+        u := lua.tonumber(L, -1)
+
+        switch &f in a {
+        case f16: f = auto_cast u
+        case f32: f = auto_cast u
+        case f64: f = auto_cast u
+        }
+    case rt.Type_Info_String:
+        str := lua.tostring(L, -1)
+        switch &s in a {
+        case string:
+            s = strings.clone(str)
+        case cstring:
+            s = strings.clone_to_cstring(str)
+        }
+    case rt.Type_Info_Boolean:
+        val := lua.toboolean(L, -1)
+
+        switch &b in a {
+        case bool: b = auto_cast val
+        case b8:   b = auto_cast val
+        case b16:  b = auto_cast val
+        case b32:  b = auto_cast val
+        case b64:  b = auto_cast val
+        }
+    case rt.Type_Info_Enum:
+        name := lua.tostring(L, -1)
+        enum_value, found := reflect.enum_from_name_any(ti.id, name)
+        assert(found, "Could not find enum from name")
+
+        assign_int(value, enum_value)
+    case rt.Type_Info_Bit_Set:
+        bit_data := lua.tointeger(L, -1)
+
+        assign_int(value, bit_data)
+    case:
+        unreachable()
+    }
+}
+
+serialize_actually_do_field :: proc(s: ^SerializeContext, value: any) {
+    rt :: runtime
+    L := s.L
+
+    ti := rt.type_info_base(type_info_of(value.id))
+    a := any{value.data, ti.id}
+
+    #partial switch info in ti.variant {
+    case rt.Type_Info_Named:
+        unreachable()
+    case rt.Type_Info_Integer:
+        u: i64
+        switch i in a {
+        case i8:      u = i64(i)
+        case i16:     u = i64(i)
+        case i32:     u = i64(i)
+        case i64:     u = i64(i)
+        case i128:    u = i64(i)
+        case int:     u = i64(i)
+        case u8:      u = i64(i)
+        case u16:     u = i64(i)
+        case u32:     u = i64(i)
+        case u64:     u = i64(i)
+        case u128:    u = i64(i)
+        case uint:    u = i64(i)
+        case uintptr: u = i64(i)
+
+        case i16le:  u = i64(i)
+        case i32le:  u = i64(i)
+        case i64le:  u = i64(i)
+        case u16le:  u = i64(i)
+        case u32le:  u = i64(i)
+        case u64le:  u = i64(i)
+        case u128le: u = i64(i)
+
+        case i16be:  u = i64(i)
+        case i32be:  u = i64(i)
+        case i64be:  u = i64(i)
+        case u16be:  u = i64(i)
+        case u32be:  u = i64(i)
+        case u64be:  u = i64(i)
+        case u128be: u = i64(i)
+        }
+        lua.pushinteger(L, u)
+    case rt.Type_Info_Float:
+        u: f64
+        switch f in a {
+        case f16: u = f64(f)
+        case f32: u = f64(f)
+        case f64: u = f64(f)
+        }
+        lua.pushnumber(L, u)
+    case rt.Type_Info_String:
+        switch s in a {
+        case string:
+            lua.pushstring(L, s)
+        case cstring:
+            lua.pushcstring(L, s)
+        }
+    case rt.Type_Info_Boolean:
+        val: bool
+        switch b in a {
+        case bool: val = bool(b)
+        case b8:   val = bool(b)
+        case b16:  val = bool(b)
+        case b32:  val = bool(b)
+        case b64:  val = bool(b)
+        }
+        lua.pushboolean(L, val)
+    case rt.Type_Info_Enum:
+        name, found := reflect.enum_name_from_value_any(value)
+        assert(found, "Could not find enum name with reflection")
+        lua.pushstring(L, name)
+    case rt.Type_Info_Bit_Set:
+        is_bit_set_different_endian_to_platform :: proc(ti: ^runtime.Type_Info) -> bool {
+            if ti == nil {
+                return false
+            }
+            t := runtime.type_info_base(ti)
+            #partial switch info in t.variant {
+            case runtime.Type_Info_Integer:
+                switch info.endianness {
+                case .Platform: return false
+                case .Little:   return ODIN_ENDIAN != .Little
+                case .Big:      return ODIN_ENDIAN != .Big
+                }
+            }
+            return false
+        }
+
+        bit_data: u64
+        bit_size := u64(8*ti.size)
+
+        do_byte_swap := is_bit_set_different_endian_to_platform(info.underlying)
+
+        switch bit_size {
+        case  0: bit_data = 0
+        case  8:
+            x := (^u8)(value.data)^
+            bit_data = u64(x)
+        case 16:
+            x := (^u16)(value.data)^
+            if do_byte_swap {
+                x = bits.byte_swap(x)
+            }
+            bit_data = u64(x)
+        case 32:
+            x := (^u32)(value.data)^
+            if do_byte_swap {
+                x = bits.byte_swap(x)
+            }
+            bit_data = u64(x)
+        case 64:
+            x := (^u64)(value.data)^
+            if do_byte_swap {
+                x = bits.byte_swap(x)
+            }
+            bit_data = u64(x)
+        case: panic("unknown bit_size size")
+        }
+        lua.pushinteger(L, i64(bit_data))
+    case:
+        unreachable()
+    }
+    lua.settable(L, -3)
+}
+
+LUA_DUMPER :: `
+function spairs(t, order)
+    -- collect the keys
+    local keys = {}
+    for k in pairs(t) do keys[#keys+1] = k end
+
+    -- if order function given, sort by it by passing the table and keys a, b,
+    -- otherwise just sort the keys 
+    if order then
+        table.sort(keys, function(a,b) return order(t, a, b) end)
+    else
+        table.sort(keys)
+    end
+
+    -- return the iterator function
+    local i = 0
+    return function()
+        i = i + 1
+        if keys[i] then
+            return keys[i], t[keys[i]]
+        end
+    end
+end
+
+function tableToLuaStringWithTableName(tbl, tableName, indent)
+    local result = ""
+    indent = indent or ""
+
+    if type(tbl) == "table" then
+        if tableName == nil then
+            result = result .. "{\n"
+        else
+            result = result .. tableName .. " = {\n"
+        end
+
+        for key, value in spairs(tbl) do
+            local keyString = tostring(key)
+            if type(key) == "number" then
+                keyString = string.format("[%q]", key)
+            end
+
+            local valueString = ""
+            if type(value) == "table" then
+                valueString = tableToLuaStringWithTableName(value, nil, indent .. "    ")
+            elseif type(value) == "string" then
+                valueString = string.format("%q", value)
+            else
+                valueString = tostring(value)
+            end
+
+            result = result .. indent .. "    " .. keyString .. " = " .. valueString .. ",\n"
+        end
+
+        result = result .. indent .. "}"
+    else
+        result = tostring(tbl)
+    end
+
+    return result
+end
+
+return tableToLuaStringWithTableName
+`
+
+serialize_dump :: proc(s: ^SerializeContext, output: string) {
+    assert(s.table_count == 0, "Did not close all the tables")
+    L := s.L
+
+    if luaL.dostring(L, LUA_DUMPER) != lua.OK {
+        fmt.eprint("Error loading dumper")
+        return
+    }
+
+    lua.rawgeti(L, lua.REGISTRYINDEX, s.global_table)
+    lua.pushstring(L, s.table_names[0])
+
+    if lua.pcall(L, 2, 1, 0) != lua.OK {
+        fmt.eprintf("Error calling dump: %v", lua.tostring(L, -1))
+        return
+    }
+
+    data := transmute([]byte)lua.tostring(L, -1)
+    fmt.print(string(data))
+    os.write_entire_file(output, data)
+}

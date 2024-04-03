@@ -33,7 +33,7 @@ ComponentVTable :: struct {
     prop_changed: #type proc(this: rawptr, prop: any),
 
     // @Editor: Editor only field, allows a component to have custom imgui.
-    editor_ui: #type proc(this: rawptr),
+    editor_ui: #type proc(this: rawptr, editor: ^Editor, s: any) -> bool,
 
     // Copies the component and returns a new instance.
     copy: #type proc(this: rawptr) -> rawptr,
@@ -50,7 +50,9 @@ component_default_prop_changed :: proc(this: rawptr, prop: any) {
     this.world.modified = true
 }
 
-component_default_editor_ui :: proc(this: rawptr) {}
+component_default_editor_ui :: proc(this: rawptr, editor: ^Editor, s: any) -> bool {
+    return imgui_draw_struct(editor, s)
+}
 
 component_default_copy :: proc(this: rawptr) -> rawptr {
     assert(false, "Copy needs to be implemented")
@@ -80,8 +82,17 @@ Component :: struct {
 
 ComponentConstructor :: #type proc() -> rawptr
 
+ComponentMap :: map[typeid]^Component
+Children :: [dynamic]Handle
+
+@(LuaExport = {
+    Type = {Light},
+    Fields = {
+        transform = "transform",
+    },
+})
 Entity :: struct {
-    components: map[typeid]^Component,
+    components: ComponentMap,
     world: ^World,
     handle: Handle,
     id: UUID,
@@ -93,7 +104,7 @@ Entity :: struct {
 
     transform: TransformComponent,
     parent: Handle,
-    children: [dynamic]Handle,
+    children: Children,
 }
 
 Handle :: UUID
@@ -133,7 +144,7 @@ copy_component :: proc(w: ^World, handle, target: Handle, id: typeid) {
     go.components[id].owner = handle
     go.components[id].world = w
 
-    go.components[id]->init()
+    // go.components[id]->init()
 }
 
 add_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) {
@@ -146,7 +157,7 @@ add_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) {
     go.components[id].owner = handle
     go.components[id].world = w
 
-    go.components[id]->init()
+    // go.components[id]->init()
 }
 
 add_component_type :: proc(w: ^World, handle: Handle, $C: typeid) {
@@ -159,7 +170,7 @@ add_component_type :: proc(w: ^World, handle: Handle, $C: typeid) {
     go.components[C].owner = handle
     go.components[C].world = w
 
-    go.components[C]->init()
+    // go.components[C]->init()
 }
 
 add_component :: proc {
@@ -242,6 +253,7 @@ has_component :: proc {
 when USE_EDITOR {
     WorldEditorData :: struct {
         modified: bool,
+        file_path: string,
     }
 } else {
     WorldEditorData :: struct {}
@@ -250,9 +262,6 @@ when USE_EDITOR {
 World :: struct {
     // The name of this world/level.
     name: string,
-
-    // NOTE(minebill): This does not belong here, it is editor-only data.
-    file_path: string,
 
     objects: map[Handle]Entity,
     local_id_to_uuid: map[int]UUID,
@@ -313,6 +322,24 @@ world_update :: proc(world: ^World, delta: f64, update_components := true) {
 
     root := &world.objects[world.root]
     update_object(root, world.root, delta, update_components)
+}
+
+world_init_components :: proc(world: ^World) {
+    tracy.Zone()
+    update_object :: proc(go: ^Entity, handle: Handle) {
+        tracy.Zone()
+        for child_handle in go.children {
+            child := get_object(go.world, child_handle)
+            update_object(child, child_handle)
+        }
+
+        for id, component in go.components {
+            component->init()
+        }
+    }
+
+    root := &world.objects[world.root]
+    update_object(root, world.root)
 }
 
 get_object :: proc(world: ^World, handle: Handle) -> ^Entity {

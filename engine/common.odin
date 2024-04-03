@@ -4,8 +4,37 @@ import "core:strings"
 import "core:math"
 import "core:mem"
 
+@(LuaExport = {
+    Name = "vec2",
+    Type = {Full, Light},
+    SwizzleTypes = {vec3, vec4},
+    Fields = xy,
+    Metamethods = {
+        __tostring = vec2_to_string,
+    },
+})
 vec2 :: [2]f32
+
+@(LuaExport = {
+    Name = "vec3",
+    Type = {Full, Light},
+    SwizzleTypes = {vec2, vec4},
+    Fields = xyz,
+    Metamethods = {
+        __tostring = vec3_to_string,
+    },
+})
 vec3 :: [3]f32
+
+@(LuaExport = {
+    Name = "vec4",
+    Type = {Full, Light},
+    SwizzleTypes = {vec2, vec3},
+    Fields = xyzw,
+    Metamethods = {
+        __tostring = vec4_to_string,
+    },
+})
 vec4 :: [4]f32
 
 Color :: distinct vec4

@@ -9,6 +9,11 @@ import imgui "packages:odin-imgui"
 import tracy "packages:odin-tracy"
 import "core:io"
 import "core:encoding/json"
+import "packages:odin-lua/luaL"
+import "packages:odin-lua/lua"
+import "packages:mani/mani"
+import "core:strings"
+import "core:slice"
 
 Serializer :: struct {
     // Serialize data
@@ -24,7 +29,15 @@ Serializer :: struct {
 ComponentSerializer :: #type proc(this: rawptr, serialize: bool, s: ^Serializer)
 
 // Special case component, every gameobject has a Transform by default.
-@(component)
+@(component, LuaExport = {
+    Name = "Transform",
+    Type = {Full, Light},
+    Fields = {
+        local_position = "position",
+        local_rotation = "rotation",
+        local_scale    = "scale",
+    },
+})
 TransformComponent :: struct {
     local_position: vec3,
     local_rotation: vec3,
@@ -85,7 +98,12 @@ update_transform :: proc(go: ^Entity, this: ^TransformComponent, update: f64) {
     parent := get_object(go.world, go.parent)
 
     s := linalg.matrix4_scale(go.transform.local_scale)
-    r := linalg.matrix4_from_euler_angles_xyz(expand_values(go.transform.local_rotation))
+    rot := go.transform.local_rotation
+    r := linalg.matrix4_from_euler_angles_xyz(
+        rot.x * math.RAD_PER_DEG,
+        rot.y * math.RAD_PER_DEG,
+        rot.z * math.RAD_PER_DEG,
+    )
     t := linalg.matrix4_translate(go.transform.local_position)
     go.transform.local_matrix = t * r * s
 
@@ -546,7 +564,8 @@ bg_update :: proc(this: rawptr, delta: f64) {
 
 when USE_EDITOR {
 
-bg_editor_ui :: proc(this: rawptr) {
+bg_editor_ui :: proc(this: rawptr, editor: ^Editor, s: any) -> (modified: bool) {
+    modified |= component_default_editor_ui(this, editor, s)
     this := cast(^BallGenerator)this
 
     imgui.Separator()
@@ -581,6 +600,7 @@ bg_editor_ui :: proc(this: rawptr) {
             metalness += f32(1) / f32(this.spawn_count.x)
         }
     }
+    return
 }
 
 }
@@ -660,4 +680,272 @@ serialize_camera :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
         aspect := f32(g_engine.width) / f32(g_engine.height)
         this.projection = linalg.matrix4_perspective_f32(this.fov, aspect, this.near_plane, this.far_plane)
     }
+}
+
+@(component="Core/Scripting")
+ScriptComponent :: struct {
+    using base: Component,
+
+    script_fields:          map[string]LuaValue,
+    script:                 ^LuaScript,
+    instance:               ScriptInstance,
+    lua_entity:             LuaEntity,
+}
+
+@(constructor=ScriptComponent)
+make_script_component :: proc() -> rawptr {
+    script := new(ScriptComponent)
+    script.base = default_component_constructor()
+
+    script.init = script_init
+    script.update = script_update
+    script.destroy = script_destroy
+
+    when USE_EDITOR {
+        script.editor_ui = script_editor_ui
+    }
+    return script
+}
+
+script_init :: proc(this: rawptr) {
+    tracy.Zone()
+    this := cast(^ScriptComponent)this
+    this.script = cast(^LuaScript)load_asset(this.script.path, LuaScript, this.script.id)
+    this.instance = create_script_instance(this.script)
+
+    go := get_object(this.world, this.owner)
+    this.lua_entity = LuaEntity{
+        world = this.world,
+        entity = u64(this.owner),
+        owner = go,
+    }
+
+    if is_script_instance_valid(this.instance) {
+
+        L := this.instance.state
+
+        stack_before := lua.gettop(L)
+
+        lua.newtable(L)
+
+        this.instance.instance_table = i64(luaL.ref(L, lua.REGISTRYINDEX))
+        lua.rawgeti(L, lua.REGISTRYINDEX, this.instance.instance_table)
+
+        for field in this.script.properties.fields {
+            if field.name in this.script_fields {
+                value := this.script_fields[field.name]
+                log.debugf("Initializing script export %v from cache with value %v", field.name, value)
+                script_set_field(&this.instance, field.name, value, -1)
+            } else {
+                script_set_field(&this.instance, field.name, field.default, -1)
+            }
+        }
+
+        for field in this.script.properties.instance_fields {
+            script_set_field(&this.instance, field.name, field.default, -1)
+        }
+
+        script_set_field(&this.instance, "entity", this.lua_entity, -1)
+
+        lua.rawgeti(L, lua.REGISTRYINDEX, this.instance.on_init)
+
+        if lua.gettop(L)+2 > lua.MINSTACK {
+            log.error("Lua stack overflow: Insufficient space to push values.")
+            return
+        }
+
+        lua.pushvalue(L, -2)
+
+        if lua.pcall(L, 1, 0, 0) != lua.OK {
+            message := lua.tostring(L, -1)
+            log.errorf("Error calling script on_init: %v", message)
+            lua.pop(L, lua.gettop(L) - stack_before)
+        }
+
+        items_pushed := lua.gettop(L) - stack_before
+
+        lua.pop(L, items_pushed)
+    }
+}
+
+script_update :: proc(this: rawptr, delta: f64) {
+    tracy.Zone()
+    this := cast(^ScriptComponent)this
+
+    if is_script_instance_valid(this.instance) {
+        L := this.instance.state
+
+        stack_before := lua.gettop(L)
+
+
+        lua.rawgeti(L, lua.REGISTRYINDEX, this.instance.on_update)
+        if !lua.isfunction(L, -1) {
+            log.error("init_ref is not a function")
+            return
+        }
+
+        if lua.gettop(L)+2 > lua.MINSTACK {
+            log.error("Lua stack overflow: Insufficient space to push values.")
+            return
+        }
+
+        lua.rawgeti(L, lua.REGISTRYINDEX, this.instance.instance_table)
+        lua.pushnumber(L, delta)
+
+        if lua.pcall(L, 2, 0, 0) != lua.OK {
+            message := lua.tostring(L, -1)
+            log.errorf("Error calling script on_update: %v", message)
+            lua.pop(L, lua.gettop(L) - stack_before)
+        }
+
+        items_pushed := lua.gettop(L) - stack_before
+
+        lua.pop(L, items_pushed)
+    }
+}
+
+script_destroy :: proc(this: rawptr) {
+    this := cast(^ScriptComponent)this
+
+    for name, _ in this.script_fields {
+        delete(name)
+    }
+    delete(this.script_fields)
+}
+
+when USE_EDITOR {
+    script_editor_ui :: proc(this: rawptr, editor: ^Editor, s: any) -> (modified: bool) {
+        // modified |= component_default_editor_ui(this, editor, s)
+        this := cast(^ScriptComponent)this
+        pos := imgui.GetCursorPos()
+        imgui.Dummy(imgui.GetContentRegionAvail())
+
+        if imgui.BeginDragDropTarget() {
+            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM"); payload != nil {
+                data := transmute(^byte)payload.Data
+                path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
+
+                this.script = cast(^LuaScript)load_asset(path, LuaScript, this.script.id)
+                this.instance = create_script_instance(this.script)
+            }
+            imgui.EndDragDropTarget()
+        }
+
+        imgui.SetCursorPos(pos)
+
+        if this.script != nil {
+            imgui.TextUnformatted(cstr(this.script.properties.name))
+
+            if imgui.TreeNode("Exports") {
+                for name, &field in this.script_fields {
+                    imgui.PushIDPtr(&field)
+                    defer imgui.PopID()
+                    imgui.TextUnformatted(cstr(name))
+                    switch &v in field {
+                    case lua.Number:
+                        sf := reflect.Struct_Field{
+                            tag = "",
+                            type = type_info_of(lua.Number),
+                        }
+                        draw_struct_field(editor, v, sf)
+                    case lua.Integer:
+                        sf := reflect.Struct_Field{
+                            tag = "",
+                            type = type_info_of(lua.Integer),
+                        }
+                        draw_struct_field(editor, v, sf)
+                    case bool:
+                        sf := reflect.Struct_Field{
+                            tag = "",
+                            type = type_info_of(bool),
+                        }
+                        draw_struct_field(editor, v, sf)
+                    case string:
+                        sf := reflect.Struct_Field{
+                            tag = "",
+                            type = type_info_of(string),
+                        }
+                        draw_struct_field(editor, v, sf)
+                    case LuaTable:
+                        assert(false, "LuaTable not implemented")
+                    }
+                }
+                imgui.TreePop()
+            }
+
+            @(static) show_instance_fields := false
+            imgui.Checkbox("Show Intance Fields", &show_instance_fields)
+            if show_instance_fields && imgui.TreeNode("Instance Fields") {
+                for field in this.script.properties.instance_fields {
+                    imgui.TextUnformatted(cstr(field.name))
+                }
+                imgui.TreePop()
+            }
+        }
+
+        return
+    }
+}
+
+@(serializer=ScriptComponent)
+serialize_script_component :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+    this := cast(^ScriptComponent)this
+    serialize_asset(&g_engine.asset_manager, s, serialize, "Script", &this.script)
+
+    if serialize {
+        w := s.writer
+        opt := s.opt
+        old := opt.sort_maps_by_key
+        opt.sort_maps_by_key = true
+
+        json.opt_write_iteration(w, opt, 1)
+        json.opt_write_key(w, opt, "Exports")
+        json.marshal_to_writer(w, this.script_fields, opt)
+
+        opt.sort_maps_by_key = old
+    }
+    else {
+        if "Exports" in s.object {
+            for field, data in s.object["Exports"].(json.Object) {
+                this.script_fields[strings.clone(field)] = json_to_lua_value(data)
+            }
+        }
+
+        if this.script != nil {
+            this.instance = create_script_instance(this.script)
+
+            if len(this.script_fields) != len(this.script.properties.fields) {
+                for field in this.script.properties.fields {
+                    this.script_fields[strings.clone(field.name)] = field.default
+                }
+            }
+        }
+    }
+}
+
+LuaScript :: struct {
+    using base: Asset,
+
+    properties: Properties,
+    bytecode: []byte,
+}
+
+json_to_lua_value :: proc(value: json.Value) -> LuaValue {
+    switch v in value {
+    case json.Null:
+        assert(false, "Null value")
+    case json.Float:
+        return LuaValue(v)
+    case json.Integer:
+        return LuaValue(v)
+    case json.Boolean:
+        return LuaValue(v)
+    case json.String:
+        return LuaValue(v)
+    case json.Object:
+        assert(false, "Object/Array not implementd for lua desirialization")
+    case json.Array:
+        assert(false, "Object/Array not implementd for lua desirialization")
+    }
+    return nil
 }

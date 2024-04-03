@@ -29,10 +29,12 @@ get_asset :: proc(am: ^AssetManager, asset: Path, $T: typeid, id: Maybe(UUID) = 
         return cast(^T)am.assets[asset]
     }
 
-    am.assets[asset] = load_asset(asset, T, id)
-    return cast(^T)am.assets[asset]
+    key := strings.clone(asset)
+    am.assets[key] = load_asset(key, T, id)
+    return cast(^T)am.assets[key]
 }
 
+// Loads an asset from path and returns it.
 load_asset :: proc(path: Path, type: typeid, id: Maybe(UUID) = nil) -> ^Asset {
     if path == "" {
         return nil
@@ -103,8 +105,3 @@ serialize_asset :: proc(am: ^AssetManager, s: ^Serializer, serialize: bool, key:
         }
     }
 }
-
-// deserialize_asset :: proc(obj: json.Object, $T: typeid) -> T where intrinsics.type_is_subtype_of(T, Asset) {
-//     path := obj["Path"].(json.String)
-//     return _load_asset(path, T)
-// }

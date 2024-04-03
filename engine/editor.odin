@@ -20,8 +20,6 @@ import "core:path/filepath"
 
 USE_EDITOR :: true
 
-POPUP_PADDING :: vec2{6, 6}
-
 EditorState :: enum {
     Edit,
     Play,
@@ -67,6 +65,7 @@ Editor :: struct {
     logger: log.Logger,
 
     force_show_fields: bool,
+    show_asset_manager: bool,
 
     allocator: mem.Allocator,
 
@@ -86,6 +85,10 @@ Editor :: struct {
     grid_shader: Shader,
 
     editor_va: RenderHandle,
+
+    scripting_engine: ScriptingEngine,
+
+    style: EditorStyle,
 }
 
 editor_init :: proc(e: ^Editor, engine: ^Engine) {
@@ -102,6 +105,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     gl.CreateVertexArrays(1, &e.editor_va)
 
     e.logger = create_capture_logger(&e.log_entries)
+    context.logger = e.logger
 
     e.content_browser.root_dir = filepath.join({os.get_current_directory(allocator = context.temp_allocator), "assets"})
     cb_navigate_to_folder(&e.content_browser, e.content_browser.root_dir)
@@ -110,6 +114,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.content_browser.textures[.FolderBack] = load_texture_from_file("assets/textures/ui/folder_back.png")
     e.content_browser.textures[.File] = load_texture_from_file("assets/textures/ui/file.png")
     e.content_browser.textures[.World] = load_texture_from_file("assets/textures/ui/world.png")
+    e.content_browser.textures[.Script] = load_texture_from_file("assets/editor/icons/lua.png")
 
     e.icons[.PlayButton] = load_texture_from_file("assets/editor/icons/play_button.png")
     e.icons[.PauseButton] = load_texture_from_file("assets/editor/icons/pause_button.png")
@@ -129,11 +134,12 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
 
     imgui.CreateContext(nil)
     io := imgui.GetIO()
-    io.ConfigFlags += {.DockingEnable, .ViewportsEnable, .IsSRGB}
+    io.ConfigFlags += {.DockingEnable, .ViewportsEnable, .IsSRGB, .NavEnableKeyboard}
     io.IniFilename = nil
     imgui.LoadIniSettingsFromDisk("editor_layout.ini")
 
-    setup_imgui_style()
+    e.style = default_style()
+    apply_style(e.style)
 
     // imgui.FontAtlas_AddFont(io.Fonts, )
     // inter_font :: #load("../assets/fonts/inter/Inter-Regular.ttf")
@@ -152,6 +158,8 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     io.FontDefault = e.fonts[.Normal]
 
     world_renderer_init(&e.renderer)
+
+    e.scripting_engine = create_scripting_engine()
 }
 
 editor_deinit :: proc(e: ^Editor) {
@@ -264,11 +272,11 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 euler.z * math.RAD_PER_DEG,
                 .XYZ)
 
-            e.engine.camera_position   = e.camera.position
+            // e.engine.camera_position   = e.camera.position
             e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
-            e.engine.camera_view       = e.camera.view
+            // e.engine.camera_view       = e.camera.view
             e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), 0.1, 200.0)
-            e.engine.camera_rotation   = e.camera.rotation
+            // e.engine.camera_rotation   = e.camera.rotation
 
             editor_render_scene(e)
         case .Play:
@@ -308,6 +316,14 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             imgui.EndMenu()
         }
 
+        if imgui.BeginMenu("Windows") {
+            if imgui.MenuItem("Asset Manager Stats") {
+                e.show_asset_manager = true
+            }
+
+            imgui.EndMenu()
+        }
+
         imgui.Checkbox("Show Depth Buffer", &show_depth_buffer)
     }
     imgui.EndMainMenuBar()
@@ -337,6 +353,8 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     editor_content_browser(e)
     editor_ui_toolstrip(e)
 
+    editor_asset_manager(e)
+
     reset_draw_stats()
 }
 
@@ -354,6 +372,7 @@ editor_render_scene :: proc(e: ^Editor) {
 
     // Render world normally
     render_world(&e.renderer, packet)
+    dbg_render(g_dbg_context)
 
     // Render editor stuff (grid, outlines, gizmo)
     gl.BindFramebuffer(gl.FRAMEBUFFER, e.renderer.final_frame_buffer.handle)
@@ -410,15 +429,21 @@ editor_on_scene_play :: proc(e: ^Editor) {
     e.state = .Play
     log.debug("On Scene Play")
 
+    // Save first
+    serialize_world(e.engine.world, e.engine.world.file_path)
+
     deserialize_world(&e.runtime_world, e.engine.world.file_path)
     e.editor_world = e.engine.world
     e.engine.world = e.runtime_world
+
+    world_init_components(&e.engine.world)
 }
 
 editor_on_scene_stop :: proc(e: ^Editor) {
     e.state = .Edit
     log.debug("On Scene Stop")
 
+    destroy_world(&e.runtime_world)
     e.engine.world = e.editor_world
 }
 
@@ -570,23 +595,29 @@ editor_entidor :: proc(e: ^Editor) {
 
                 imgui.Separator()
 
+                modified := false
+                opened := imgui.CollapsingHeader("Transform", {.Framed, .DefaultOpen}) 
                 // help_marker("The Transfrom component is a special component that is included by default" + 
                 //     " in every gameobject and as such, it has special drawing code.")
-                if imgui.CollapsingHeader("Transform", {.Framed, .DefaultOpen}) {
+
+                if opened {
                     imgui.Indent()
                     if imgui.BeginChild("Transformm", vec2{}, {.AutoResizeY}, {}) {
                         // TOOD(minebill):  Add some kind of 'debug' view to view global position as well?
                         imgui.TextUnformatted("Position")
-                        imgui_vec3("position", &go.transform.local_position)
+                        modified |= imgui_vec3("position", &go.transform.local_position)
 
                         imgui.TextUnformatted("Rotation")
-                        imgui_vec3("rotation", &go.transform.local_rotation)
+                        modified |= imgui_vec3("rotation", &go.transform.local_rotation)
 
                         imgui.TextUnformatted("Scale")
-                        imgui_vec3("scale", &go.transform.local_scale)
+                        modified |= imgui_vec3("scale", &go.transform.local_scale)
                     }
                     imgui.EndChild()
                     imgui.Unindent()
+                }
+                if modified {
+                    go.world.modified = true
                 }
 
                 imgui.SeparatorText("Components")
@@ -623,17 +654,41 @@ editor_entidor :: proc(e: ^Editor) {
             }
         }
 
-        imgui.PushStyleVarImVec2(.WindowPadding, POPUP_PADDING)
+        imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
+        imgui.SetNextWindowSize(vec2{200, 225}, .Always)
+        mouse := imgui.GetMousePos()
+        imgui.SetNextWindowPos(vec2{mouse.x - 100, mouse.y}, .Appearing)
         if imgui.BeginPopup("component_popup", {}) {
-            imgui.SeparatorText("Components")
 
-            // NOTE(minebill):  It seems like the menu items are not always ordered?
-            //                  It's annoying.
-            for category in COMPONENT_CATEGORIES {
-                paths, _ := strings.split(category.name, "/", allocator = context.temp_allocator)
+            @(static) search_text: [256]byte
+            imgui.SetNextItemWidth(imgui.GetContentRegionAvail().x)
+            imgui.SetKeyboardFocusHere()
+            @(static) search: string
+            if imgui.InputTextWithHint("##search", "ComponentName", transmute(cstring)&search_text, len(search_text), {.AlwaysOverwrite}) {
+                search = string(cstring(&search_text[0]))
+            }
+            if len(search) > 0 {
+                if imgui.BeginChild("found_components") {
+                    for id, name in COMPONENT_NAMES {
+                        if name == "TransformComponent" do continue
+                        if !strings.contains(name, search) do continue
+                        if imgui.MenuItem(cstr(name)) {
+                            handle, ok := e.selected_entity.?
+                            if ok {
+                                add_component(&e.engine.world, handle, id)
+                            }
+                        }
+                    }
+                }
+                imgui.EndChild()
 
-                level := len(paths) - 1
-                draw_submenu_or_component_selectable(e, paths, level, category.id)
+            } else {
+                for category in COMPONENT_CATEGORIES {
+                    paths, _ := strings.split(category.name, "/", allocator = context.temp_allocator)
+
+                    level := len(paths) - 1
+                    draw_submenu_or_component_selectable(e, paths, level, category.id)
+                }
             }
 
             imgui.EndPopup()
@@ -716,6 +771,8 @@ ContentBrowserTexture :: enum {
     FolderBack,
     File,
     World,
+
+    Script,
 }
 
 ContentBrowser :: struct {
@@ -772,6 +829,7 @@ editor_content_browser :: proc(e: ^Editor) {
         @(static) padding := i32(8)
         @(static) thumbnail_size := i32(64)
 
+        imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
         if imgui.BeginPopup("ContentBrowserSettings", {}) {
             imgui.DragInt("Padding", &padding)
             imgui.DragInt("Thumbnail Size", &thumbnail_size)
@@ -791,6 +849,7 @@ editor_content_browser :: proc(e: ^Editor) {
             }
             imgui.EndPopup()
         }
+        imgui.PopStyleVar()
 
         imgui.BeginChild("content view", vec2{0, 0}, {.FrameStyle} ,{})
 
@@ -831,6 +890,8 @@ editor_content_browser :: proc(e: ^Editor) {
                 case ".scen3": fallthrough
                 case ".world":
                     texture = .World
+                case ".lua":
+                    texture = .Script
                 }
             }
             imgui.ImageButton(cstr(item.name), transmute(rawptr)u64(e.content_browser.textures[texture].handle), size)
@@ -854,6 +915,7 @@ editor_content_browser :: proc(e: ^Editor) {
             }
 
             open_popup := false
+            imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
             if imgui.BeginPopupContextItem() {
                 if imgui.MenuItem("Delete") {
                     open_popup = true
@@ -863,6 +925,7 @@ editor_content_browser :: proc(e: ^Editor) {
                 }
                 imgui.EndPopup()
             }
+            imgui.PopStyleVar()
 
             if open_popup {
                 imgui.OpenPopup("ConfirmDeletion")
@@ -870,6 +933,7 @@ editor_content_browser :: proc(e: ^Editor) {
 
             center := imgui.Viewport_GetCenter(imgui.GetMainViewport())
             imgui.SetNextWindowPos(center, .Appearing, vec2{0.5, 0.5})
+            imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
             if imgui.BeginPopupModal("ConfirmDeletion", nil, {.AlwaysAutoResize}) {
                 if imgui.Button("Yes") {
                     imgui.CloseCurrentPopup()
@@ -879,6 +943,7 @@ editor_content_browser :: proc(e: ^Editor) {
                 }
                 imgui.EndPopup()
             }
+            imgui.PopStyleVar()
 
             if item_index, ok := e.content_browser.renaming_item.?; ok && item_index == i {
                 @(static) buffer: [256]byte
@@ -1039,7 +1104,7 @@ editor_gameobjects :: proc(e: ^Editor) {
         }
 
         // NOTE(minebill): The context menu needs to be created before drawing the children tree nodes
-        imgui.PushStyleVarImVec2(.WindowPadding, POPUP_PADDING)
+        imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
         if imgui.BeginPopupContextItem() {
             entity_create_menu(e, handle)
 
@@ -1094,10 +1159,12 @@ editor_gameobjects :: proc(e: ^Editor) {
 
         children := &get_object(&e.engine.world, go).children
 
+        imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
         if imgui.BeginPopupContextWindow() {
             entity_create_menu(e, 0)
             imgui.EndPopup()
         }
+        imgui.PopStyleVar()
         for child in children {
             tree_node_gameobject(e, child)
         }
@@ -1116,6 +1183,24 @@ editor_gameobjects :: proc(e: ^Editor) {
         }
     }
     imgui.End()
+}
+
+editor_asset_manager :: proc(e: ^Editor) {
+    if e.show_asset_manager {
+        if imgui.Begin("Asset Manager", &e.show_asset_manager) {
+            flags := imgui.TableFlags_Borders
+            if imgui.BeginTable("asset_manager_entries", 1, flags) {
+                for path, asset in g_engine.asset_manager.assets {
+                    imgui.TextWrapped(fmt.ctprintf("%v", path))
+                    imgui.TextWrapped(fmt.ctprintf("%v", asset.id))
+
+                    imgui.TableNextColumn()
+                }
+                imgui.EndTable()
+            }
+        }
+        imgui.End()
+    }
 }
 
 reset_selection :: proc(e: ^Editor) {
@@ -1143,8 +1228,17 @@ select_entity :: proc(e: ^Editor, entity: Handle, should_reset_selection := fals
 }
 
 draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
+    name: cstring
     info := type_info_of(id).variant.(reflect.Type_Info_Named)
-    name := cstr(COMPONENT_NAMES[id]) if id in COMPONENT_NAMES else cstr(info.name)
+    name = cstr(COMPONENT_NAMES[id]) if id in COMPONENT_NAMES else cstr(info.name)
+
+    if id == typeid_of(ScriptComponent) {
+        script := cast(^ScriptComponent)component
+
+        if script.script != nil && script.script.properties.name != "" {
+            name = fmt.ctprintf("Script - %s", script.script.properties.name)
+        }
+    }
 
     imgui.PushStyleVarImVec2(.FramePadding, {4, 4})
     // opened := imgui.CollapsingHeader(name, {.AllowOverlap, .DefaultOpen})
@@ -1161,7 +1255,7 @@ draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
     //     imgui.OpenPopup("ComponentSettings", {})
     // }
 
-    imgui.PushStyleVarImVec2(.WindowPadding, POPUP_PADDING)
+    imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
     if imgui.BeginPopupContextItem() {
         if imgui.MenuItem("Copy Component") {
             // TODO
@@ -1268,7 +1362,7 @@ imgui_flags_box :: proc(name: string,  flags: ^$B/bit_set[$E]) {
     }
 }
 
-imgui_vec3 :: proc(id: cstring, v: ^vec3) {
+imgui_vec3 :: proc(id: cstring, v: ^vec3) -> (modified: bool) {
     X_COLOR :: vec4{0.92, 0.24, 0.27, 1.0}
     X_COLOR_HOVER :: vec4{0.76, 0.20, 0.22, 1.0}
     Y_COLOR :: vec4{0.20, 0.67, 0.32, 1.0}
@@ -1296,7 +1390,7 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) {
     imgui.SetNextItemWidth(width)
     imgui.PushStyleColorImVec4(.FrameBg, X_COLOR)
     imgui.PushStyleColorImVec4(.FrameBgHovered, X_COLOR_HOVER)
-    imgui.DragFloat("##x", &v.x, 0.01, min(f32), max(f32), "%.2f", {})
+    modified |= imgui.DragFloat("##x", &v.x, 0.01, min(f32), max(f32), "%.2f", {})
     imgui.PopStyleColor(2)
 
     imgui.SameLine()
@@ -1309,7 +1403,7 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) {
     imgui.SetNextItemWidth(width)
     imgui.PushStyleColorImVec4(.FrameBg, Y_COLOR)
     imgui.PushStyleColorImVec4(.FrameBgHovered, Y_COLOR_HOVER)
-    imgui.DragFloat("##y", &v.y, 0.01, min(f32), max(f32), "%.2f", {})
+    modified |= imgui.DragFloat("##y", &v.y, 0.01, min(f32), max(f32), "%.2f", {})
     imgui.PopStyleColor(2)
 
     imgui.SameLine()
@@ -1323,19 +1417,20 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) {
     imgui.SetNextItemWidth(width)
     imgui.PushStyleColorImVec4(.FrameBg, Z_COLOR)
     imgui.PushStyleColorImVec4(.FrameBgHovered, Z_COLOR_HOVER)
-    imgui.DragFloat("##z", &v.z, 0.01, min(f32), max(f32), "%.2f", {})
+    modified |= imgui.DragFloat("##z", &v.z, 0.01, min(f32), max(f32), "%.2f", {})
     imgui.PopStyleColor(2)
 
     // imgui.DrawList_ChannelsMerge(list)
 
     imgui.PopID()
+    return
 }
 
 imgui_draw_component :: proc(e: ^Editor, s: any) -> (modified: bool) {
-    modified = imgui_draw_struct(e, s)
+    // modified = imgui_draw_struct(e, s)
 
     base := cast(^Component)s.data
-    base->editor_ui()
+    base->editor_ui(e, s)
 
     return
 }
@@ -1357,7 +1452,7 @@ imgui_draw_struct :: proc(e: ^Editor, s: any) -> (modified: bool) {
             switch field.type.id {
             case:
             if imgui.TreeNodeEx(cstr(field.name), {.FramePadding}) {
-                if imgui_draw_struct_field(e, s, field) {
+                if draw_struct_field(e, reflect.struct_field_value(s, field), field) {
                     if s.id in COMPONENT_INDICES {
                         base := cast(^Component)s.data
                         if base.prop_changed != nil {
@@ -1370,7 +1465,7 @@ imgui_draw_struct :: proc(e: ^Editor, s: any) -> (modified: bool) {
             } 
             }
         } else {
-            if imgui_draw_struct_field(e, s, field) {
+            if draw_struct_field(e, reflect.struct_field_value(s, field), field) {
                 if s.id in COMPONENT_INDICES {
                     base := cast(^Component)s.data
                     if base.prop_changed != nil {
@@ -1387,8 +1482,7 @@ imgui_draw_struct :: proc(e: ^Editor, s: any) -> (modified: bool) {
     return
 }
 
-imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field) -> (modified: bool) {
-    value := reflect.struct_field_value(s, field)
+draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -> (modified: bool) {
     switch {
     case typeid_of(Handle) == field.type.id:
         handle := &value.(Handle)
@@ -1437,7 +1531,7 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
                 help_marker("Missing upper bound in range tag", .Warning)
             }
         } else {
-            modified = imgui.InputScalar(
+            modified = imgui.DragScalar(
                 cstr(field.name),
                 number_to_imgui_scalar(value),
                 value.data)
@@ -1527,6 +1621,25 @@ imgui_draw_struct_field :: proc(e: ^Editor, s: any, field: reflect.Struct_Field)
 
                     if asset := get_asset(&e.engine.asset_manager, path, Image); asset != nil {
                         image^ = asset
+                        modified = true
+                    }
+                }
+                imgui.EndDragDropTarget()
+            }
+        case typeid_of(LuaScript):
+            script := &value.(^LuaScript)
+
+            imgui.Button(cstr(script^.path) if script^ != nil else "nil")
+
+            if imgui.BeginDragDropTarget() {
+                if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM"); payload != nil {
+                    data := transmute(^byte)payload.Data
+                    path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
+
+                    log.debug(path)
+
+                    if asset := get_asset(&e.engine.asset_manager, path, LuaScript); asset != nil {
+                        script^ = asset
                         modified = true
                     }
                 }
@@ -1789,3 +1902,4 @@ capture_logger_proc :: proc(
 
     append(capture_logger.log_entries, LogEntry{level, strings.clone(text), options, location})
 }
+

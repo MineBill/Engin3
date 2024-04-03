@@ -129,7 +129,7 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         }
     }
 
-    do_depth_pass(world_renderer, mesh_components[:],packet)
+    do_depth_pass(world_renderer, mesh_components[:], packet)
 
     // TODO(minebill): Different uniform buffer for point_lights/spot_lights?
     num_point_lights := 0
@@ -301,7 +301,8 @@ do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRe
                                 .XYZ)
             dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, -1})
 
-            corners := get_frustum_corners_world_space(packet.camera.projection, packet.camera.view)
+            proj := linalg.matrix4_perspective_f32(math.to_radians(f32(50)), f32(packet.size.x) / f32(packet.size.y), 0.1, 20.0)
+            corners := get_frustum_corners_world_space(proj, packet.camera.view)
 
             center := vec3{}
 
@@ -309,6 +310,10 @@ do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRe
                 center += corner.xyz
             }
             center /= len(corners)
+
+            dbg_draw_line(g_dbg_context, center - vec3{0, 0.125, 0}, center + vec3{0, 0.125, 0})
+            dbg_draw_line(g_dbg_context, center - vec3{0.125, 0, 0}, center + vec3{0.125, 0, 0})
+            dbg_draw_line(g_dbg_context, center - vec3{0, 0, 0.125}, center + vec3{0, 0, 0.125})
 
             view_data.view = linalg.matrix4_look_at_f32(center + dir, center, vec3{0, 1, 0})
 
@@ -383,4 +388,26 @@ world_renderer_resize :: proc(world_renderer: ^WorldRenderer, width, height: int
     resize_framebuffer(&world_renderer.depth_frame_buffer, width, height)
     resize_framebuffer(&world_renderer.world_frame_buffer, width, height)
     resize_framebuffer(&world_renderer.resolved_frame_buffer, width, height)
+}
+
+get_frustum_corners_world_space :: proc(proj, view: mat4) -> (corners: [8]vec4) {
+    inv := linalg.inverse(proj * view)
+
+    i := 0
+    for x in 0..<2 {
+        for y in 0..<2 {
+            for z in 0..<2 {
+                pt := inv * vec4{
+                    2 * f32(x) - 1,
+                    2 * f32(y) - 1,
+                    2 * f32(z) - 1,
+                    1.0}
+
+                corners[i] = pt / pt.w
+
+                i += 1
+            }
+        }
+    }
+    return
 }

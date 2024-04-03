@@ -3,6 +3,11 @@ import gltf "vendor:cgltf"
 import "core:log"
 import "core:strings"
 import gl "vendor:OpenGL"
+import "packages:odin-lua/lua"
+import "packages:odin-lua/luaL"
+import c "core:c/libc"
+import "core:mem"
+import "base:runtime"
 
 @(loader=Model)
 model_loader :: proc(data: []byte) -> ^Asset {
@@ -36,7 +41,6 @@ model_loader :: proc(data: []byte) -> ^Asset {
 
     node := s.nodes[0]
 
-    log.debugf("Processing gltf node '%v'", node.name)
     mesh := node.mesh
 
     for primitive in mesh.primitives {
@@ -66,10 +70,6 @@ model_loader :: proc(data: []byte) -> ^Asset {
         tangent_data := get_buffer_data(primitive.attributes, 3, f32)
 
         vertices := make([]Vertex, len(position_data) / 3, context.temp_allocator)
-
-        log.debugf("\tNormal count: %v", len(normal_data))
-        log.debugf("\tTangent count: %v", len(tangent_data))
-        log.debugf("\tPosiiton count: %v", len(position_data))
 
         vi := 0
         ti := 0
@@ -180,4 +180,13 @@ image_loader :: proc(data: []byte) -> ^Asset {
     image^, ok = load_image_memory(data)
 
     return image
+}
+
+@(loader=LuaScript)
+lua_script_loader :: proc(data: []byte) -> ^Asset {
+    script := new(LuaScript)
+
+    script^ = compile_script(g_scripting_engine, data)
+
+    return script
 }

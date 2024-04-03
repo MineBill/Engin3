@@ -11,7 +11,7 @@ layout(location = 0) out vec4 out_color;
 void main() {
     // http://www.geoffprewett.com/blog/software/opengl-outline/index.html
     vec2 pixelSize = vec2(1.0 / textureSize(stencil_texture, 0));
-    const int WIDTH = 2;
+    const int WIDTH = 3;
     bool isInside = false;
     int count = 0;
     float coverage = 0.0;
