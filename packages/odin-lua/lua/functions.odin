@@ -53,7 +53,7 @@ foreign liblua {
 	newthread :: proc (L: ^State ) -> ^State ---
 	newuserdatauv :: proc (L: ^State, sz: c.ptrdiff_t, nuvalue: c.int) -> rawptr ---
 	next :: proc (L: ^State , idx: c.int) -> c.int ---
-	pushboolean :: proc (L: ^State , b: c.bool ) ---
+	pushboolean :: proc (L: ^State , b: c.int ) ---
 	pushcclosure :: proc (L: ^State , fn: CFunction, n:c.int) ---
 	pushinteger :: proc (L: ^State , n: Integer ) ---
 	pushlightuserdata :: proc (L: ^State , p: rawptr) ---
