@@ -10,6 +10,7 @@ import "core:runtime"
 import "core:reflect"
 import "core:strings"
 import "core:io"
+import "core:slice"
 
 MAX_ENTITIES :: 1_000
 
@@ -506,10 +507,17 @@ serialize_world :: proc(world: World, file: string) {
         serialize_begin_array(&s, "Entities")
         {
             i := 0
-            for id, &en in world.objects {
+            keys, err := slice.map_keys(world.objects, context.temp_allocator)
+            assert(err == nil)
+            slice.sort_by(keys, proc(i, j: UUID) -> bool {
+                return i < j
+            })
+            for id in keys {
+                if id == 0 do continue
+                en := &world.objects[id]
                 if id == 0 do continue
                 serialize_begin_table_int(&s, i)
-                serialize_entity(&en, &s)
+                serialize_entity(en, &s)
                 serialize_end_table_int(&s)
                 i += 1
             }
