@@ -589,6 +589,12 @@ deserialize_world :: proc(world: ^World, file: string) -> bool {
         serialize_end_array(&s)
     }
     serialize_end_table(&s)
+
+    for pair in parents_to_resolve {
+        if pair.parent in world.objects {
+            add_child(world, pair.parent, pair.entity)
+        }
+    }
     return true
 }
 
