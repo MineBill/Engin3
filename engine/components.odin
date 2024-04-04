@@ -655,17 +655,17 @@ script_init :: proc(this: rawptr) {
         this.instance.instance_table = i64(luaL.ref(L, lua.REGISTRYINDEX))
         lua.rawgeti(L, lua.REGISTRYINDEX, this.instance.instance_table)
 
-        for field in this.script.properties.fields {
-            if field.name in this.script_fields {
-                value := this.script_fields[field.name]
-                log.debugf("Initializing script export %v from cache with value %v", field.name, value)
+        for name, field in this.script.properties.fields {
+            if name in this.script_fields {
+                value := this.script_fields[name]
+                log.debugf("Initializing script export %v from cache with value %v", name, value)
                 script_set_field(&this.instance, field.name, value, -1)
             } else {
                 script_set_field(&this.instance, field.name, field.default, -1)
             }
         }
 
-        for field in this.script.properties.instance_fields {
+        for name, field in this.script.properties.instance_fields {
             script_set_field(&this.instance, field.name, field.default, -1)
         }
 
@@ -760,11 +760,22 @@ when USE_EDITOR {
         if this.script != nil {
             imgui.TextUnformatted(cstr(this.script.properties.name))
 
+            if imgui.Button("Press me") {
+                log.debugf("%p", &this.script_fields)
+            }
             if imgui.TreeNode("Exports") {
                 for name, &field in this.script_fields {
                     imgui.PushIDPtr(&field)
                     defer imgui.PopID()
                     imgui.TextUnformatted(cstr(name))
+                    if name != "" {
+                        if imgui.BeginItemTooltip() {
+                            imgui.PushTextWrapPos(imgui.GetFontSize() * 25.0)
+                            imgui.TextUnformatted(cstr(this.script.properties.fields[name].description))
+                            imgui.PopTextWrapPos()
+                            imgui.EndTooltip()
+                        }
+                    }
                     switch &v in field {
                     case lua.Number:
                         sf := reflect.Struct_Field{
@@ -800,8 +811,8 @@ when USE_EDITOR {
             @(static) show_instance_fields := false
             imgui.Checkbox("Show Intance Fields", &show_instance_fields)
             if show_instance_fields && imgui.TreeNode("Instance Fields") {
-                for field in this.script.properties.instance_fields {
-                    imgui.TextUnformatted(cstr(field.name))
+                for name, field in this.script.properties.instance_fields {
+                    imgui.TextUnformatted(cstr(name))
                 }
                 imgui.TreePop()
             }
@@ -816,35 +827,56 @@ serialize_script_component :: proc(this: rawptr, serialize: bool, s: ^SerializeC
     this := cast(^ScriptComponent)this
     serialize_asset(&g_engine.asset_manager, s, serialize, "Script", &this.script)
 
-    // if serialize {
-    //     w := s.writer
-    //     opt := s.opt
-    //     old := opt.sort_maps_by_key
-    //     opt.sort_maps_by_key = true
+    if serialize {
+        serialize_begin_table(s, "Exports")
+        defer serialize_end_table(s)
 
-    //     json.opt_write_iteration(w, opt, 1)
-    //     json.opt_write_key(w, opt, "Exports")
-    //     json.marshal_to_writer(w, this.script_fields, opt)
+        for name, value in this.script_fields {
+            switch v in value {
+            case lua.Number:
+                serialize_do_field(s, name, v)
+            case lua.Integer:
+                serialize_do_field(s, name, v)
+            case bool:
+                serialize_do_field(s, name, v)
+            case string:
+                serialize_do_field(s, name, v)
+            case LuaTable:
+            }
+        }
+    } else {
+        if serialize_begin_table(s, "Exports") {
+            defer serialize_end_table(s)
+            for key, value in serialize_get_keys(s) {
+                serialized_value_to_lua_value :: proc(s: SerializedValue) -> LuaValue {
+                    switch v in s {
+                    case i64:
+                        return LuaValue(v)
+                    case f64:
+                        return LuaValue(v)
+                    case bool:
+                        return LuaValue(v)
+                    case string:
+                        return LuaValue(v)
+                    }
+                    unreachable()
+                }
 
-    //     opt.sort_maps_by_key = old
-    // }
-    // else {
-    //     if "Exports" in s.object {
-    //         for field, data in s.object["Exports"].(json.Object) {
-    //             this.script_fields[strings.clone(field)] = json_to_lua_value(data)
-    //         }
-    //     }
+                this.script_fields[strings.clone(key)] = serialized_value_to_lua_value(value)
+            }
+        }
 
-    //     if this.script != nil {
-    //         this.instance = create_script_instance(this.script)
-
-    //         if len(this.script_fields) != len(this.script.properties.fields) {
-    //             for field in this.script.properties.fields {
-    //                 this.script_fields[strings.clone(field.name)] = field.default
-    //             }
-    //         }
-    //     }
-    // }
+        if this.script != nil {
+            this.instance = create_script_instance(this.script)
+            if len(this.script_fields) != len(this.script.properties.fields) {
+                for name, field in this.script.properties.fields {
+                    name := strings.clone(name)
+                    this.script_fields[name] = field.default
+                }
+            }
+        }
+        log.debugf("%p", &this.script_fields)
+    }
 }
 
 LuaScript :: struct {

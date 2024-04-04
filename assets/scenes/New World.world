@@ -2,29 +2,28 @@ Scene = {
     Entities = {
         [1] = {
             Components = {
-                PointLightComponent = {
-                    Color = {
-                        [1] = 0.04577723890543,
-                        [2] = 0.28870812058449,
-                        [3] = 0.87434554100037,
-                        [4] = 1.0,
-                    },
-                    Constant = 1.0,
-                    Distance = 25.520999908447,
+                ScriptComponent = {
                     Enabled = true,
-                    Linear = 0.69999998807907,
-                    Power = 0.78100001811981,
-                    Quadratic = 1.7999999523163,
+                    Exports = {
+                        max_stuff_to_do = 5.0,
+                        movement_speed = 2.0,
+                        pepegas = false,
+                        should_do_thing = false,
+                    },
+                    Script = {
+                        Path = "W:\\source\\projects\\Engin3\\assets\\scripts\\test.lua",
+                        UUID = 4593973324694871832,
+                    },
                 },
             },
             Enabled = true,
             Flags = 0,
-            Name = "Point Light",
+            Name = "New Entity",
             Parent = 0,
             Transform = {
                 LocalPosition = {
                     [1] = 0.0,
-                    [2] = 1.2200000286102,
+                    [2] = 0.0,
                     [3] = 0.0,
                 },
                 LocalRotation = {
@@ -38,41 +37,101 @@ Scene = {
                     [3] = 1.0,
                 },
             },
-            UUID = -8203361190882497293,
+            UUID = -3042724223940003854,
         },
         [2] = {
             Components = {
-                MeshRenderer = {
+                CubemapComponent = {
                     Enabled = true,
-                    MaterialAlbedoColor = {
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "New Entity",
+            Parent = -6939139025096351178,
+            Transform = {
+                LocalPosition = {
+                    [1] = 0.0,
+                    [2] = 0.0,
+                    [3] = 0.0,
+                },
+                LocalRotation = {
+                    [1] = 0.0,
+                    [2] = 0.0,
+                    [3] = 0.0,
+                },
+                LocalScale = {
+                    [1] = 1.0,
+                    [2] = 1.0,
+                    [3] = 1.0,
+                },
+            },
+            UUID = 7226069623572445263,
+        },
+        [3] = {
+            Components = {
+                DirectionalLight = {
+                    Color = {
                         [1] = 1.0,
                         [2] = 1.0,
                         [3] = 1.0,
                         [4] = 1.0,
                     },
+                    Enabled = true,
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "Directional Light",
+            Parent = -6939139025096351178,
+            Transform = {
+                LocalPosition = {
+                    [1] = 0.0,
+                    [2] = 0.0,
+                    [3] = 0.0,
+                },
+                LocalRotation = {
+                    [1] = 35.400001525879,
+                    [2] = 0.0,
+                    [3] = 0.0,
+                },
+                LocalScale = {
+                    [1] = 1.0,
+                    [2] = 1.0,
+                    [3] = 1.0,
+                },
+            },
+            UUID = 1993878261175971833,
+        },
+        [4] = {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                    MaterialAlbedoColor = {
+                        [1] = 0.5340313911438,
+                        [2] = 0.5340313911438,
+                        [3] = 0.5340313911438,
+                        [4] = 1.0,
+                    },
                     MaterialMetalness = 0.0,
-                    MaterialRoughness = 0.5,
+                    MaterialRoughness = 0.41100001335144,
                     Material_Albedo_Image = {
-                        Path = "",
-                        UUID = 0,
+                        Path = "W:\\source\\projects\\Engin3\\assets\\textures\\texture.jpg",
+                        UUID = -8422022403683197013,
                     },
                     Material_Height_Image = {
-                        Path = "",
-                        UUID = 0,
                     },
                     Material_Normal_Image = {
-                        Path = "",
-                        UUID = 0,
                     },
                     Model = {
                         Path = "W:\\source\\projects\\Engin3\\assets\\models\\plane.glb",
-                        UUID = 2315318064012975179,
+                        UUID = -8722176067085067120,
                     },
                 },
             },
             Enabled = true,
             Flags = 0,
-            Name = "Ground",
+            Name = "Floor",
             Parent = 0,
             Transform = {
                 LocalPosition = {
@@ -91,110 +150,42 @@ Scene = {
                     [3] = 10.0,
                 },
             },
-            UUID = -8687659596917643793,
-        },
-        [3] = {
-            Components = {
-                DirectionalLight = {
-                    Color = {
-                        [1] = 1.0,
-                        [2] = 1.0,
-                        [3] = 1.0,
-                        [4] = 1.0,
-                    },
-                    Enabled = true,
-                },
-            },
-            Enabled = true,
-            Flags = 0,
-            Name = "Sun",
-            Parent = 8272417670324684229,
-            Transform = {
-                LocalPosition = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
-                },
-                LocalRotation = {
-                    [1] = 9.3000001907349,
-                    [2] = 0.0,
-                    [3] = 0.0,
-                },
-                LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
-                },
-            },
-            UUID = -7941187800134277518,
-        },
-        [4] = {
-            Components = {
-                CubemapComponent = {
-                    Enabled = true,
-                },
-            },
-            Enabled = true,
-            Flags = 0,
-            Name = "Environment",
-            Parent = 8272417670324684229,
-            Transform = {
-                LocalPosition = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
-                },
-                LocalRotation = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
-                },
-                LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
-                },
-            },
-            UUID = -1599001807978625581,
+            UUID = 4717991620020997253,
         },
         [5] = {
             Components = {
                 MeshRenderer = {
                     Enabled = true,
                     MaterialAlbedoColor = {
-                        [1] = 1.0,
-                        [2] = 0.12565445899963,
-                        [3] = 0.12565445899963,
+                        [1] = 0.0,
+                        [2] = 1.0,
+                        [3] = 0.26178002357483,
                         [4] = 1.0,
                     },
-                    MaterialMetalness = 1.0,
-                    MaterialRoughness = 0.3589999973774,
+                    MaterialMetalness = 0.69800001382828,
+                    MaterialRoughness = 0.60399997234344,
                     Material_Albedo_Image = {
-                        Path = "",
-                        UUID = 0,
+                        Path = "W:\\source\\projects\\Engin3\\assets\\textures\\viking_room.png",
+                        UUID = -6561948539816108898,
                     },
                     Material_Height_Image = {
-                        Path = "",
-                        UUID = 0,
                     },
                     Material_Normal_Image = {
-                        Path = "",
-                        UUID = 0,
                     },
                     Model = {
-                        Path = "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb",
-                        UUID = -5607844893012343757,
+                        Path = "W:\\source\\projects\\Engin3\\assets\\scenes\\simple_scene.glb",
+                        UUID = 8614367353242525175,
                     },
                 },
             },
             Enabled = true,
             Flags = 0,
-            Name = "New Entity",
+            Name = "Cube",
             Parent = 0,
             Transform = {
                 LocalPosition = {
-                    [1] = 1.210000038147,
-                    [2] = 1.0,
+                    [1] = 0.0,
+                    [2] = 0.5,
                     [3] = 0.0,
                 },
                 LocalRotation = {
@@ -208,23 +199,29 @@ Scene = {
                     [3] = 1.0,
                 },
             },
-            UUID = -6419547934586296619,
+            UUID = 5996525753965246661,
         },
         [6] = {
             Components = {
+                Camera = {
+                    Enabled = true,
+                    FarPlane = 100.0,
+                    Fov = 50.0,
+                    NearPlane = 0.10000000149012,
+                },
             },
             Enabled = true,
             Flags = 0,
-            Name = "New Entity",
+            Name = "Camera",
             Parent = 0,
             Transform = {
                 LocalPosition = {
-                    [1] = 1.3500000238419,
-                    [2] = 0.0,
-                    [3] = 0.0,
+                    [1] = 0.0,
+                    [2] = 2.1300001144409,
+                    [3] = 2.1600000858307,
                 },
                 LocalRotation = {
-                    [1] = 0.0,
+                    [1] = 18.0,
                     [2] = 0.0,
                     [3] = 0.0,
                 },
@@ -234,7 +231,7 @@ Scene = {
                     [3] = 1.0,
                 },
             },
-            UUID = -8769768254068467157,
+            UUID = 7270319324638800790,
         },
         [7] = {
             Components = {
@@ -260,39 +257,7 @@ Scene = {
                     [3] = 1.0,
                 },
             },
-            UUID = 8272417670324684229,
-        },
-        [8] = {
-            Components = {
-                Camera = {
-                    Enabled = true,
-                    FarPlane = 100.0,
-                    Fov = 50.0,
-                    NearPlane = 0.10000000149012,
-                },
-            },
-            Enabled = true,
-            Flags = 0,
-            Name = "Camera",
-            Parent = 0,
-            Transform = {
-                LocalPosition = {
-                    [1] = 0.0,
-                    [2] = 2.5,
-                    [3] = 7.1199998855591,
-                },
-                LocalRotation = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
-                },
-                LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
-                },
-            },
-            UUID = 688643486050105964,
+            UUID = -6939139025096351178,
         },
     },
     Name = "New World",

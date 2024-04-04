@@ -3,7 +3,6 @@ import "packages:odin-lua/lua"
 import "packages:odin-lua/luaL"
 import "core:runtime"
 import "core:strings"
-import "core:fmt"
 import "core:os"
 import "core:reflect"
 import "core:math/bits"
@@ -154,7 +153,7 @@ serialize_end_table_int :: proc(s: ^SerializeContext) {
     case .Serialize:
         lua.settable(L, -3)
     case .Deserialize:
-        lua.pop(L, 1)
+        lua.pop(L, 2)
     }
 }
 
@@ -315,18 +314,44 @@ serialize_get_array :: proc(s: ^SerializeContext) -> int {
     return int(lua.rawlen(s.L, -2))
 }
 
-serialize_get_keys :: proc(s: ^SerializeContext) -> (key: string, ok: bool) {
+SerializedValue :: union {
+    i64,
+    f64,
+    bool,
+    string,
+}
+
+serialize_get_keys :: proc(s: ^SerializeContext) -> (key: string, value: SerializedValue, ok: bool) {
     assert(s.mode == .Deserialize, "Cannot get field keys in Serialize mode.")
     L := s.L
     if lua.next(L, -2) == 0 {
-        return {}, false
+        lua.pushnil(L)
+        return {}, {}, false
     }
 
     key = strings.clone(lua.tostring(L, -2), context.temp_allocator)
+
+    type := lua.type(L, -1)
+    switch type {
+    case lua.TNUMBER:
+        if lua.isinteger(L, -1) == 1 {
+            value = lua.tointeger(L, -1)
+        } else {
+            value = lua.tonumber(L, -1)
+        }
+    case lua.TSTRING:
+        value = strings.clone(lua.tostring(L, -1))
+    case lua.TBOOLEAN:
+        value = lua.toboolean(L, -1) == 1
+    case:
+        value = nil
+    }
+
     lua.pop(L, 1)
-    return key, true
+    return key, value, true
 }
 
+@(private="file")
 assign_int :: proc(val: any, i: $T) -> bool {
     v := reflect.any_core(val)
     switch &dst in v {
@@ -490,7 +515,7 @@ serialize_actually_do_field :: proc(s: ^SerializeContext, value: any) {
         case b32:  val = bool(b)
         case b64:  val = bool(b)
         }
-        lua.pushboolean(L, val)
+        lua.pushboolean(L, i32(val))
     case rt.Type_Info_Enum:
         name, found := reflect.enum_name_from_value_any(value)
         assert(found, "Could not find enum name with reflection")
@@ -630,7 +655,7 @@ serialize_dump :: proc(s: ^SerializeContext, output: string) {
     L := s.L
 
     if luaL.dostring(L, LUA_DUMPER) != lua.OK {
-        fmt.eprint("Error loading dumper")
+        log.error("Error loading dumper")
         return
     }
 
@@ -638,11 +663,10 @@ serialize_dump :: proc(s: ^SerializeContext, output: string) {
     lua.pushstring(L, s.table_names[0])
 
     if lua.pcall(L, 2, 1, 0) != lua.OK {
-        fmt.eprintf("Error calling dump: %v", lua.tostring(L, -1))
+        log.error("Error calling dump: %v", lua.tostring(L, -1))
         return
     }
 
     data := transmute([]byte)lua.tostring(L, -1)
-    fmt.print(string(data))
     os.write_entire_file(output, data)
 }

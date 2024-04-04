@@ -46,7 +46,7 @@ script_set_field_value :: proc(instance: ^ScriptInstance, field: string, lua_val
     case string:
         lua.pushstring(L, value)
     case bool:
-        lua.pushboolean(L, value)
+        lua.pushboolean(L, i32(value))
     case LuaTable:
         assert(false, "LuaTable not implemented")
     }
@@ -279,7 +279,7 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties) {
                 }
             }
 
-            append(&props.fields, field)
+            props.fields[field.name] = field
         }
     }
 
@@ -312,7 +312,7 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties) {
                 assert(false, "Unsupported export type.")
             }
 
-            append(&props.instance_fields, field)
+            props.instance_fields[field.name] = field
         }
     }
     return

@@ -42,6 +42,14 @@ CoolComponent = {
             Default = false,
             Description = "This is a description for the field movement_speed.",
         },
+        pepegas = {
+            Default = false,
+            Description = "",
+        },
+        max_stuff_to_do = {
+            Default = 42,
+            Description = "",
+        }
     },
     Instance = {
         timer = 0.0,
@@ -53,6 +61,10 @@ function CoolComponent:on_init()
     local meta = getmetatable(v)
     print(table_to_string(meta))
     print(v)
+    print("pepegas is " .. tostring(self.pepegas))
+    print("should_do_thing is " .. tostring(self.should_do_thing))
+    print("speed is " .. tostring(self.movement_speed))
+    print("max_stuff_to_do is " .. tostring(self.max_stuff_to_do))
 end
 
 ---@class self LuaEntity

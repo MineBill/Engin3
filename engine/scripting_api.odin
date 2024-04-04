@@ -2,7 +2,7 @@ package engine
 import "core:fmt"
 import "core:log"
 
-Fields :: [dynamic]LuaField
+Fields :: map[string]LuaField
 
 @(LuaExport = {
     Type = {Light},

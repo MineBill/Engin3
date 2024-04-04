@@ -70,7 +70,11 @@ load_asset :: proc(path: Path, type: typeid, id: Maybe(UUID) = nil) -> ^Asset {
 serialize_asset :: proc(am: ^AssetManager, s: ^SerializeContext, serialize: bool, key: string, asset: ^^$T)
     where intrinsics.type_is_subtype_of(T, Asset) {
     serialize_begin_table(s, key)
+    defer serialize_end_table(s)
     if serialize {
+        if asset^ == nil || asset^.path == "" || asset^.id == 0 {
+            return
+        }
         serialize_do_field(s, "UUID", asset^.id)
         serialize_do_field(s, "Path", asset^.path)
     } else {
@@ -86,5 +90,4 @@ serialize_asset :: proc(am: ^AssetManager, s: ^SerializeContext, serialize: bool
             }
         }
     }
-    serialize_end_table(s)
 }
