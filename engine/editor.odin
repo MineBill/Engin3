@@ -18,6 +18,7 @@ import "core:strconv"
 import "core:os"
 import "core:path/filepath"
 
+DEFAULT_EDITOR_CAMERA_POSITION :: vec3{0, 3, -2}
 USE_EDITOR :: true
 
 EditorState :: enum {
@@ -98,7 +99,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     // TODO(minebill):  Save the editor camera for each scene in a cache somewhere
     //                  so that we can open the editor in that location/rotation next time.
     e.camera = EditorCamera {
-        position = vec3{0, 0, 0},
+        position = DEFAULT_EDITOR_CAMERA_POSITION,
         fov = f32(60.0),
     }
 
