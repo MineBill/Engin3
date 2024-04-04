@@ -8,6 +8,8 @@ import "core:encoding/json"
 import "core:os"
 import "core:runtime"
 import "core:reflect"
+import "core:strings"
+import "core:io"
 
 MAX_ENTITIES :: 1_000
 
@@ -492,54 +494,34 @@ find_first_component :: proc(world: ^World, $C: typeid) -> ^C {
     return nil
 }
 
-import "core:strings"
-import "core:io"
-
 serialize_world :: proc(world: World, file: string) {
-    tracy.Zone()
-    log.debugf("Serializing world to file: %v", file)
-    sb: strings.Builder
-    strings.builder_init(&sb)
-    defer strings.builder_destroy(&sb)
+    s: SerializeContext
+    serialize_init(&s)
+    defer serialize_deinit(&s)
 
-    w := strings.to_writer(&sb)
+    serialize_begin_table(&s, "Scene")
+    {
+        serialize_do_field(&s, "Name", world.name)
 
-    opt: json.Marshal_Options
-    opt.pretty = true
-    opt.spec = .MJSON
-
-    json.opt_write_key(w, &opt, "Name")
-    json.marshal_to_writer(w, world.name, &opt)
-
-    json.opt_write_iteration(w, &opt, 1)
-
-    json.opt_write_key(w, &opt, "Entities")
-    json.opt_write_start(w, &opt, '[')
-
-    i := 0
-    for id, go in world.objects {
-        if id == 0 do continue
-        json.opt_write_iteration(w, &opt, i)
-        serialize_gameobject(w, go, &opt)
-        i += 1
+        serialize_begin_array(&s, "Entities")
+        {
+            i := 0
+            for id, &en in world.objects {
+                if id == 0 do continue
+                serialize_begin_table_int(&s, i)
+                serialize_entity(&en, &s)
+                serialize_end_table_int(&s)
+                i += 1
+            }
+        }
+        serialize_end_array(&s)
     }
+    serialize_end_table(&s)
 
-    json.opt_write_end(w, &opt, ']')
-
-    os.write_entire_file(file, transmute([]u8)strings.to_string(sb))
+    serialize_dump(&s, file)
 }
 
-deserialize_world :: proc(world: ^World, file: string) -> (ok: bool) {
-    tracy.Zone()
-    log.debugf("Deserializing world from file: %v", file)
-
-    scene_data := os.read_entire_file(file) or_return
-    defer delete(scene_data)
-
-    value, err := json.parse(scene_data, .MJSON, parse_integers = true)
-    if err != nil do return false
-    defer json.destroy_value(value)
-
+deserialize_world :: proc(world: ^World, file: string) -> bool {
     destroy_world(world)
     create_world(world)
     world.file_path = strings.clone(file)
@@ -548,164 +530,132 @@ deserialize_world :: proc(world: ^World, file: string) -> (ok: bool) {
     parents_to_resolve := make([dynamic]ResolvePair)
     defer delete(parents_to_resolve)
 
-    if root, ok := value.(json.Object); ok {
-        world.name = strings.clone(root["Name"].(json.String))
-        entities := root["Entities"].(json.Array)
-        for entity in entities {
-            en := entity.(json.Object)
+    s: SerializeContext
+    serialize_init_file(&s, file)
+    defer serialize_deinit(&s)
 
-            uuid := UUID(en["UUID"].(json.Integer))
-            name := en["Name"].(json.String)
-            flags := transmute(EntityFlags)(en["Flags"].(json.Integer))
-            enabled := en["Enabled"].(json.Boolean)
-            parent := UUID(en["Parent"].(json.Integer))
+    serialize_begin_table(&s, "Scene")
+    {
+        serialize_do_field(&s, "Name", world.name)
+        serialize_begin_array(&s, "Entities")
+        {
+            len := serialize_get_array(&s)
+            for i in 0..<len {
+                serialize_begin_table_int(&s, i)
 
-            id: UUID
-            if parent in world.objects {
-                id = new_object_with_uuid(world, name, uuid, parent)
-            } else {
-                id = new_object_with_uuid(world, name, uuid)
-                append(&parents_to_resolve, ResolvePair{entity = id, parent = parent})
-            }
+                uuid,  _ := serialize_get_field(&s, "UUID", u64)
+                name,  _ := serialize_get_field(&s, "Name", string)
+                flags, _ := serialize_get_field(&s, "Flags", EntityFlags)
+                enabled, _ := serialize_get_field(&s, "Enabled", bool)
+                parent, _ := serialize_get_field(&s, "Parent", u64)
 
-            entity := get_object(world, id)
-            entity.enabled = enabled
-            entity.flags = flags
+                id: UUID
+                if UUID(parent) in world.objects {
+                    id = new_object_with_uuid(world, name, UUID(uuid), UUID(parent))
+                } else {
+                    id = new_object_with_uuid(world, name, UUID(uuid))
+                    append(&parents_to_resolve, ResolvePair{entity = id, parent = UUID(parent)})
+                }
 
-            transform := en["Transform"].(json.Object)
+                entity := get_object(world, id)
+                entity.enabled = enabled
+                entity.flags = flags
 
-            get_vec3 :: proc(obj: json.Array) -> vec3 {
-                x := f32(obj[0].(json.Float))
-                y := f32(obj[1].(json.Float))
-                z := f32(obj[2].(json.Float))
-                return vec3{x, y, z}
-            }
+                if serialize_begin_table(&s, "Transform") {
+                    if position, ok := serialize_get_field(&s, "LocalPosition", vec3); ok {
+                        entity.transform.local_position = position
+                    }
+                    if rotation, ok := serialize_get_field(&s, "LocalRotation", vec3); ok {
+                        entity.transform.local_rotation = rotation
+                    }
+                    if scale, ok := serialize_get_field(&s, "LocalScale", vec3); ok {
+                        entity.transform.local_scale = scale
+                    }
+                    serialize_end_table(&s)
+                }
 
-            // entity.transform.local_position = get_vec3(transform["Position"].(json.Array))
-            // entity.transform.local_rotation = get_vec3(transform["Rotation"].(json.Array))
-            // entity.transform.local_scale    = get_vec3(transform["Scale"].(json.Array))
-            s := Serializer {
-                object = transform,
-            }
-            serialize_transform(&entity.transform, false, &s)
+                if serialize_begin_table(&s, "Components") {
+                    for key in serialize_get_keys(&s) {
+                        serialize_begin_table(&s, key)
+                        deserialize_component(&s, key, world, entity)
+                        serialize_end_table(&s)
+                    }
+                    serialize_end_table(&s)
+                }
 
-            for component_name, data in en["Components"].(json.Object) {
-                deserialize_component(world, entity, component_name, data.(json.Object))
+                serialize_end_table_int(&s)
             }
         }
+        serialize_end_array(&s)
     }
-
-    for pair in parents_to_resolve {
-        if pair.parent in world.objects {
-            add_child(world, pair.parent, pair.entity)
-        }
-    }
-
+    serialize_end_table(&s)
     return true
 }
 
-serialize_gameobject :: proc(w: io.Writer, go: Entity, opt: ^json.Marshal_Options) {
-    tracy.Zone()
-    json.opt_write_start(w, opt, '{')
+serialize_entity :: proc(entity: ^Entity, s: ^SerializeContext) {
+    serialize_begin_table(s, "Transform")
+        serialize_do_field(s, "LocalPosition", entity.transform.local_position)
+        serialize_do_field(s, "LocalRotation", entity.transform.local_rotation)
+        serialize_do_field(s, "LocalScale", entity.transform.local_scale)
+    serialize_end_table(s)
 
-    json.opt_write_indentation(w, opt)
-    json.opt_write_key(w, opt, "UUID")
-    io.write_u64(w, u64(go.id))
+    serialize_begin_table(s, "Components")
+    {
+        i := 0
+        for id, component in entity.components {
+            serialize_component(component, id, s)
+            i += 1
+        }
+    }
+    serialize_end_table(s)
 
-    json.opt_write_iteration(w, opt, 1)
+    serialize_do_field(s, "UUID", entity.id)
+    serialize_do_field(s, "Name", ds_to_string(entity.name))
 
-    json.opt_write_key(w, opt, "Name")
-    io.write_quoted_string(w, ds_to_string(go.name), '"', nil, true)
-
-    json.opt_write_iteration(w, opt, 2)
-
-    json.opt_write_key(w, opt, "Flags")
-    flags := go.flags
+    flags := entity.flags
     flags -= {.Outlined}
-    json.marshal_to_writer(w, flags, opt)
-
-    json.opt_write_iteration(w, opt, 3)
-
-    json.opt_write_key(w, opt, "Enabled")
-    json.marshal_to_writer(w, go.enabled, opt)
-
-    json.opt_write_iteration(w, opt, 4)
-
-    json.opt_write_key(w, opt, "Parent")
-    json.marshal_to_writer(w, go.parent, opt)
-
-    json.opt_write_iteration(w, opt, 5)
-
-    json.opt_write_key(w, opt, "Transform")
-    s := Serializer {
-        writer = w,
-        opt = opt,
-    }
-    transform := go.transform
-    serialize_transform(&transform, true, &s)
-
-    json.opt_write_iteration(w, opt, 6)
-
-    json.opt_write_key(w, opt, "Components")
-    json.opt_write_start(w, opt, '{')
-    i := 0
-    for id, comp in go.components {
-        json.opt_write_iteration(w, opt, i)
-        serialize_component(w, opt, id, comp)
-        i += 1
-    }
-    json.opt_write_end(w, opt, '}')
-
-    json.opt_write_end(w, opt, '}')
+    serialize_do_field(s, "Flags", flags)
+    serialize_do_field(s, "Enabled", entity.enabled)
+    serialize_do_field(s, "Parent", entity.parent)
 }
 
-serialize_component :: proc(w: io.Writer, opt: ^json.Marshal_Options, type: typeid, comp: ^Component) {
-    tracy.Zone()
-    ti := type_info_of(type)
+serialize_component :: proc(component: ^Component, id: typeid, s: ^SerializeContext) {
+    ti := type_info_of(id)
     named, ok := ti.variant.(runtime.Type_Info_Named)
     assert(ok)
 
     base_info := runtime.type_info_base(ti)
-    s, ok2 := base_info.variant.(runtime.Type_Info_Struct)
+    struct_info, ok2 := base_info.variant.(runtime.Type_Info_Struct)
     assert(ok2)
 
-    a := any{comp, ti.id}
+    a := any{component, ti.id}
 
-    json.opt_write_key(w, opt, named.name)
-    json.opt_write_start(w, opt, '{')
+    serialize_begin_table(s, named.name)
 
-    json.opt_write_iteration(w, opt, 0)
-    json.opt_write_key(w, opt, "Enabled")
-    json.marshal_to_writer(w, comp.enabled, opt)
+    serialize_do_field(s, "Enabled", component.enabled)
 
-    if type in COMPONENT_SERIALIZERS {
-        serializer := COMPONENT_SERIALIZERS[type]
+    if id in COMPONENT_SERIALIZERS {
+        serializer := COMPONENT_SERIALIZERS[id]
 
-        s := Serializer {
-            writer = w,
-            opt = opt,
-        }
-
-        serializer(comp, true, &s)
+        serializer(component, true, s)
     }
 
-    json.opt_write_end(w, opt, '}')
+    serialize_end_table(s)
 }
 
-deserialize_component :: proc(world: ^World, go: ^Entity, component_name: string, component: json.Object) {
+deserialize_component :: proc(s: ^SerializeContext, name: string, world: ^World, entity: ^Entity) {
     tracy.Zone()
-    enabled := component["Enabled"].(json.Boolean)
+    enabled: bool
+    serialize_do_field(s, "Enabled", enabled)
 
-    if id, ok := get_component_typeid_from_name(component_name); ok {
-        add_component(world, go.id, id)
-        comp := get_component_typeid(world, go.id, id)
+    if id, ok := get_component_typeid_from_name(name); ok {
+        add_component(world, entity.id, id)
+        comp := get_component_typeid(world, entity.id, id)
 
         if id in COMPONENT_SERIALIZERS {
             // Component has a serializer
             serializer := COMPONENT_SERIALIZERS[id]
-
-            s := Serializer{object = component}
-            serializer(comp, false, &s)
+            serializer(comp, false, s)
         }
     }
 }

@@ -78,13 +78,17 @@ serialize_deinit :: proc(s: ^SerializeContext) {
     delete(s.table_names)
 }
 
-serialize_begin_table :: proc(s: ^SerializeContext, name: string) {
+serialize_begin_table :: proc(s: ^SerializeContext, name: string) -> bool {
     L := s.L
     switch s.mode {
     case .Serialize:
         // begin_stack(L)
         lua.newtable(L)
-        append(&s.table_names, name)
+        if s.table_count >= len(s.table_names) {
+            append(&s.table_names, name)
+        } else {
+            s.table_names[s.table_count] = strings.clone(name)
+        }
         s.table_count += 1
 
         if s.is_global {
@@ -98,9 +102,16 @@ serialize_begin_table :: proc(s: ^SerializeContext, name: string) {
             lua.getglobal(L, name)
             s.is_global = false
         } else {
-            lua.getfield(L, -1, name)
+            lua.getfield(L, -2, name)
         }
+        if !lua.istable(L, -1) {
+            lua.pop(L, 1)
+            return false
+        }
+
+        lua.pushnil(L)
     }
+    return true
 }
 
 serialize_end_table :: proc(s: ^SerializeContext) {
@@ -116,7 +127,7 @@ serialize_end_table :: proc(s: ^SerializeContext) {
             lua.setfield(L, -2, name)
         }
     case .Deserialize:
-        lua.pop(L, 1)
+        lua.pop(L, 2)
     }
 }
 
@@ -126,11 +137,13 @@ serialize_begin_table_int :: proc(s: ^SerializeContext, key: int) {
 
     switch s.mode {
     case .Serialize:
-        lua.pushinteger(L, i64(key))
+        lua.pushinteger(L, i64(key + 1))
         lua.newtable(L)
     case .Deserialize:
-        lua.pushinteger(L, i64(key))
-        lua.gettable(L, -2)
+        lua.pushinteger(L, i64(key + 1))
+        lua.gettable(L, -3)
+
+        lua.pushnil(L)
     }
 }
 
@@ -155,15 +168,15 @@ serialize_begin_array :: proc(s: ^SerializeContext, name: string) {
 }
 
 serialize_end_array :: proc(s: ^SerializeContext) {
-    serialize_end_table(s)
     switch s.mode {
     case .Serialize:
         s.array_index -= 1
     case .Deserialize:
     }
+    serialize_end_table(s)
 }
 
-serialize_do_field_int :: proc(s: ^SerializeContext, key: int, value: any) {
+serialize_do_field_int :: proc(s: ^SerializeContext, key: int, value: any) -> bool {
     rt :: runtime
     L := s.L
     switch s.mode {
@@ -173,17 +186,33 @@ serialize_do_field_int :: proc(s: ^SerializeContext, key: int, value: any) {
         lua.pushinteger(L, i64(key))
 
         serialize_actually_do_field(s, value)
+        return true
     case .Deserialize:
-        begin_stack(L)
+        // begin_stack(L)
+
+        has_nil := false
+        if lua.isnil(L, -1) {
+            has_nil = true
+            lua.pop(L, 1)
+        }
 
         lua.pushinteger(L, i64(key))
         lua.gettable(L, -2)
 
-        serialize_read_field(s, value)
+        ret := serialize_read_field(s, value)
+
+        lua.pop(L, 1)
+
+        if has_nil {
+            lua.pushnil(L)
+        }
+
+        return ret
     }
+    unreachable()
 }
 
-serialize_do_field_string :: proc(s: ^SerializeContext, name: string, value: any) {
+serialize_do_field_string :: proc(s: ^SerializeContext, name: string, value: any) -> bool {
     rt :: runtime
     L := s.L
     switch s.mode {
@@ -193,18 +222,32 @@ serialize_do_field_string :: proc(s: ^SerializeContext, name: string, value: any
         lua.pushstring(L, name)
 
         serialize_actually_do_field(s, value)
+        return true
     case .Deserialize:
-        begin_stack(L)
+        // begin_stack(L)
+        has_nil := false
+        if lua.isnil(L, -1) {
+            has_nil = true
+            lua.pop(L, 1)
+        }
 
         type := lua.getfield(L, -1, strings.clone_to_cstring(name, context.temp_allocator))
 
-        fmt.println("Before: ", value)
-        serialize_read_field(s, value)
-        fmt.println("After: ", value)
+        ret := serialize_read_field(s, value)
+
+        lua.pop(L, 1)
+
+        if has_nil {
+            lua.pushnil(L)
+        }
+
+        return ret
     }
+    unreachable()
 }
 
-serialize_do_field_type :: proc(s: ^SerializeContext, name: string, value: ^$T) where intr.type_is_bit_set(T) {
+serialize_do_field_type :: proc(s: ^SerializeContext, name: string, value: ^$T) -> bool
+    where intr.type_is_bit_set(T) {
     rt :: runtime
     L := s.L
     switch s.mode {
@@ -214,21 +257,74 @@ serialize_do_field_type :: proc(s: ^SerializeContext, name: string, value: ^$T) 
         lua.pushstring(L, name)
 
         serialize_actually_do_field(s, any{value, typeid_of(T)})
+        return true
     case .Deserialize:
-        begin_stack(L)
+        // begin_stack(L)
 
-        type := lua.getfield(L, -1, strings.clone_to_cstring(name, context.temp_allocator))
+        has_nil := false
+        if lua.isnil(L, -1) {
+            has_nil = true
+            lua.pop(L, 1)
+        }
 
-        // serialize_read_field(s, value)
+        lua.getfield(L, -1, strings.clone_to_cstring(name, context.temp_allocator))
+
+        if lua.isinteger(L, -1) != 1 do return false
         bit_data := lua.tointeger(L, -1)
         value^ = transmute(T)bit_data
+
+        lua.pop(L, 1)
+
+        if has_nil {
+            lua.pushnil(L)
+        }
+
+        return true
     }
+    unreachable()
 }
 
 serialize_do_field :: proc {
     serialize_do_field_int,
     serialize_do_field_string,
     serialize_do_field_type,
+}
+
+serialize_get_field :: proc(s: ^SerializeContext, field: string, $T: typeid) -> (value: T, found: bool) {
+    assert(s.mode == .Deserialize, "Cannot get field in Serialize mode.")
+
+    when intr.type_is_bit_set(T) {
+        found = serialize_do_field_type(s, field, &value)
+    } else {
+        found = serialize_do_field(s, field, value)
+    }
+    return
+}
+
+serialize_to_field_any :: proc(s: ^SerializeContext, field: string, value: ^$T) {
+    if v, ok := serialize_get_field(s, field, T); ok {
+        value^ = v
+    }
+}
+
+serialize_to_field :: proc {
+    serialize_to_field_any,
+}
+
+serialize_get_array :: proc(s: ^SerializeContext) -> int {
+    return int(lua.rawlen(s.L, -2))
+}
+
+serialize_get_keys :: proc(s: ^SerializeContext) -> (key: string, ok: bool) {
+    assert(s.mode == .Deserialize, "Cannot get field keys in Serialize mode.")
+    L := s.L
+    if lua.next(L, -2) == 0 {
+        return {}, false
+    }
+
+    key = strings.clone(lua.tostring(L, -2), context.temp_allocator)
+    lua.pop(L, 1)
+    return key, true
 }
 
 assign_int :: proc(val: any, i: $T) -> bool {
@@ -268,7 +364,7 @@ assign_int :: proc(val: any, i: $T) -> bool {
     return true
 }
 
-serialize_read_field :: proc(s: ^SerializeContext, value: any) {
+serialize_read_field :: proc(s: ^SerializeContext, value: any) -> bool {
     rt :: runtime
     L := s.L
 
@@ -279,11 +375,13 @@ serialize_read_field :: proc(s: ^SerializeContext, value: any) {
     case rt.Type_Info_Named:
         unreachable()
     case rt.Type_Info_Integer:
+        if lua.isinteger(L, -1) != 1 do return false
         u := lua.tointeger(L, -1)
 
         assign_int(value, u)
 
     case rt.Type_Info_Float:
+        if lua.isnumber(L, -1) != 1 do return false
         u := lua.tonumber(L, -1)
 
         switch &f in a {
@@ -292,6 +390,7 @@ serialize_read_field :: proc(s: ^SerializeContext, value: any) {
         case f64: f = auto_cast u
         }
     case rt.Type_Info_String:
+        if lua.isstring(L, -1) != 1 do return false
         str := lua.tostring(L, -1)
         switch &s in a {
         case string:
@@ -300,6 +399,7 @@ serialize_read_field :: proc(s: ^SerializeContext, value: any) {
             s = strings.clone_to_cstring(str)
         }
     case rt.Type_Info_Boolean:
+        if !lua.isboolean(L, -1) do return false
         val := lua.toboolean(L, -1)
 
         switch &b in a {
@@ -309,19 +409,17 @@ serialize_read_field :: proc(s: ^SerializeContext, value: any) {
         case b32:  b = auto_cast val
         case b64:  b = auto_cast val
         }
-    case rt.Type_Info_Enum:
-        name := lua.tostring(L, -1)
-        enum_value, found := reflect.enum_from_name_any(ti.id, name)
-        assert(found, "Could not find enum from name")
+    case rt.Type_Info_Array:
+        for i in 0..<info.count {
+            elem_ptr := rawptr(uintptr(value.data) + uintptr(i * info.elem_size))
+            elem := any{elem_ptr, info.elem.id}
 
-        assign_int(value, enum_value)
-    case rt.Type_Info_Bit_Set:
-        bit_data := lua.tointeger(L, -1)
-
-        assign_int(value, bit_data)
+            serialize_do_field_int(s, i + 1, elem)
+        }
     case:
         unreachable()
     }
+    return true
 }
 
 serialize_actually_do_field :: proc(s: ^SerializeContext, value: any) {
@@ -445,6 +543,18 @@ serialize_actually_do_field :: proc(s: ^SerializeContext, value: any) {
         case: panic("unknown bit_size size")
         }
         lua.pushinteger(L, i64(bit_data))
+
+    case rt.Type_Info_Array:
+        name := strings.clone(lua.tostring(L, -1), context.temp_allocator)
+        lua.pop(L, 1)
+
+        serialize_begin_array(s, name)
+        for i in 0..<info.count {
+            data := uintptr(value.data) + uintptr(i*info.elem_size)
+            serialize_do_field_int(s, i + 1, any{rawptr(data), info.elem.id})
+        }
+        serialize_end_array(s)
+        return
     case:
         unreachable()
     }

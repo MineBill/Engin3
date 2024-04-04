@@ -15,18 +15,9 @@ import "packages:mani/mani"
 import "core:strings"
 import "core:slice"
 
-Serializer :: struct {
-    // Serialize data
-    writer: io.Writer,
-    opt: ^json.Marshal_Options,
-
-    // Deserialize data
-    object: json.Object,
-}
-
 // Proc used to serialize components.
 // If a proc is this type and it is marked with @(constructor=C), it will be used to serialize component C.
-ComponentSerializer :: #type proc(this: rawptr, serialize: bool, s: ^Serializer)
+ComponentSerializer :: #type proc(this: rawptr, serialize: bool, s: ^SerializeContext)
 
 // Special case component, every gameobject has a Transform by default.
 @(component, LuaExport = {
@@ -62,30 +53,22 @@ default_transform :: proc() -> TransformComponent {
 }
 
 @(serializer=TransformComponent)
-serialize_transform :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+serialize_transform :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^TransformComponent)this
-
     if serialize {
-        w := s.writer
-        opt := s.opt
-
-        json.opt_write_start(w, opt, '{')
-        json.opt_write_iteration(w, opt, 0)
-        json.opt_write_key(w, opt, "LocalPosition")
-        json.marshal_to_writer(w, this.local_position, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "LocalRotation")
-        json.marshal_to_writer(w, this.local_rotation, opt)
-
-        json.opt_write_iteration(w, opt, 2)
-        json.opt_write_key(w, opt, "LocalScale")
-        json.marshal_to_writer(w, this.local_scale, opt)
-        json.opt_write_end(w, opt, '}')
+        serialize_do_field(s, "LocalPosition", this.local_position)
+        serialize_do_field(s, "LocalRotation", this.local_rotation)
+        serialize_do_field(s, "LocalScale", this.local_scale)
     } else {
-        this.local_position = json_array_to_vec(vec3, s.object["LocalPosition"].(json.Array))
-        this.local_rotation = json_array_to_vec(vec3, s.object["LocalRotation"].(json.Array))
-        this.local_scale = json_array_to_vec(vec3, s.object["LocalScale"].(json.Array))
+        if position, ok := serialize_get_field(s, "LocalPosition", vec3); ok {
+            this.local_position = position
+        }
+        if rotation, ok := serialize_get_field(s, "LocalRotation", vec3); ok {
+            this.local_rotation = rotation
+        }
+        if scale, ok := serialize_get_field(s, "LocalScale", vec3); ok {
+            this.local_scale = scale
+        }
     }
 }
 
@@ -233,7 +216,7 @@ mesh_renderer_set_model :: proc(this: ^MeshRenderer, model: ^Model) {
 }
 
 @(serializer=MeshRenderer)
-serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^MeshRenderer)this
     am := &g_engine.asset_manager
     serialize_asset(am, s, serialize, "Model", &this.model)
@@ -242,36 +225,20 @@ serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
     serialize_asset(am, s, serialize, "Material_Normal_Image", &this.material.normal_image)
     serialize_asset(am, s, serialize, "Material_Height_Image", &this.material.height_image)
     if serialize {
-        w := s.writer
-        opt := s.opt
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "MaterialAlbedoColor")
-        json.marshal_to_writer(w, this.material.albedo_color, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "MaterialRoughness")
-        json.marshal_to_writer(w, this.material.roughness_factor, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "MaterialMetalness")
-        json.marshal_to_writer(w, this.material.metallic_factor, opt)
+        serialize_do_field(s, "MaterialAlbedoColor", this.material.albedo_color)
+        serialize_do_field(s, "MaterialRoughness", this.material.roughness_factor)
+        serialize_do_field(s, "MaterialMetalness", this.material.metallic_factor)
     } else {
-        // model := s.object["Model"].(json.Object)
-        // this.model = deserialize_asset(model, Model)
-        if "MaterialAlbedoColor"in s.object {
-            this.material.albedo_color = json_array_to_vec(Color, s.object["MaterialAlbedoColor"].(json.Array))
+        if color, ok := serialize_get_field(s, "MaterialAlbedoColor", vec4); ok {
+            this.material.albedo_color = Color(color)
         }
-
-        if "MaterialRoughness" in s.object {
-            this.material.roughness_factor = f32(s.object["MaterialRoughness"].(json.Float))
+        if roughness, ok := serialize_get_field(s, "MaterialRoughness", f32); ok {
+            this.material.roughness_factor = roughness
         }
-
-        if "MaterialMetalness" in s.object {
-            this.material.metallic_factor = f32(s.object["MaterialMetalness"].(json.Float))
+        if metalness, ok := serialize_get_field(s, "MaterialMetalness", f32); ok {
+            this.material.metallic_factor = metalness
         }
-
-        update_material_new(&this.material)
+        mesh_renderer_update_material(this)
     }
 }
 
@@ -310,42 +277,22 @@ make_point_light :: proc() -> rawptr {
 }
 
 @(serializer=PointLightComponent)
-serialize_point_light :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+serialize_point_light :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^PointLightComponent)this
     if serialize {
-        w := s.writer
-        opt := s.opt
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "color")
-        json.marshal_to_writer(w, this.color, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "constant")
-        json.marshal_to_writer(w, this.constant, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "linear")
-        json.marshal_to_writer(w, this.linear, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "quadratic")
-        json.marshal_to_writer(w, this.quadratic, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "distance")
-        json.marshal_to_writer(w, this.distance, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "power")
-        json.marshal_to_writer(w, this.power, opt)
+        serialize_do_field(s, "Color", this.color)
+        serialize_do_field(s, "Constant", this.constant)
+        serialize_do_field(s, "Linear", this.linear)
+        serialize_do_field(s, "Quadratic", this.quadratic)
+        serialize_do_field(s, "Distance", this.distance)
+        serialize_do_field(s, "Power", this.power)
     } else {
-        this.color = json_array_to_vec(Color, s.object["color"].(json.Array))
-        this.constant = f32(s.object["constant"].(json.Float))
-        this.linear = f32(s.object["linear"].(json.Float))
-        this.quadratic = f32(s.object["quadratic"].(json.Float))
-        this.distance = f32(s.object["distance"].(json.Float))
-        this.power = f32(s.object["power"].(json.Float))
+        serialize_to_field(s, "Color", &this.color)
+        serialize_to_field(s, "Constant", &this.constant)
+        serialize_to_field(s, "Linear", &this.linear)
+        serialize_to_field(s, "Quadratic", &this.quadratic)
+        serialize_to_field(s, "Distance", &this.distance)
+        serialize_to_field(s, "Power", &this.power)
     }
 }
 
@@ -434,22 +381,14 @@ where N == 2 || N == 3 || N == 4 {
 }
 
 @(serializer=DirectionalLight)
-serialize_directional_light :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+serialize_directional_light :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^DirectionalLight)this
     if serialize {
-        json.opt_write_iteration(s.writer, s.opt, 1)
-        json.opt_write_key(s.writer, s.opt, "color")
-        json.marshal_to_writer(s.writer, this.color, s.opt)
+        serialize_do_field(s, "Color", this.color)
     } else {
-        c, ok := s.object["color"].(json.Array)
-        if !ok do return
-        assert(len(c) == len(Color))
-
-        // for i in 0..<4 {
-        //     this.color[i] = f32(c[i].(json.Float))
-        // }
-        this.color = json_array_to_vec(Color, c)
-
+        if color, ok := serialize_get_field(s, "Color", Color); ok {
+            this.color = color
+        }
     }
 }
 
@@ -646,39 +585,24 @@ camera_prop_changed :: proc(this: rawptr, prop: any) {
 }
 
 @(serializer=Camera)
-serialize_camera :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+serialize_camera :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^Camera)this
     if serialize {
-        w := s.writer
-        opt := s.opt
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "Fov")
-        json.marshal_to_writer(w, this.fov, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "NearPlane")
-        json.marshal_to_writer(w, this.near_plane, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "FarPlane")
-        json.marshal_to_writer(w, this.far_plane, opt)
+        serialize_do_field(s, "Fov", this.fov)
+        serialize_do_field(s, "NearPlane", this.near_plane)
+        serialize_do_field(s, "FarPlane", this.far_plane)
     } else {
-        if "Fov" in s.object {
-            fov := f32(s.object["Fov"].(json.Float))
+        if fov, ok := serialize_get_field(s, "Fov", type_of(this.fov)); ok {
             this.fov = fov
         }
 
-        if "NearPlane" in s.object {
-            this.near_plane = f32(s.object["NearPlane"].(json.Float))
+        if near, ok := serialize_get_field(s, "NearPlane", type_of(this.near_plane)); ok {
+            this.near_plane = near
         }
 
-        if "FarPlane" in s.object {
-            this.far_plane = f32(s.object["FarPlane"].(json.Float))
+        if far, ok := serialize_get_field(s, "FarPlane", type_of(this.far_plane)); ok {
+            this.far_plane = far
         }
-
-        aspect := f32(g_engine.width) / f32(g_engine.height)
-        this.projection = linalg.matrix4_perspective_f32(this.fov, aspect, this.near_plane, this.far_plane)
     }
 }
 
@@ -888,39 +812,39 @@ when USE_EDITOR {
 }
 
 @(serializer=ScriptComponent)
-serialize_script_component :: proc(this: rawptr, serialize: bool, s: ^Serializer) {
+serialize_script_component :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^ScriptComponent)this
     serialize_asset(&g_engine.asset_manager, s, serialize, "Script", &this.script)
 
-    if serialize {
-        w := s.writer
-        opt := s.opt
-        old := opt.sort_maps_by_key
-        opt.sort_maps_by_key = true
+    // if serialize {
+    //     w := s.writer
+    //     opt := s.opt
+    //     old := opt.sort_maps_by_key
+    //     opt.sort_maps_by_key = true
 
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "Exports")
-        json.marshal_to_writer(w, this.script_fields, opt)
+    //     json.opt_write_iteration(w, opt, 1)
+    //     json.opt_write_key(w, opt, "Exports")
+    //     json.marshal_to_writer(w, this.script_fields, opt)
 
-        opt.sort_maps_by_key = old
-    }
-    else {
-        if "Exports" in s.object {
-            for field, data in s.object["Exports"].(json.Object) {
-                this.script_fields[strings.clone(field)] = json_to_lua_value(data)
-            }
-        }
+    //     opt.sort_maps_by_key = old
+    // }
+    // else {
+    //     if "Exports" in s.object {
+    //         for field, data in s.object["Exports"].(json.Object) {
+    //             this.script_fields[strings.clone(field)] = json_to_lua_value(data)
+    //         }
+    //     }
 
-        if this.script != nil {
-            this.instance = create_script_instance(this.script)
+    //     if this.script != nil {
+    //         this.instance = create_script_instance(this.script)
 
-            if len(this.script_fields) != len(this.script.properties.fields) {
-                for field in this.script.properties.fields {
-                    this.script_fields[strings.clone(field.name)] = field.default
-                }
-            }
-        }
-    }
+    //         if len(this.script_fields) != len(this.script.properties.fields) {
+    //             for field in this.script.properties.fields {
+    //                 this.script_fields[strings.clone(field.name)] = field.default
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 LuaScript :: struct {

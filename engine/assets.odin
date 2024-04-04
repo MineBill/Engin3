@@ -67,41 +67,24 @@ load_asset :: proc(path: Path, type: typeid, id: Maybe(UUID) = nil) -> ^Asset {
     return nil
 }
 
-serialize_asset :: proc(am: ^AssetManager, s: ^Serializer, serialize: bool, key: string, asset: ^^$T)
+serialize_asset :: proc(am: ^AssetManager, s: ^SerializeContext, serialize: bool, key: string, asset: ^^$T)
     where intrinsics.type_is_subtype_of(T, Asset) {
+    serialize_begin_table(s, key)
     if serialize {
-        if asset^ == nil || asset^.path == "" || asset^.id == 0 {
-            return
-        }
-        w := s.writer
-        opt := s.opt
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, key)
-        json.opt_write_start(w, opt, '{')
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "UUID")
-        json.marshal_to_writer(w, asset^.id, opt)
-
-        json.opt_write_iteration(w, opt, 1)
-        json.opt_write_key(w, opt, "Path")
-        json.marshal_to_writer(w, asset^.path, opt)
-
-        json.opt_write_end(w, opt, '}')
+        serialize_do_field(s, "UUID", asset^.id)
+        serialize_do_field(s, "Path", asset^.path)
     } else {
-        if object, ok := s.object[key].(json.Object); ok {
-            id: Maybe(UUID) = nil
+        id: Maybe(UUID) = nil
 
-            if uuid, ok := object["UUID"].(json.Integer); ok {
-                id = UUID(uuid)
-            }
+        if uuid, ok := serialize_get_field(s, "UUID", type_of(asset^.id)); ok {
+            id = UUID(uuid)
+        }
 
-            if path, ok := object["Path"].(json.String); ok {
-                if ass := get_asset(am, path, T, id); ass != nil {
-                    asset^ = ass
-                }
+        if path, ok := serialize_get_field(s, "Path", type_of(asset^.path)); ok {
+            if ass := get_asset(am, path, T, id); ass != nil {
+                asset^ = ass
             }
         }
     }
+    serialize_end_table(s)
 }

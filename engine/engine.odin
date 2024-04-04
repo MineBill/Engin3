@@ -321,8 +321,8 @@ void main() {
 
     e.run_mode = .Editor
 
-    if !deserialize_world(&e.world, "assets/scenes/main.scen3") {
-        log.debug("Failed to deserialize 'main.scen3")
+    if !deserialize_world(&e.world, "assets/scenes/New World.world") {
+        log.debug("Failed to deserialize 'New World.world")
     }
 
     return {}
