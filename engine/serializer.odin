@@ -9,6 +9,8 @@ import "core:math/bits"
 import "core:log"
 import c "core:c/libc"
 import intr "base:intrinsics"
+import "core:io"
+import "core:strconv"
 
 SerializationMode :: enum {
     Serialize,
@@ -400,11 +402,49 @@ serialize_read_field :: proc(s: ^SerializeContext, value: any) -> bool {
     case rt.Type_Info_Named:
         unreachable()
     case rt.Type_Info_Integer:
-        if lua.isinteger(L, -1) != 1 do return false
-        u := lua.tointeger(L, -1)
+        switch i in a {
+        case u64:
+            if lua.isstring(L, -1) != 1 do return false
+            s := lua.tostring(L, -1)
+            u, ok := strconv.parse_u64(s)
+            if !ok do return false
 
-        assign_int(value, u)
+            assign_int(value, u)
 
+        case u128:
+            if lua.isstring(L, -1) != 1 do return false
+            s := lua.tostring(L, -1)
+            u, ok := strconv.parse_u128(s)
+            if !ok do return false
+
+            assign_int(value, u)
+        case i128:
+            if lua.isstring(L, -1) != 1 do return false
+            s := lua.tostring(L, -1)
+            u, ok := strconv.parse_i128(s)
+            if !ok do return false
+
+            assign_int(value, u)
+        case uint:
+            if lua.isstring(L, -1) != 1 do return false
+            s := lua.tostring(L, -1)
+            u, ok := strconv.parse_uint(s)
+            if !ok do return false
+
+            assign_int(value, u)
+        case uintptr:
+            if lua.isstring(L, -1) != 1 do return false
+            s := lua.tostring(L, -1)
+            u, ok := strconv.parse_uint(s)
+            if !ok do return false
+
+            assign_int(value, u)
+        case:
+            if lua.isinteger(L, -1) != 1 do return false
+            u := lua.tointeger(L, -1)
+
+            assign_int(value, u)
+        }
     case rt.Type_Info_Float:
         if lua.isnumber(L, -1) != 1 do return false
         u := lua.tonumber(L, -1)
@@ -454,7 +494,7 @@ serialize_actually_do_field :: proc(s: ^SerializeContext, value: any) {
     ti := rt.type_info_base(type_info_of(value.id))
     a := any{value.data, ti.id}
 
-    #partial switch info in ti.variant {
+    #partial type_switch: switch info in ti.variant {
     case rt.Type_Info_Named:
         unreachable()
     case rt.Type_Info_Integer:
@@ -464,31 +504,66 @@ serialize_actually_do_field :: proc(s: ^SerializeContext, value: any) {
         case i16:     u = i64(i)
         case i32:     u = i64(i)
         case i64:     u = i64(i)
-        case i128:    u = i64(i)
         case int:     u = i64(i)
         case u8:      u = i64(i)
         case u16:     u = i64(i)
         case u32:     u = i64(i)
-        case u64:     u = i64(i)
-        case u128:    u = i64(i)
-        case uint:    u = i64(i)
-        case uintptr: u = i64(i)
+        case i128:
+            sb: strings.Builder
+            strings.builder_init(&sb)
+            w := strings.to_writer(&sb)
+            io.write_i128(w, i)
 
-        case i16le:  u = i64(i)
-        case i32le:  u = i64(i)
-        case i64le:  u = i64(i)
-        case u16le:  u = i64(i)
-        case u32le:  u = i64(i)
-        case u64le:  u = i64(i)
-        case u128le: u = i64(i)
+            lua.pushstring(L, strings.to_string(sb))
+            break type_switch
+        case u64:
+            sb: strings.Builder
+            strings.builder_init(&sb)
+            w := strings.to_writer(&sb)
+            io.write_u64(w, i)
 
-        case i16be:  u = i64(i)
-        case i32be:  u = i64(i)
-        case i64be:  u = i64(i)
-        case u16be:  u = i64(i)
-        case u32be:  u = i64(i)
-        case u64be:  u = i64(i)
-        case u128be: u = i64(i)
+            lua.pushstring(L, strings.to_string(sb))
+            break type_switch
+        case u128:
+            sb: strings.Builder
+            strings.builder_init(&sb)
+            w := strings.to_writer(&sb)
+            io.write_u128(w, i)
+
+            lua.pushstring(L, strings.to_string(sb))
+            break type_switch
+        case uint:
+            sb: strings.Builder
+            strings.builder_init(&sb)
+            w := strings.to_writer(&sb)
+            io.write_uint(w, i)
+
+            lua.pushstring(L, strings.to_string(sb))
+            break type_switch
+        case uintptr:
+            sb: strings.Builder
+            strings.builder_init(&sb)
+            w := strings.to_writer(&sb)
+            io.write_uint(w, uint(i))
+
+            lua.pushstring(L, strings.to_string(sb))
+            break type_switch
+
+        case i16le:  unimplemented()
+        case i32le:  unimplemented()
+        case i64le:  unimplemented()
+        case u16le:  unimplemented()
+        case u32le:  unimplemented()
+        case u64le:  unimplemented()
+        case u128le: unimplemented()
+
+        case i16be:  unimplemented()
+        case i32be:  unimplemented()
+        case i64be:  unimplemented()
+        case u16be:  unimplemented()
+        case u32be:  unimplemented()
+        case u64be:  unimplemented()
+        case u128be: unimplemented()
         }
         lua.pushinteger(L, u)
     case rt.Type_Info_Float:
