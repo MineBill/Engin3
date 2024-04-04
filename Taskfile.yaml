@@ -16,6 +16,15 @@ tasks:
     platforms: [linux]
     cmd: ./packages/build.sh
 
+  copy-dlls:
+    platforms: [windows]
+    cmd: cmd /c "copy packages\odin-lua\bin\windows\lua542.dll ."
+    dir: ./
+    sources:
+      - packages/odin-lua/bin/windows/lua542.dll
+    generates:
+      - lua542.dll
+
   build-meta:
     cmds:
       - |
@@ -89,27 +98,8 @@ tasks:
     generates:
       - out/debug/engin3{{.EXE_EXT}}
 
-  build-no-mani:
-    deps: [run-meta]
-    cmds:
-      - |
-        odin build engine \
-        -build-mode:exe -define:VALIDATION=true \
-        -show-timings \
-        -out:out/debug/engin3{{.EXE_EXT}} \
-        -o:none \
-        -debug \
-        -use-separate-modules \
-        -collection:packages=packages \
-        -define:TRACY_ENABLE={{.USE_TRACY}} {{.USE_DEBUG}} \
-        -ignore-unknown-attributes
-    sources:
-      - engine/**/*.odin
-    generates:
-      - out/debug/engin3{{.EXE_EXT}}
-
   run:
-    deps: [build]
+    deps: [copy-dlls, build]
     cmds:
       - ./out/debug/engin3{{.EXE_EXT}}
 
