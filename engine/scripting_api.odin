@@ -27,7 +27,9 @@ Properties :: struct {
         lua_entity_get_position = "get_position",
         lua_entity_translate    = "translate",
     },
-    MethodPrefix = "lua_entity_",
+    Metamethods = {
+        __tostring = lua_entity_to_string,
+    },
 })
 LuaEntity :: struct {
     world: ^World,
@@ -59,6 +61,11 @@ lua_entity_translate :: proc(le: LuaEntity, offset: vec3) {
     if go == nil do return
 
     go.transform.local_position += offset
+}
+
+@(LuaExport)
+lua_entity_to_string :: proc(le: LuaEntity) -> string {
+    return fmt.tprintf("Entity[%v, %v]", ds_to_string(le.owner.name), le.entity)
 }
 
 @(LuaExport)
