@@ -18,7 +18,7 @@ import "core:strconv"
 import "core:os"
 import "core:path/filepath"
 
-DEFAULT_EDITOR_CAMERA_POSITION :: vec3{0, 3, -2}
+DEFAULT_EDITOR_CAMERA_POSITION :: vec3{0, 3, 5}
 USE_EDITOR :: true
 
 EditorState :: enum {
@@ -111,11 +111,12 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.content_browser.root_dir = filepath.join({os.get_current_directory(allocator = context.temp_allocator), "assets"})
     cb_navigate_to_folder(&e.content_browser, e.content_browser.root_dir)
 
+    e.content_browser.textures[.Unknown] = load_texture_from_file("assets/textures/ui/file.png")
     e.content_browser.textures[.Folder] = load_texture_from_file("assets/textures/ui/folder.png")
     e.content_browser.textures[.FolderBack] = load_texture_from_file("assets/textures/ui/folder_back.png")
-    e.content_browser.textures[.File] = load_texture_from_file("assets/textures/ui/file.png")
-    e.content_browser.textures[.World] = load_texture_from_file("assets/textures/ui/world.png")
+    e.content_browser.textures[.Scene] = load_texture_from_file("assets/textures/ui/world.png")
     e.content_browser.textures[.Script] = load_texture_from_file("assets/editor/icons/lua.png")
+    e.content_browser.textures[.Model] = e.content_browser.textures[.Unknown]
 
     e.icons[.PlayButton] = load_texture_from_file("assets/editor/icons/play_button.png")
     e.icons[.PauseButton] = load_texture_from_file("assets/editor/icons/pause_button.png")
@@ -509,14 +510,14 @@ editor_viewport :: proc(e: ^Editor) {
         imgui.Image(rawptr(uintptr(texture_handle)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
 
         if imgui.BeginDragDropTarget() {
-            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM_SCENE", {}); payload != nil {
+            if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Scene], {}); payload != nil {
                 data := transmute(^byte)payload.Data
                 path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
                 deserialize_world(&e.engine.world, path)
             }
 
-            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
+            if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Model], {}); payload != nil {
                 data := transmute(^byte)payload.Data
                 path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
@@ -767,22 +768,13 @@ Folder :: struct {
     opened: bool,
 }
 
-ContentBrowserTexture :: enum {
-    Folder,
-    FolderBack,
-    File,
-    World,
-
-    Script,
-}
-
 ContentBrowser :: struct {
     root_dir: string,
     current_dir: string,
 
     items: []os.File_Info,
 
-    textures: [ContentBrowserTexture]Texture2D,
+    textures: [ContentItemType]Texture2D,
 
     renaming_item: Maybe(int),
 }
@@ -882,7 +874,7 @@ editor_content_browser :: proc(e: ^Editor) {
         for i in 0..<len(e.content_browser.items) {
             item := e.content_browser.items[i]
 
-            texture: ContentBrowserTexture = .File
+            texture: ContentItemType = .Unknown
             switch {
             case item.is_dir:
                 texture = .Folder
@@ -890,9 +882,11 @@ editor_content_browser :: proc(e: ^Editor) {
                 switch filepath.ext(item.name) {
                 case ".scen3": fallthrough
                 case ".world":
-                    texture = .World
+                    texture = .Scene
                 case ".lua":
                     texture = .Script
+                case ".glb":
+                    texture = .Model
                 }
             }
             imgui.ImageButton(cstr(item.name), transmute(rawptr)u64(e.content_browser.textures[texture].handle), size)
@@ -900,9 +894,7 @@ editor_content_browser :: proc(e: ^Editor) {
             if imgui.BeginDragDropSource({}) {
                 path := item.fullpath
 
-                type := "CONTENT_ITEM_SCENE" if texture == .World else "CONTENT_ITEM"
-
-                imgui.SetDragDropPayload(cstr(type), raw_data(path), len(path) * size_of(byte), .Once)
+                imgui.SetDragDropPayload(CONTENT_ITEM_TYPES[texture], raw_data(path), len(path) * size_of(byte), .Once)
 
                 imgui.TextUnformatted(cstr(item.name))
 
@@ -1064,6 +1056,10 @@ editor_gameobjects :: proc(e: ^Editor) {
             if imgui.MenuItem("Camera") {
                 go := new_object(&e.engine.world, "Camera", parent)
                 add_component(&e.engine.world, go, Camera)
+            }
+            if imgui.MenuItem("Sky") {
+                go := new_object(&e.engine.world, "Sky", parent)
+                add_component(&e.engine.world, go, CubemapComponent)
             }
             imgui.EndMenu()
         }
@@ -1578,7 +1574,7 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
             imgui.Button(cstr(model^.path) if model^ != nil else "nil")
 
             if imgui.BeginDragDropTarget() {
-                if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM", {}); payload != nil {
+                if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Model], {}); payload != nil {
                     data := transmute(^byte)payload.Data
                     path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
@@ -1614,7 +1610,7 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
             }
 
             if imgui.BeginDragDropTarget() {
-                if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM"); payload != nil {
+                if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Texture]); payload != nil {
                     data := transmute(^byte)payload.Data
                     path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
@@ -1633,7 +1629,7 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
             imgui.Button(cstr(script^.path) if script^ != nil else "nil")
 
             if imgui.BeginDragDropTarget() {
-                if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM"); payload != nil {
+                if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Script]); payload != nil {
                     data := transmute(^byte)payload.Data
                     path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
@@ -1904,3 +1900,22 @@ capture_logger_proc :: proc(
     append(capture_logger.log_entries, LogEntry{level, strings.clone(text), options, location})
 }
 
+ContentItemType :: enum {
+    Unknown,
+    Folder,
+    FolderBack,
+    Scene,
+    Script,
+    Model,
+    Texture,
+}
+
+CONTENT_ITEM_TYPES : [ContentItemType]cstring = {
+    .Unknown    = "CONTENT_ITEM_UNKNOWN",
+    .Folder     = "CONTENT_ITEM_FOLDER",
+    .FolderBack = "CONTENT_ITEM_FOLDER",
+    .Scene      = "CONTENT_ITEM_SCENE",
+    .Script     = "CONTENT_ITEM_SCRIPT",
+    .Model      = "CONTENT_ITEM_MODEL",
+    .Texture    = "CONTENT_ITEM_TEXTURE",
+}
