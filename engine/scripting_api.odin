@@ -26,6 +26,8 @@ Properties :: struct {
         lua_entity_set_position = "set_position",
         lua_entity_get_position = "get_position",
         lua_entity_translate    = "translate",
+        lua_entity_set_active = "set_active",
+        lua_entity_is_active = "is_active",
     },
     Metamethods = {
         __tostring = lua_entity_to_string,
@@ -69,6 +71,21 @@ lua_entity_to_string :: proc(le: LuaEntity) -> string {
 }
 
 @(LuaExport)
+lua_entity_set_active :: proc(le: LuaEntity, active: bool) {
+    go := get_object(le.world, UUID(le.entity))
+    if go == nil do return
+
+    go.enabled = active
+}
+
+@(LuaExport)
+lua_entity_is_active :: proc(le: LuaEntity) -> bool {
+    go := get_object(le.world, UUID(le.entity))
+    if go == nil do return false
+    return go.enabled
+}
+
+@(LuaExport)
 v2 :: proc(x, y: f32) -> vec2 {
     return vec2{x, y}
 }
@@ -101,4 +118,34 @@ vec2_to_string :: proc(v: vec2) -> string {
 @(LuaExport)
 print :: proc(what: string) {
     log.info(what)
+}
+
+@(LuaExport = {
+    Name = "find_entity_by_name",
+})
+api_find_entity_by_name :: proc(name: string) -> LuaEntity {
+    return {}
+}
+
+// Returns whether the specified key is currently pressed.
+// awdawd
+@(LuaExport = {
+    Name = "is_key_down",
+})
+api_is_key_down :: proc(key: int) -> bool {
+    return is_key_pressed(Key(key))
+}
+
+@(LuaExport = {
+    Name = "is_key_up",
+})
+api_is_key_up :: proc(key: int) -> bool {
+    return is_key_released(Key(key))
+}
+
+@(LuaExport = {
+    Name = "is_key_just_pressed",
+})
+api_is_key_just_pressed :: proc(key: Key) -> bool {
+    return is_key_just_pressed(Key(key))
 }
