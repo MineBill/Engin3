@@ -745,11 +745,11 @@ when USE_EDITOR {
         imgui.Dummy(imgui.GetContentRegionAvail())
 
         if imgui.BeginDragDropTarget() {
-            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM"); payload != nil {
+            if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Script]); payload != nil {
                 data := transmute(^byte)payload.Data
                 path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
-                this.script = cast(^LuaScript)load_asset(path, LuaScript, this.script.id)
+                this.script = cast(^LuaScript)load_asset(path, LuaScript)
                 this.instance = create_script_instance(this.script)
             }
             imgui.EndDragDropTarget()
