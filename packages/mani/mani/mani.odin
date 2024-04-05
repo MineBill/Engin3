@@ -30,6 +30,7 @@ ProcExport :: struct {
     using base: LuaExport,
     mani_name: ManiName,
     lua_proc: lua.CFunction,
+    module: Maybe(string),
 }
 
 // Note(Dragos): Test performance
@@ -60,14 +61,16 @@ EnumExport :: struct {
 // TODO(Add lua state in here aswell) (then we can have a single init function instead of export_all)
 State :: struct {
     lua_state: ^lua.State,
-    procs: map[OdinName]ProcExport, // Key: odin_name
+    global_procs: map[OdinName]ProcExport, // Key: odin_name
+    modules: map[string]map[OdinName]ProcExport,
     structs: map[typeid]StructExport, // Key: type 
     enums: map[string]EnumExport,
     udata_metatable_mapping: map[typeid]cstring, // Key: odin type; Value: lua name
 }
 
 global_state := State {
-    procs = make(map[OdinName]ProcExport),
+    global_procs = make(map[OdinName]ProcExport),
+    modules = make(map[string]map[OdinName]ProcExport),
     structs = make(map[typeid]StructExport),
     enums = make(map[string]EnumExport),
     udata_metatable_mapping = make(map[typeid]cstring),
@@ -81,7 +84,15 @@ default_context :: proc "contextless" () -> runtime.Context {
 
 add_function :: proc(v: ProcExport) {
     using global_state 
-    procs[v.odin_name] = v
+    if module_name, ok := v.module.?; ok {
+        if module_name not_in modules {
+            modules[module_name] = make(map[OdinName]ProcExport)
+        }
+        module := &modules[module_name]
+        module[v.odin_name] = v
+    } else {
+        global_procs[v.odin_name] = v
+    }
 }
 
 add_struct :: proc(s: StructExport) {
@@ -140,9 +151,21 @@ init :: proc(L: ^lua.State, using state: ^State, ctx := context) {
             lua.pop(L, 1)
         }
     }
-    for key, val in procs {
+    for key, val in global_procs {
         lua.pushcfunction(L, val.lua_proc)
         cstr := strings.clone_to_cstring(cast(string)val.lua_name, context.temp_allocator)
+        lua.setglobal(L, cstr)
+    }
+
+    for module, procs in modules {
+        lua.newtable(L)
+
+        for name, p in procs {
+            lua.pushcfunction(L, p.lua_proc)
+            lua.setfield(L, -2, strings.clone_to_cstring(string(p.lua_name), context.temp_allocator))
+        }
+
+        cstr := strings.clone_to_cstring(module, context.temp_allocator)
         lua.setglobal(L, cstr)
     }
 

@@ -6,9 +6,7 @@ import filepath "core:path/filepath"
 import os "core:os"
 import json "core:encoding/json"
 
-DEFAULT_PROC_ATTRIBUTES := Attributes {
-    
-}
+DEFAULT_PROC_ATTRIBUTES := Attributes {}
 
 // Note(Dragos): This should change
 DEFAULT_STRUCT_ATTRIBUTES := Attributes {
@@ -27,8 +25,9 @@ GeneratorConfig :: struct {
 
     odin_ext: string,
     lua_ext: string,
-}
 
+    declared_modules: map[string]struct{},
+}
 
 PackageFile :: struct {
     builder: strings.Builder,
@@ -97,15 +96,13 @@ config_from_json :: proc(config: ^GeneratorConfig, file: string) {
     }
 }
 
-
 config_package :: proc(config: ^GeneratorConfig, pkg: string, filename: string) {
     result, ok := &config.files[pkg]
     if !ok {
         using strings
 
-        
         path := filepath.dir(filename, context.temp_allocator)
-    
+
         name := filepath.stem(filename)
         filename := strings.concatenate({path, "/", pkg, config.odin_ext})
         luaFilename := strings.concatenate({config.meta_directory, "/", pkg, config.lua_ext})
@@ -150,20 +147,16 @@ config_package :: proc(config: ^GeneratorConfig, pkg: string, filename: string) 
             name = "strings",
             text = `import strings "core:strings"`,
         }
-        
+
         for _, imp in file.imports {
             write_string(sb, imp.text)
             write_string(sb, "\n")
         }
         write_string(sb, "\n")
-        
+
         write_string(luaSb, "---@meta\n\n")
     }
 }
-
-
-
-
 
 generate_struct_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, s: StructExport, filename: string) {
     using strings 
@@ -242,13 +235,11 @@ add_import :: proc(file: ^PackageFile, import_statement: FileImport) {
     }
 }
 
-
 generate_lua_exports :: proc(config: ^GeneratorConfig, exports: FileExports) {
     using strings
     config_package(config, exports.symbols_package, exports.relpath)
     file := &config.files[exports.symbols_package]
-    
-    
+
     for _, imp in exports.imports {
         add_import(file, imp)
     }

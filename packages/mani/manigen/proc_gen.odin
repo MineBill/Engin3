@@ -9,10 +9,19 @@ write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: Proc
     using strings, fmt
     sb := &(&config.files[exports.symbols_package]).lua_builder
 
+    exportAttribs := fn.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_PROC_ATTRIBUTES
+
+    if module_name, ok := exportAttribs["Module"].(String); ok {
+        if module_name not_in config.declared_modules {
+            fmt.sbprintf(sb, "---@class %s\n", module_name)
+            fmt.sbprintf(sb, "%s = {{}}\n\n", module_name)
+            config.declared_modules[module_name] = {}
+        }
+    }
+
     for comment in fn.lua_docs {
         fmt.sbprintf(sb, "---%s\n", comment)
     }
-    exportAttribs := fn.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_PROC_ATTRIBUTES
     luaName := exportAttribs["Name"].(String) if "Name" in exportAttribs else fn.name
     if override_lua_name != "" {
         luaName = override_lua_name
@@ -65,7 +74,12 @@ write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: Proc
     }
 
     params := fn.params[start_param:]
-    fmt.sbprintf(sb, "function %s(", luaName)
+    if module_name, ok := exportAttribs["Module"].(String); ok {
+        fmt.sbprintf(sb, "function %s.%s(", module_name, luaName)
+    } else {
+        fmt.sbprintf(sb, "function %s(", luaName)
+    }
+
     for param, i in params {
         write_string(sb, param.name)
         if i != len(params) - 1 do write_string(sb, ", ")
@@ -77,11 +91,12 @@ write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: Proc
 generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, fn: ProcedureExport, filename: string) {
     using strings
     fn_name := strings.concatenate({"_mani_", fn.name}, context.temp_allocator)
-    
+
     sb := &(&config.files[exports.symbols_package]).builder
 
     exportAttribs := fn.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_PROC_ATTRIBUTES
     luaName := exportAttribs["Name"].(String) if "Name" in exportAttribs else fn.name
+    module_name := exportAttribs["Module"].(String) or_else ""
 
     write_string(sb, fn_name)
     write_string(sb, " :: proc \"c\" (L: ^lua.State) -> c.int {\n    ")
@@ -146,7 +161,6 @@ generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports
     write_string(sb, "}\n")
 
     // Generate @init function to bind to mani
-
     write_string(sb, "\n")
     write_string(sb, "@(init)\n")
     write_string(sb, fn_name)
@@ -180,6 +194,10 @@ generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports
     write_string(sb, "fn.lua_proc = ")
     write_string(sb, fn_name)
     write_string(sb, "\n    ")
+
+    if module_name != "" {
+        fmt.sbprintf(sb, "fn.module = \"%v\"\n    ", module_name)
+    }
 
     write_string(sb, "mani.add_function(fn)\n")
 
