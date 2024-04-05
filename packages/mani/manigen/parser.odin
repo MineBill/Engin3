@@ -47,7 +47,6 @@ Identifier :: distinct String
 Int :: i64 
 Float :: f64 
 
-
 AttribVal :: union {
     // nil: empty attribute, like a flag, array element, etc
     String,
@@ -57,8 +56,6 @@ AttribVal :: union {
 }
 
 Attributes :: distinct map[string]AttribVal
-
-
 
 NodeExport :: struct {
     attribs: Attributes,
@@ -128,7 +125,6 @@ file_exports_destroy :: proc(obj: ^FileExports) {
     // Note(Dragos): Taken from string builder, shouldn't it be reversed?
     delete(obj.symbols)
     clear(&obj.symbols)
-    
 }
 
 parse_symbols :: proc(fileName: string) -> (symbol_exports: FileExports) {
@@ -146,16 +142,14 @@ parse_symbols :: proc(fileName: string) -> (symbol_exports: FileExports) {
         fmt.printf(format, args)
         fmt.printf("\n")
     }
-     
 
     f := ast.File{
         src = string(data),
         fullpath = fileName,
     }
-    
+
     ok = parser.parse_file(&p, &f)
 
-    
     if p.error_count > 0 {
         return
     }
@@ -166,8 +160,7 @@ parse_symbols :: proc(fileName: string) -> (symbol_exports: FileExports) {
     for comment in root.comments {
         commentMapping[comment.end.line] = comment
     }
-    
-    
+
     // Note(Dragos): memory leaks around everywhere
     symbol_exports = file_exports_make()
     abspath, succ := filepath.abs(".")
@@ -258,15 +251,11 @@ parse_symbols :: proc(fileName: string) -> (symbol_exports: FileExports) {
                 }
             }
             }
-
-         
         }
     }
 
     return
 }
-
-
 
 AttribErr :: enum {
     Skip,
@@ -300,7 +289,6 @@ validate_proc_attributes :: proc(proc_decl: ^ast.Proc_Lit, attribs: Attributes) 
 
     exportAttribs := attribs[LUAEXPORT_STR] 
 
-
     return .Export, nil
 }
 
@@ -310,7 +298,6 @@ validate_struct_attributes :: proc(struct_decl: ^ast.Struct_Type, attribs: Attri
     }
 
     exportAttribs := attribs[LUAEXPORT_STR] 
-    
 
     return .Export, nil
 }
@@ -321,7 +308,6 @@ validate_enum_attributes :: proc(enum_decl: ^ast.Enum_Type, attribs: Attributes)
     }
 
     exportAttribs := attribs[LUAEXPORT_STR] 
-    
 
     return .Export, nil
 }
@@ -332,7 +318,6 @@ validate_array_attributes :: proc(arr_decl: ^ast.Array_Type, attribs: Attributes
     }
 
     exportAttribs := attribs[LUAEXPORT_STR] 
-    
 
     return .Export, nil
 }
@@ -421,24 +406,22 @@ parse_array :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, arr_decl: ^ast
     lenLit := arr_decl.len.derived.(^ast.Basic_Lit)
     lenStr := root.src[lenLit.pos.offset : lenLit.end.offset]
     result.len, _ = strconv.parse_int(lenStr)
-    
+
     err = .Export
     return
 }
 
 parse_struct :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, struct_decl: ^ast.Struct_Type, allocator := context.allocator) -> (result: StructExport, err: AttribErr) {
-    
     result.attribs = parse_attributes(root, value_decl)
 
     if err, msg := validate_struct_attributes(struct_decl, result.attribs); err != .Export {
         return result, err
     }
-  
+
     result.name = value_decl.names[0].derived.(^ast.Ident).name
     result.fields = make(map[string]Field) 
     
     for field in struct_decl.fields.list {
-        
         fType: string
         #partial switch x in field.type.derived {
             case ^ast.Ident: {
@@ -472,7 +455,6 @@ parse_struct :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, struct_decl: 
             }
         }
     }*/
-    
     err = .Export
     return
 }
@@ -523,14 +505,13 @@ parse_enum :: proc(
 }
 
 parse_proc :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, proc_lit: ^ast.Proc_Lit, allocator := context.allocator) -> (result: ProcedureExport, err: AttribErr) {
- 
     //result.properties, err = parse_properties(root, value_decl)
     result.attribs = parse_attributes(root, value_decl)
-    
+
     if err, msg := validate_proc_attributes(proc_lit, result.attribs); err != .Export {
         return result, err
     }
-  
+
     v := proc_lit
     procType := v.type
     declName := value_decl.names[0].derived.(^ast.Ident).name // Note(Dragos): Does this work with 'a, b: int' ?????
@@ -551,13 +532,10 @@ parse_proc :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, proc_lit: ^ast.
         }
     }
     // Note(Dragos): these should be checked for 0
-    
-    
     result.params = make_soa(type_of(result.params))
     result.results = make_soa(type_of(result.results))
     // Get parameters
     if procType.params != nil {
-        
         for param, i in procType.params.list {
             paramType: string
             #partial switch x in param.type.derived {
@@ -577,10 +555,10 @@ parse_proc :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, proc_lit: ^ast.
                     name = name.derived.(^ast.Ident).name, 
                     type = paramType,
                 })
-            }         
+            }
         }
     }
-    
+
     // Get results
     if procType.results != nil {
         for rval, i in procType.results.list {
@@ -607,8 +585,6 @@ parse_proc :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, proc_lit: ^ast.
                 strings.write_int(&sb, i)
                 resName = strings.to_string(sb)
             }
-            
-    
 
             append_soa(&result.results, Field{
                 name = resName, 
@@ -617,7 +593,6 @@ parse_proc :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, proc_lit: ^ast.
         }
     }
 
-    
     return result, .Export
 }
 
@@ -626,7 +601,7 @@ get_attr_elem :: proc(root: ^ast.File, elem: ^ast.Expr) -> (name: string, value:
     #partial switch x in elem.derived  {
         case ^ast.Field_Value: {
             attr := x.field.derived.(^ast.Ident)
-            
+
             #partial switch v in x.value.derived {
                 case ^ast.Basic_Lit: {
                     value = strings.trim(v.tok.text, "\"")
@@ -636,9 +611,7 @@ get_attr_elem :: proc(root: ^ast.File, elem: ^ast.Expr) -> (name: string, value:
                     value = root.src[v.pos.offset : v.end.offset]
                 }
 
-                case ^ast.Comp_Lit: {
-                    
-                }
+                case ^ast.Comp_Lit: {}
             }
             name = attr.name
         }
@@ -653,5 +626,4 @@ get_attr_elem :: proc(root: ^ast.File, elem: ^ast.Expr) -> (name: string, value:
 is_pointer_type  :: #force_inline proc(token: string) -> bool {
     return token[0] == '^'
 }
-
 
