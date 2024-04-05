@@ -92,10 +92,17 @@ ProcedureExport :: struct {
     results: #soa [dynamic]Field,
 }
 
+EnumExport :: struct {
+    using base: NodeExport,
+    name: string,
+    fields: map[string]int,
+}
+
 SymbolExport :: union {
     ProcedureExport,
     StructExport,
     ArrayExport,
+    EnumExport,
 }
 
 FileImport :: struct {
@@ -206,42 +213,50 @@ parse_symbols :: proc(fileName: string) -> (symbol_exports: FileExports) {
             if len(decl.attributes) < 1 || len(decl.values) == 0 do continue // No attributes here, move on
 
             #partial switch v in decl.values[0].derived {
-                case ^ast.Proc_Lit: {
-                    exportProc, err := parse_proc(root, decl, v)
-                    if err == .Export {
-                        exportProc.lua_docs = parse_lua_annotations(root, decl, commentMapping)
-                        symbol_exports.symbols[exportProc.name] = exportProc
-                    }
-                    
+            case ^ast.Proc_Lit: {
+                exportProc, err := parse_proc(root, decl, v)
+                if err == .Export {
+                    exportProc.lua_docs = parse_lua_annotations(root, decl, commentMapping)
+                    symbol_exports.symbols[exportProc.name] = exportProc
                 }
+                
+            }
 
-                case ^ast.Struct_Type: {
-                    exportStruct, err := parse_struct(root, decl, v) 
-                    if err == .Export {
-                        exportStruct.lua_docs = parse_lua_annotations(root, decl, commentMapping)
-                        symbol_exports.symbols[exportStruct.name] = exportStruct
-                    }
+            case ^ast.Struct_Type: {
+                exportStruct, err := parse_struct(root, decl, v) 
+                if err == .Export {
+                    exportStruct.lua_docs = parse_lua_annotations(root, decl, commentMapping)
+                    symbol_exports.symbols[exportStruct.name] = exportStruct
                 }
+            }
 
-                case ^ast.Distinct_Type: {
-                    #partial switch x in v.derived {
-                        case ^ast.Array_Type: {
-                            exportArr, err := parse_array(root, decl, x)
-                            if err == .Export {
-                                exportArr.lua_docs = parse_lua_annotations(root, decl, commentMapping)
-                                symbol_exports.symbols[exportArr.name] = exportArr
-                            }
+            case ^ast.Distinct_Type: {
+                #partial switch x in v.derived {
+                    case ^ast.Array_Type: {
+                        exportArr, err := parse_array(root, decl, x)
+                        if err == .Export {
+                            exportArr.lua_docs = parse_lua_annotations(root, decl, commentMapping)
+                            symbol_exports.symbols[exportArr.name] = exportArr
                         }
                     }
                 }
+            }
 
-                case ^ast.Array_Type: {
-                    exportArr, err := parse_array(root, decl, v)
-                    if err == .Export {
-                        exportArr.lua_docs = parse_lua_annotations(root, decl, commentMapping)
-                        symbol_exports.symbols[exportArr.name] = exportArr
-                    }
+            case ^ast.Array_Type: {
+                exportArr, err := parse_array(root, decl, v)
+                if err == .Export {
+                    exportArr.lua_docs = parse_lua_annotations(root, decl, commentMapping)
+                    symbol_exports.symbols[exportArr.name] = exportArr
                 }
+            }
+
+            case ^ast.Enum_Type: {
+                exported_enum, err := parse_enum(root, decl, v)
+                if err == .Export {
+                    // exported_enum.lua_docs = parse_lua_annotations(root, decl, commentMapping)
+                    symbol_exports.symbols[exported_enum.name] = exported_enum
+                }
+            }
             }
 
          
@@ -290,6 +305,17 @@ validate_proc_attributes :: proc(proc_decl: ^ast.Proc_Lit, attribs: Attributes) 
 }
 
 validate_struct_attributes :: proc(struct_decl: ^ast.Struct_Type, attribs: Attributes) -> (err: AttribErr, msg: Maybe(string)) {
+    if LUAEXPORT_STR not_in attribs {
+        return .Skip, nil
+    }
+
+    exportAttribs := attribs[LUAEXPORT_STR] 
+    
+
+    return .Export, nil
+}
+
+validate_enum_attributes :: proc(enum_decl: ^ast.Enum_Type, attribs: Attributes) -> (err: AttribErr, msg: Maybe(string)) {
     if LUAEXPORT_STR not_in attribs {
         return .Skip, nil
     }
@@ -451,6 +477,50 @@ parse_struct :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, struct_decl: 
     return
 }
 
+
+parse_enum :: proc(
+    root: ^ast.File,
+    value_decl: ^ast.Value_Decl,
+    enum_decl: ^ast.Enum_Type,
+    allocator := context.allocator
+) -> (result: EnumExport, err: AttribErr) {
+    result.attribs = parse_attributes(root, value_decl)
+
+    if err, msg := validate_enum_attributes(enum_decl, result.attribs); err != .Export {
+        return result, err
+    }
+
+    result.name = value_decl.names[0].derived.(^ast.Ident).name
+    result.fields = make(map[string]int) 
+
+    i := -1
+    for field in enum_decl.fields {
+        name: string
+        #partial switch x in field.derived {
+        case ^ast.Ident:
+            name = x.name
+            i += 1
+        case ^ast.Field_Value:
+            #partial switch f in x.field.derived {
+            case ^ast.Ident:
+                name = f.name
+            }
+            #partial switch v in x.value.derived {
+            case ^ast.Basic_Lit:
+                value, ok := strconv.parse_int(v.tok.text)
+                if !ok {
+                    return {}, .Error
+                }
+                i += value
+            }
+        }
+
+        result.fields[name] = i
+    }
+
+    err = .Export
+    return
+}
 
 parse_proc :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, proc_lit: ^ast.Proc_Lit, allocator := context.allocator) -> (result: ProcedureExport, err: AttribErr) {
  

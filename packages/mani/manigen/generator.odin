@@ -208,6 +208,29 @@ generate_methods_mapping :: proc(config: ^GeneratorConfig, exports: FileExports,
     write_string(sb, "}\n")
 }
 
+generate_enum_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, the_enum: EnumExport, filename: string) {
+    using strings, fmt
+    sb := &(&config.files[exports.symbols_package]).builder
+
+    write_string(sb, "@(private = \"file\", init)\n")
+    write_string(sb, fmt.tprintf("_generate_%v :: proc() {{\n", the_enum.name))
+
+    name := the_enum.attribs["LuaExport"].(Attributes)["Name"].(String) or_else the_enum.name
+
+    write_string(sb, "\texport := mani.EnumExport{}\n")
+    write_string(sb, fmt.tprintf("\texport.name = \"%v\"\n\n", name))
+
+    write_string(sb, fmt.tprintf("\tfor elem in %v {{\n", the_enum.name))
+
+    write_string(sb, "\t\tname, _ := reflect.enum_name_from_value(elem)\n")
+    write_string(sb, "\t\texport.fields[name] = int(elem)\n")
+
+    write_string(sb, "\t}\n\n")
+
+    write_string(sb, "\tmani.add_enum(export)\n")
+
+    write_string(sb, "}\n")
+}
 
 add_import :: proc(file: ^PackageFile, import_statement: FileImport) {
     if import_statement.name not_in file.imports {
@@ -233,24 +256,28 @@ generate_lua_exports :: proc(config: ^GeneratorConfig, exports: FileExports) {
     for k, exp in exports.symbols {
         
         switch x in exp {
-            case ProcedureExport: {
-                if "LuaExport" in x.attribs {
-                    generate_proc_lua_wrapper(config, exports, x, exports.relpath)
-                    write_proc_meta(config, exports, x)
-                } else if "LuaImport" in x.attribs {
-                    generate_pcall_wrapper(config, exports, x, exports.relpath)
-                }      
+        case ProcedureExport: {
+            if "LuaExport" in x.attribs {
+                generate_proc_lua_wrapper(config, exports, x, exports.relpath)
+                write_proc_meta(config, exports, x)
+            } else if "LuaImport" in x.attribs {
+                generate_pcall_wrapper(config, exports, x, exports.relpath)
             }
+        }
 
-            case StructExport: {
-                generate_struct_lua_wrapper(config, exports, x, exports.relpath)
-                write_struct_meta(config, exports, x)
-            }
+        case StructExport: {
+            generate_struct_lua_wrapper(config, exports, x, exports.relpath)
+            write_struct_meta(config, exports, x)
+        }
 
-            case ArrayExport: {
-                generate_array_lua_wrapper(config, exports, x, exports.relpath)
-                write_array_meta(config, exports, x)
-            }
+        case ArrayExport: {
+            generate_array_lua_wrapper(config, exports, x, exports.relpath)
+            write_array_meta(config, exports, x)
+        }
+
+        case EnumExport:
+            generate_enum_wrapper(config, exports, x, exports.relpath)
+            write_enum_meta(config, exports, x)
         }
     }
 }

@@ -52,17 +52,24 @@ StructExport :: struct {
     methods: map[LuaName]lua.CFunction,
 }
 
+EnumExport :: struct {
+    name: string,
+    fields: map[string]int,
+}
+
 // TODO(Add lua state in here aswell) (then we can have a single init function instead of export_all)
 State :: struct {
     lua_state: ^lua.State,
     procs: map[OdinName]ProcExport, // Key: odin_name
     structs: map[typeid]StructExport, // Key: type 
+    enums: map[string]EnumExport,
     udata_metatable_mapping: map[typeid]cstring, // Key: odin type; Value: lua name
 }
 
 global_state := State {
     procs = make(map[OdinName]ProcExport),
     structs = make(map[typeid]StructExport),
+    enums = make(map[string]EnumExport),
     udata_metatable_mapping = make(map[typeid]cstring),
 }
 
@@ -87,6 +94,10 @@ add_struct :: proc(s: StructExport) {
     if full, ok := s.full_meta.?; ok {
         udata_metatable_mapping[full.odin_type] = full.name
     }
+}
+
+add_enum :: proc(s: EnumExport) {
+    global_state.enums[s.name] = s
 }
 
 init :: proc(L: ^lua.State, using state: ^State, ctx := context) {
@@ -134,6 +145,17 @@ init :: proc(L: ^lua.State, using state: ^State, ctx := context) {
         cstr := strings.clone_to_cstring(cast(string)val.lua_name, context.temp_allocator)
         lua.setglobal(L, cstr)
     }
-    
-    
+
+    for name, enum_export in enums {
+        lua.newtable(L)
+
+        for field_name, field_value in enum_export.fields {
+            lua.pushinteger(L, i64(field_value))
+            cstr := strings.clone_to_cstring(field_name, context.temp_allocator)
+            lua.setfield(L, -2, cstr)
+        }
+
+        cstr := strings.clone_to_cstring(string(name), context.temp_allocator)
+        lua.setglobal(L, cstr)
+    }
 }

@@ -495,3 +495,22 @@ write_struct_meta :: proc(config: ^GeneratorConfig, exports: FileExports, s: Str
         }
     }
 }
+
+write_enum_meta :: proc(config: ^GeneratorConfig, exports: FileExports, e: EnumExport) {
+    using strings
+    sb := &(&config.files[exports.symbols_package]).lua_builder
+    
+    export_attribs := e.attribs[LUAEXPORT_STR].(Attributes)
+    // This makes LuaExport.Name not enitrely usable, I should map struct names to lua names
+    enum_name :=  export_attribs["Name"].(String) or_else e.name
+    fmt.sbprintf(sb, "---@enum %s\n", enum_name)
+    for comment in e.lua_docs {
+        fmt.sbprintf(sb, "---%s\n", comment)
+    }
+
+    fmt.sbprintf(sb, "%v = {{\n", enum_name)
+    for name, value in e.fields {
+        fmt.sbprintf(sb, "    %v = %v,\n", name, value)
+    }
+    fmt.sbprintf(sb, "}}\n\n")
+}

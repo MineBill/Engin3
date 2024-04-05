@@ -37,7 +37,7 @@ push_value :: proc "contextless"(L: ^lua.State, val: $T) {
     } else when intr.type_is_float(T) {
         lua.pushnumber(L, cast(lua.Number)val)
     } else when intr.type_is_boolean(T) {
-        lua.pushboolean(L, cast(c.bool)val)
+        lua.pushboolean(L, cast(c.int)val)
     } else when T == cstring {
         lua.pushcstring(L, val)
     } else when T == string {
@@ -71,11 +71,13 @@ to_value :: proc "contextless"(L: ^lua.State, #any_int stack_pos: int, val: ^$T)
     } else when intr.type_is_float(Base) {
         val^ = cast(Base)luaL.checknumber(L, cast(i32)stack_pos) 
     } else when intr.type_is_boolean(Base) {
-        val^ = cast(Base)luaL.checkboolean(L, cast(i32)stack_pos) 
+        val^ = cast(Base)lua.toboolean(L, cast(i32)stack_pos) 
     } else when Base == cstring {
         val^ = cast(cstring)luaL.tolstring(L, cast(i32)stack_pos, nil)
     } else when Base == string {
         val^ = cast(string)luaL.tolstring(L, cast(i32)stack_pos, nil)
+    } else when intr.type_is_enum(Base) {
+        val^ = cast(Base)luaL.checkinteger(L, cast(i32)stack_pos)
     } else {
         fmeta, hasFulldata := global_state.udata_metatable_mapping[Base]
         lmeta, hasLightdata := global_state.udata_metatable_mapping[Ptr]
