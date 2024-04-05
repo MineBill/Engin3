@@ -385,7 +385,6 @@ world_renderer_resize :: proc(world_renderer: ^WorldRenderer, width, height: int
     world_renderer.world_frame_buffer.spec.samples = int(g_msaa_level)
 
     resize_framebuffer(&world_renderer.final_frame_buffer, width, height)
-    resize_framebuffer(&world_renderer.depth_frame_buffer, width, height)
     resize_framebuffer(&world_renderer.world_frame_buffer, width, height)
     resize_framebuffer(&world_renderer.resolved_frame_buffer, width, height)
 }
