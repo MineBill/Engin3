@@ -2,6 +2,7 @@ package mani_generator
 
 import "core:fmt"
 import "core:strings"
+import "core:slice"
 
 write_lua_struct_init :: proc(sb: ^strings.Builder, exports: FileExports, s: StructExport) {
     using strings, fmt
@@ -480,26 +481,28 @@ write_struct_meta :: proc(config: ^GeneratorConfig, exports: FileExports, s: Str
     
     if methodsAttrib, found := exportAttribs["Methods"]; found {
         methods := methodsAttrib.(Attributes)
-        for odinProc, val in methods {
+
+        keys, _ := slice.map_keys(methods, context.temp_allocator)
+        slice.sort(keys)
+        for key in keys {
+            val := methods[key]
             methodName: string 
             if name, found := val.(String); found {
                 methodName = name 
             } else {
-                methodName = odinProc
+                methodName = key
             }
 
-            
-            procExport := exports.symbols[odinProc].(ProcedureExport)
+            procExport := exports.symbols[key].(ProcedureExport)
             write_proc_meta(config, exports, procExport, fmt.tprintf("%s:%s", className, methodName), 1)
-
         }
     }
 }
 
 write_enum_meta :: proc(config: ^GeneratorConfig, exports: FileExports, e: EnumExport) {
-    using strings
+    e := e
     sb := &(&config.files[exports.symbols_package]).lua_builder
-    
+
     export_attribs := e.attribs[LUAEXPORT_STR].(Attributes)
     // This makes LuaExport.Name not enitrely usable, I should map struct names to lua names
     enum_name :=  export_attribs["Name"].(String) or_else e.name
@@ -509,8 +512,17 @@ write_enum_meta :: proc(config: ^GeneratorConfig, exports: FileExports, e: EnumE
     }
 
     fmt.sbprintf(sb, "%v = {{\n", enum_name)
-    for name, value in e.fields {
-        fmt.sbprintf(sb, "    %v = %v,\n", name, value)
+
+    fields, _ := slice.map_keys(e.fields, context.temp_allocator)
+    context.user_ptr = &e.fields
+    slice.sort_by(fields, proc(i, j: string) -> bool {
+        fields := cast(^map[string]int)context.user_ptr
+        return fields[i] < fields[j]
+    })
+
+    for field in fields {
+        value := e.fields[field]
+        fmt.sbprintf(sb, "    %v = %v,\n", field, value)
     }
     fmt.sbprintf(sb, "}}\n\n")
 }

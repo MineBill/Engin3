@@ -5,6 +5,7 @@ import fmt "core:fmt"
 import filepath "core:path/filepath"
 import os "core:os"
 import json "core:encoding/json"
+import "core:slice"
 
 DEFAULT_PROC_ATTRIBUTES := Attributes {}
 
@@ -244,8 +245,12 @@ generate_lua_exports :: proc(config: ^GeneratorConfig, exports: FileExports) {
         add_import(file, imp)
     }
 
-    for k, exp in exports.symbols {
-        
+    keys, _ := slice.map_keys(exports.symbols)
+    slice.sort(keys)
+
+    for key in keys {
+        exp := exports.symbols[key]
+
         switch x in exp {
         case ProcedureExport: {
             if "LuaExport" in x.attribs {
