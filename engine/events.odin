@@ -293,6 +293,9 @@ glfw_mouse_to_mine :: proc(mouse: i32) -> MouseButton {
     unreachable()
 }
 
+@(LuaExport = {
+    Name = "Keys",
+})
 Key :: enum {
     _1,
     _2,
@@ -305,94 +308,94 @@ Key :: enum {
     _9,
     _0,
 
-    a,
-    b,
-    c,
-    d,
-    e,
-    f,
-    g,
-    h,
-    i,
-    j,
-    k,
-    l,
-    m,
-    n,
-    o,
-    p,
-    q,
-    r,
-    s,
-    t,
-    u,
-    v,
-    w,
-    x,
-    y,
-    z,
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
 
-    escape,
-    enter,
-    tab,
-    backspace,
-    space,
-    insert,
-    delete,
-    right,
-    left,
-    down,
-    up,
-    page_up,
-    page_down,
-    home,
-    end,
-    caps_lock,
-    scroll_lock,
-    num_lock,
-    print_screen,
-    pause,
+    Escape,
+    Enter,
+    Tab,
+    Backspace,
+    Space,
+    Insert,
+    Delete,
+    Right,
+    Left,
+    Down,
+    Up,
+    Page_up,
+    Page_down,
+    Home,
+    End,
+    Caps_lock,
+    Scroll_lock,
+    Num_lock,
+    Print_screen,
+    Pause,
 
-    f1,
-    f2,
-    f3,
-    f4,
-    f5,
-    f6,
-    f7,
-    f8,
-    f9,
-    f10,
-    f11,
-    f12,
-    f13,
-    f14,
-    f15,
-    f16,
-    f17,
-    f18,
-    f19,
-    f20,
-    f21,
-    f22,
-    f23,
-    f24,
-    f25,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+    F13,
+    F14,
+    F15,
+    F16,
+    F17,
+    F18,
+    F19,
+    F20,
+    F21,
+    F22,
+    F23,
+    F24,
+    F25,
 
-    left_shift,
-    left_control,
-    left_alt,
-    left_super,
-    right_shift,
-    right_control,
-    right_alt,
-    right_super,
-    menu,
+    LeftShift,
+    LeftControl,
+    LeftAlt,
+    LeftSuper,
+    RightShift,
+    RightControl,
+    RightAlt,
+    RightSuper,
+    Menu,
 
-    minus,
-    equal,
-    period,
-    slash,
+    Minus,
+    Equal,
+    Period,
+    Slash,
 }
 
 glfw_key_to_mine :: proc(key: i32) -> Key
@@ -421,174 +424,174 @@ glfw_key_to_mine :: proc(key: i32) -> Key
         case KEY_0:
             return ._0
         case KEY_A:
-            return .a
+            return .A
         case KEY_B:
-            return .b
+            return .B
         case KEY_C:
-            return .c
+            return .C
         case KEY_D:
-            return .d
+            return .D
         case KEY_E:
-            return .e
+            return .E
         case KEY_F:
-            return .f
+            return .F
         case KEY_G:
-            return .g
+            return .G
         case KEY_H:
-            return .h
+            return .H
         case KEY_I:
-            return .i
+            return .I
         case KEY_J:
-            return .j
+            return .J
         case KEY_K:
-            return .k
+            return .K
         case KEY_L:
-            return .l
+            return .L
         case KEY_M:
-            return .m
+            return .M
         case KEY_N:
-            return .n
+            return .N
         case KEY_O:
-            return .o
+            return .O
         case KEY_P:
-            return .p
+            return .P
         case KEY_Q:
-            return .q
+            return .Q
         case KEY_R:
-            return .r
+            return .R
         case KEY_S:
-            return .s
+            return .S
         case KEY_T:
-            return .t
+            return .T
         case KEY_U:
-            return .u
+            return .U
         case KEY_V:
-            return .v
+            return .V
         case KEY_W:
-            return .w
+            return .W
         case KEY_X:
-            return .x
+            return .X
         case KEY_Y:
-            return .y
+            return .Y
         case KEY_Z:
-            return .z
+            return .Z
         case KEY_ESCAPE:
-            return .escape
+            return .Escape
         case KEY_ENTER:
-            return .enter
+            return .Enter
         case KEY_TAB:
-            return .tab
+            return .Tab
         case KEY_BACKSPACE:
-            return .backspace
+            return .Backspace
         case KEY_SPACE:
-            return .space
+            return .Space
         case KEY_INSERT:
-            return .insert
+            return .Insert
         case KEY_DELETE:
-            return .delete
+            return .Delete
         case KEY_RIGHT:
-            return .right
+            return .Right
         case KEY_LEFT:
-            return .left
+            return .Left
         case KEY_DOWN:
-            return .down
+            return .Down
         case KEY_UP:
-            return .up
+            return .Up
         case KEY_PAGE_UP:
-            return .page_up
+            return .Page_up
         case KEY_PAGE_DOWN:
-            return .page_down
+            return .Page_down
         case KEY_HOME:
-            return .home
+            return .Home
         case KEY_END:
-            return .end
+            return .End
         case KEY_CAPS_LOCK:
-            return .caps_lock
+            return .Caps_lock
         case KEY_SCROLL_LOCK:
-            return .scroll_lock
+            return .Scroll_lock
         case KEY_NUM_LOCK:
-            return .num_lock
+            return .Num_lock
         case KEY_PRINT_SCREEN:
-            return .print_screen
+            return .Print_screen
         case KEY_PAUSE:
-            return .pause
+            return .Pause
         case KEY_F1:
-            return .f1
+            return .F1
         case KEY_F2:
-            return .f2
+            return .F2
         // all of them
         case KEY_F3:
-            return .f3
+            return .F3
         case KEY_F4:
-            return .f4
+            return .F4
         case KEY_F5:
-            return .f5
+            return .F5
         case KEY_F6:
-            return .f6
+            return .F6
         case KEY_F7:
-            return .f7
+            return .F7
         case KEY_F8:
-            return .f8
+            return .F8
         case KEY_F9:
-            return .f9
+            return .F9
         case KEY_F10:
-            return .f10
+            return .F10
         case KEY_F11:
-            return .f11
+            return .F11
         case KEY_F12:
-            return .f12
+            return .F12
         case KEY_F13:
-            return .f13
+            return .F13
         case KEY_F14:
-            return .f14
+            return .F14
         case KEY_F15:
-            return .f15
+            return .F15
         case KEY_F16:
-            return .f16
+            return .F16
         case KEY_F17:
-            return .f17
+            return .F17
         case KEY_F18:
-            return .f18
+            return .F18
         case KEY_F19:
-            return .f19
+            return .F19
         case KEY_F20:
-            return .f20
+            return .F20
         case KEY_F21:
-            return .f21
+            return .F21
         case KEY_F22:
-            return .f22
+            return .F22
         case KEY_F23:
-                return .f23
+            return .F23
         case KEY_F24:
-            return .f24
+            return .F24
         case KEY_F25:
-            return .f25
+            return .F25
         case KEY_LEFT_SHIFT:
-            return .left_shift
+            return .LeftShift
         case KEY_LEFT_CONTROL:
-            return .left_control
+            return .LeftControl
         case KEY_LEFT_ALT:
-            return .left_alt
+            return .LeftAlt
         case KEY_LEFT_SUPER:
-            return .left_super
+            return .LeftSuper
         case KEY_RIGHT_SHIFT:
-            return .right_shift
+            return .RightShift
         case KEY_RIGHT_CONTROL:
-            return .right_control
+            return .RightControl
         case KEY_RIGHT_ALT:
-            return .right_alt
+            return .RightAlt
         case KEY_RIGHT_SUPER:
-            return .right_super
+            return .RightSuper
         case KEY_MENU:
-            return .menu
+            return .Menu
         case KEY_MINUS:
-            return .minus
+            return .Minus
         case KEY_EQUAL:
-            return .equal
+            return .Equal
         case KEY_PERIOD:
-            return .period
+            return .Period
         case KEY_SLASH:
-            return .slash
+            return .Slash
     }
     unreachable()
 }

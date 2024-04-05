@@ -16,6 +16,7 @@ import "core:sys/windows"
 import "core:math/rand"
 import "core:intrinsics"
 import "core:fmt"
+import "core:reflect"
 
 g_engine: ^Engine
 
@@ -380,7 +381,7 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
         }
     }
 
-    if is_key_just_released(.f1) {
+    if is_key_just_released(.F1) {
         if e.run_mode == .Game {
             e.run_mode = .Editor
         } else {

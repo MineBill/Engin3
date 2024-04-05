@@ -214,7 +214,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
                     id := color[0]
                     handle := e.engine.world.local_id_to_uuid[int(id)]
-                    select_entity(e, handle, !is_key_pressed(.left_shift))
+                    select_entity(e, handle, !is_key_pressed(.LeftShift))
                 }
             }
         case MouseWheelEvent:
@@ -226,11 +226,11 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
                 if .Control in ev.mods {
                     #partial switch ev.key {
-                    case .s:
+                    case .S:
                         log.debug("Saving world!")
                         serialize_world(e.engine.world, e.engine.world.file_path)
                         e.engine.world.modified = false
-                    case .d:
+                    case .D:
                         // Create a local copy before reseting the selection
                         selection :=  clone_map(e.entity_selection)
                         defer delete(selection)
@@ -242,7 +242,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                     }
                 }
 
-                if ev.key == .delete {
+                if ev.key == .Delete {
                     for entity, _ in e.entity_selection {
                         delete_object(&e.engine.world, entity)
                     }
@@ -261,8 +261,8 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             }
 
             if e.capture_mouse {
-                input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
-                up_down := get_axis(.space, .left_control) * CAMERA_SPEED
+                input := get_vector(.D, .A, .W, .S) * CAMERA_SPEED
+                up_down := get_axis(.Space, .LeftControl) * CAMERA_SPEED
                 e.camera.position.xz += ( vec4{input.x, 0, -input.y, 0} * linalg.matrix4_from_quaternion(e.camera.rotation)).xz * f32(delta)
                 e.camera.position.y += up_down * f32(delta)
             }
@@ -1238,22 +1238,21 @@ draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
     }
 
     imgui.PushStyleVarImVec2(.FramePadding, {4, 4})
-    // opened := imgui.CollapsingHeader(name, {.AllowOverlap, .DefaultOpen})
     opened := imgui.TreeNodeExPtr(transmute(rawptr)id, {.AllowOverlap, .DefaultOpen, .Framed, .FramePadding, .SpanAvailWidth}, name)
 
-    // ImGui::SameLine(ImGui::GetWindowContentRegionWidth() - ImGui::CalcTextSize("(?)").x);
-    width := imgui.GetContentRegionAvail().x
+    width := imgui.GetContentRegionMax().x
 
     line_height := imgui.GetFont().FontSize + imgui.GetStyle().FramePadding.y * 2.0
     imgui.PopStyleVar()
 
-    // imgui.SameLineEx(width - line_height * 0.5, 0)
-    // if imgui.ButtonEx("+", vec2{line_height, line_height}) {
-    //     imgui.OpenPopup("ComponentSettings", {})
-    // }
+    imgui.SameLine(width - line_height * 0.75)
+    imgui.PushIDPtr(component)
+    if imgui.Button("+", vec2{line_height, line_height}) {
+        imgui.OpenPopup("ComponentSettings", {})
+    }
 
     imgui.PushStyleVarImVec2(.WindowPadding, e.style.popup_padding)
-    if imgui.BeginPopupContextItem() {
+    if imgui.BeginPopup("ComponentSettings") {
         if imgui.MenuItem("Copy Component") {
             // TODO
         }
@@ -1267,6 +1266,7 @@ draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
         imgui.EndPopup()
     }
     imgui.PopStyleVar()
+    imgui.PopID()
 
     if opened {
         imgui_draw_component(e, any{component, id})
@@ -1323,15 +1323,6 @@ imgui_union_combo :: proc(name: string, selection: ^$E, flags: imgui.ComboFlags 
         loop: for field in reflect.enum_fields_zipped(E) {
             a := reflect.type_info_base(type_info_of(E)).variant.(reflect.Type_Info_Union)
             _ = a.variants
-            // value := E(field.value)
-            // if imgui.SelectableEx(
-            //     cstr(field.name),
-            //     value == selection^,
-            //     {}, vec2{}) {
-            //     selection^ = value
-            //     ret = true
-            //     break loop
-            // }
         }
         imgui.EndCombo()
     }
@@ -1410,22 +1401,17 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) -> (modified: bool) {
     imgui.PopStyleColor()
 
     imgui.SameLine()
-    // imgui.PushItemWidth()
     imgui.SetNextItemWidth(width)
     imgui.PushStyleColorImVec4(.FrameBg, Z_COLOR)
     imgui.PushStyleColorImVec4(.FrameBgHovered, Z_COLOR_HOVER)
     modified |= imgui.DragFloat("##z", &v.z, 0.01, min(f32), max(f32), "%.2f", {})
     imgui.PopStyleColor(2)
 
-    // imgui.DrawList_ChannelsMerge(list)
-
     imgui.PopID()
     return
 }
 
 imgui_draw_component :: proc(e: ^Editor, s: any) -> (modified: bool) {
-    // modified = imgui_draw_struct(e, s)
-
     base := cast(^Component)s.data
     base->editor_ui(e, s)
 
@@ -1919,3 +1905,7 @@ CONTENT_ITEM_TYPES : [ContentItemType]cstring = {
     .Model      = "CONTENT_ITEM_MODEL",
     .Texture    = "CONTENT_ITEM_TEXTURE",
 }
+
+// snake_case_to_pascal :: proc(s: string, allocator := context.temp_allocator) -> string {
+//     strings.split
+// }

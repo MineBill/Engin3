@@ -64,13 +64,13 @@ game_update :: proc(g: ^Game, _delta: f64) {
         //     engine.camera.euler_angles.x = math.clamp(engine.camera.euler_angles.x, -80, 80)
         // }
 
-        if is_key_just_pressed(.escape) {
+        if is_key_just_pressed(.Escape) {
             engine.quit = true
             return
         }
 
-        input := get_vector(.d, .a, .w, .s) * CAMERA_SPEED
-        up_down := get_axis(.space, .left_control) * CAMERA_SPEED
+        input := get_vector(.D, .A, .W, .S) * CAMERA_SPEED
+        up_down := get_axis(.Space, .LeftControl) * CAMERA_SPEED
         // g.engine.camera.position.xz += ( vec4{input.x, 0, -input.y, 0} * linalg.matrix4_from_quaternion(g.engine.camera.rotation)).xz * delta
         // g.engine.camera.position.y += up_down * f32(delta)
 
