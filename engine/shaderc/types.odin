@@ -5,14 +5,24 @@ H_ :: 1
 ENV_H_ :: 1
 STATUS_H_ :: 1
 
-IncludeResolveFn :: #type proc(
+// An includer callback type for mapping an #include request to an include
+// result.  The user_data parameter specifies the client context.  The
+// requested_source parameter specifies the name of the source being requested.
+// The type parameter specifies the kind of inclusion request being made.
+// The requesting_source parameter specifies the name of the source containing
+// the #include request.  The includer owns the result object and its contents,
+// and both must remain valid until the release callback is called on the result
+// object.
+IncludeResolveFn :: #type proc "c" (
 	user_data: rawptr,
 	requested_source: cstring,
-	type: c.int,
+	type: IncludeType,
 	requesting_source: cstring,
 	include_depth: c.size_t,
 ) -> ^IncludeResult
-IncludeResultReleaseFn :: #type proc(user_data: rawptr, include_result: ^IncludeResult)
+
+// An includer callback type for destroying an include result.
+IncludeResultReleaseFn :: #type proc "c" (user_data: rawptr, include_result: ^IncludeResult)
 
 SourceLanguage :: enum i32 {
 	glsl,
@@ -284,7 +294,7 @@ IncludeResult :: struct {
 
 	// The text contents of the source file in the normal case.
 	// For a failed inclusion, this contains the error message.
-	contnet:   string,
+	content:   string,
 	// content : cstring,
 	// content_length : c.size_t,
 
