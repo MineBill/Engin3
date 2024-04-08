@@ -5,7 +5,7 @@ CD /D "%~dp0"
 REM Tracy
 PUSHD odin-tracy
 CALL vcvarsall x64
-cl -MT -O2 -DTRACY_ENABLE -c tracy\public\TracyClient.cpp -Fotracy
+cl /MD -O2 -DTRACY_ENABLE -c tracy\public\TracyClient.cpp -Fotracy
 lib tracy.obj
 del tracy.obj
 POPD
