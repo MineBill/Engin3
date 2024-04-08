@@ -101,7 +101,8 @@ generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports
     write_string(sb, fn_name)
     write_string(sb, " :: proc \"c\" (L: ^lua.State) -> c.int {\n    ")
     if fn.calling_convention == "odin" {
-        write_string(sb, "context = mani.default_context()\n\n    ")
+        write_string(sb, "context = mani.default_context()\n    ")
+        write_string(sb, "context.user_ptr = L\n\n    ")
     }
     // Declare parameters
     for param in fn.params {
