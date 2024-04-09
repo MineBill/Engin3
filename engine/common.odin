@@ -44,6 +44,7 @@ COLOR_GREEN :: Color{0, 1, 0, 1}
 COLOR_BLUE  :: Color{0, 0, 1, 1}
 COLOR_BLACK :: Color{0, 0, 0, 1}
 COLOR_WHITE :: Color{1, 1, 1, 1}
+COLOR_YELLOW :: Color{1, 1, 0, 1}
 
 color_hex :: proc(hex: int) -> Color {
     r: f32 = f32(hex >> 24) / 255
@@ -195,6 +196,53 @@ create_cubemap_texture :: proc(width, height: int, params := DEFAULT_TEXTURE_PAR
     gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
 
     return
+}
+
+Texture2DArray :: struct {
+    handle: RenderHandle,
+    layers: i32,
+    width, height: i32,
+    format: u32,
+}
+
+create_texture_array :: proc(width, height: i32, format: u32, layers: i32 = 1) -> (texture: Texture2DArray) {
+    texture.layers = layers
+    texture.width = width
+    texture.height = height
+    texture.format = format
+
+    gl.CreateTextures(gl.TEXTURE_2D_ARRAY, 1, &texture.handle)
+    gl.TextureStorage3D(texture.handle, 1, format, width, height, layers)
+
+    gl.TextureParameteri(texture.handle, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.TextureParameteri(texture.handle, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+
+    border_color := []f32 { 1.0, 1.0, 1.0, 1.0 }
+    gl.TextureParameterfv(texture.handle, gl.TEXTURE_BORDER_COLOR, raw_data(border_color))
+
+    gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+    gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+    return
+}
+
+destroy_texture_array :: proc(texture: Texture2DArray) {
+    texture := texture
+    gl.DeleteTextures(1, &texture.handle)
+}
+
+TextureView :: struct {
+    handle: RenderHandle,
+}
+
+create_texture_view :: proc(array: Texture2DArray, layer: u32 = 0) -> (view: TextureView) {
+    gl.GenTextures(1, &view.handle)
+    gl.TextureView(view.handle, gl.TEXTURE_2D, array.handle, array.format, 0, 1, layer, 1)
+    return
+}
+
+destroy_texture_view :: proc(view: TextureView) {
+    view := view
+    gl.DeleteTextures(1, &view.handle)
 }
 
 OwnedString :: struct {
