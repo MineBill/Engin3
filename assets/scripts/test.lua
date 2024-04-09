@@ -1,4 +1,4 @@
-require "math"
+local std = import "proj://assets/scripts/library.lua"
 
 CoolComponent = {
     Properties = {
@@ -32,7 +32,7 @@ function CoolComponent:on_init()
     print(self.entity:get_position())
 end
 
-function bool_to_number(value)
+local function bool_to_number(value)
   return value and 1 or 0
 end
 
@@ -40,18 +40,27 @@ end
 function CoolComponent:on_update(delta)
     self.timer = self.timer + delta
 
-    if is_key_just_pressed(Keys.Space) then
+    if Input.is_key_just_pressed(Keys.Space) then
         print("Space!")
         self.entity:set_active(not self.entity:is_active())
     end
 
-    local x = bool_to_number(is_key_down(Keys.D)) - bool_to_number(is_key_down(Keys.A))
-    local y = bool_to_number(is_key_down(Keys.W)) - bool_to_number(is_key_down(Keys.S))
+    local x = bool_to_number(Input.is_key_down(Keys.D)) - bool_to_number(Input.is_key_down(Keys.A))
+    local y = bool_to_number(Input.is_key_down(Keys.W)) - bool_to_number(Input.is_key_down(Keys.S))
 
     local pos = self.entity:get_position()
     pos.y = pos.y + y  * self.movement_speed * delta
     pos.x = pos.x + x * self.movement_speed * delta
     self.entity:set_position(pos)
+
+    local entity = Scene.find_entity_by_name("awdwad")
+    --[[ if entity ~= nil then
+        entity:get_script(OtherScript)
+        -- print(entity)
+    end ]]
+end
+
+function CoolComponent:do_movement()
 end
 
 return CoolComponent

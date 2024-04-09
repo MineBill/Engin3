@@ -1,6 +1,42 @@
 package engine
 import "core:fmt"
 import "core:log"
+import "packages:odin-lua/lua"
+import "packages:odin-lua/luaL"
+import "packages:mani/mani"
+import "core:path/filepath"
+import "core:strings"
+
+api_import :: proc "c" (L: ^lua.State) -> i32 {
+    context = mani.default_context()
+
+    path := luaL.checkstring(L, 1)
+    PREFIX :: "proj://"
+    if strings.contains(path, PREFIX) {
+        new_path := path[len(PREFIX):]
+        joined := filepath.join({get_cwd(), new_path}, context.temp_allocator)
+
+        if luaL.dofile(L, cstr(joined)) != lua.OK {
+            log.errorf("Failed to import %v", joined)
+            return 0
+        }
+
+        if lua.pcall(L, 0, 1, 0) != lua.OK {
+            log.errorf("Failed to execute import: %v", lua.tostring(L, -1))
+            return 0
+        }
+
+        return 1
+    } else {
+        // If the path doesn't start with 'proj://', use default behavior
+        lua.getglobal(L, "require")
+        lua.pushvalue(L, 1) // Push the module name onto the stack
+        lua.call(L, 1, 1)   // Call require with the module name
+
+        return 1
+    }
+
+}
 
 Fields :: map[string]LuaField
 
@@ -67,7 +103,9 @@ lua_entity_translate :: proc(le: LuaEntity, offset: vec3) {
 
 @(LuaExport)
 lua_entity_to_string :: proc(le: LuaEntity) -> string {
-    return fmt.tprintf("Entity[%v, %v]", ds_to_string(le.owner.name), le.entity)
+    go := get_object(le.world, UUID(le.entity))
+    if go == nil do return ""
+    return fmt.tprintf("Entity[%v, %v]", ds_to_string(go.name), le.entity)
 }
 
 @(LuaExport)
@@ -121,6 +159,7 @@ print :: proc(what: string) {
 }
 
 @(LuaExport = {
+    Module = "Scene",
     Name = "find_entity_by_name",
 })
 api_find_entity_by_name :: proc(name: string) -> LuaEntity {
@@ -130,6 +169,7 @@ api_find_entity_by_name :: proc(name: string) -> LuaEntity {
 // Returns whether the specified key is currently pressed.
 // awdawd
 @(LuaExport = {
+    Module = "Input",
     Name = "is_key_down",
 })
 api_is_key_down :: proc(key: int) -> bool {
@@ -137,6 +177,7 @@ api_is_key_down :: proc(key: int) -> bool {
 }
 
 @(LuaExport = {
+    Module = "Input",
     Name = "is_key_up",
 })
 api_is_key_up :: proc(key: int) -> bool {
@@ -144,8 +185,17 @@ api_is_key_up :: proc(key: int) -> bool {
 }
 
 @(LuaExport = {
+    Module = "Input",
     Name = "is_key_just_pressed",
 })
 api_is_key_just_pressed :: proc(key: Key) -> bool {
     return is_key_just_pressed(Key(key))
+}
+
+@(LuaExport = {
+    Module = "Input",
+    Name = "get_mouse_delta",
+})
+api_get_mouse_delta :: proc() -> vec2 {
+    return get_mouse_delta()
 }

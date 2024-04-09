@@ -25,6 +25,7 @@ ScriptVTable :: struct {
 ScriptInstance :: struct {
     state: ^lua.State,
     type: ScriptType,
+    // exported_fields: map[string]LuaValue,
 
     using vtable: ScriptVTable,
 }
@@ -104,6 +105,9 @@ create_script_instance :: proc(script: ^LuaScript) -> (state: ScriptInstance) {
     type := generate_uuid()
     luaL.openlibs(L)
 
+    lua.pushcfunction(L, api_import)
+    lua.setglobal(L, "import")
+
     b := cstring(&script.bytecode[0])
 
     if luaL.loadbufferx(L, b, c.ptrdiff_t(len(script.bytecode)), "Script", "b") != lua.OK {
@@ -146,6 +150,9 @@ compile_script :: proc(se: ^ScriptingEngine, data: []byte) -> (script: LuaScript
     L := luaL.newstate()
     defer lua.close(L)
     luaL.openlibs(L)
+
+    lua.pushcfunction(L, api_import)
+    lua.setglobal(L, "import")
 
     if luaL.loadstring(L, cstr(string(data))) != lua.OK {
         message := lua.tostring(L, -1)
