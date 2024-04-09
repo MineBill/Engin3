@@ -28,7 +28,7 @@ float ShadowCalculation(vec4 fragPosLightSpace) {
 
     if (shadowCoords.z > 1.0)
         return 1.0;
-    float bias = max((1.0/4096.0) * (1.0 - dot(IN.normal, normalize(lights.directional.direction.xyz))), 0.003);
+    float bias = max((1.0/4096.0) * (1.0 - dot(OUT.normal, normalize(lights.directional.direction.xyz))), 0.003);
     vec2 texel_size = 1.0 / textureSize(shadow_map, 0);
 
     const float SAMPLES = 3;

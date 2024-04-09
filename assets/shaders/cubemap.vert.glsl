@@ -1,12 +1,14 @@
-#version 460 core
+#version 450 core
 
 #include "common.glsl"
 
 layout(location = 0) in vec3 in_position;
 
-layout(location = 0) out VS_OUT {
+struct VertexOutput {
     vec3 tex_coords;
-} OUT;
+};
+
+layout(location = 0) out VertexOutput Out;
 
 vec3 cube[36] = vec3[](
     vec3(-1.0f,  1.0f, -1.0f),
@@ -53,9 +55,9 @@ vec3 cube[36] = vec3[](
 );
 
 void main() {
-    vec3 p = cube[gl_VertexID].xyz;
+    vec3 p = cube[gl_VertexIndex].xyz;
 
-    OUT.tex_coords = p;
+    Out.tex_coords = p;
 
-    gl_Position = view_data.projection * view_data.view * vec4(p, 1.0);
+    gl_Position = u_ViewData.projection * u_ViewData.view * vec4(p, 1.0);
 }

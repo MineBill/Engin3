@@ -5,7 +5,7 @@
 
 layout(location = 0) out vec4 out_color;
 
-layout(location = 0) in VS_IN {
+layout(location = 0) in VS_OUT {
     vec3 frag_color;
     vec2 frag_uv;
     vec3 frag_pos;
@@ -16,7 +16,7 @@ layout(location = 0) in VS_IN {
     vec3 tangent_frag_pos;
 
     vec4 pos_light_space;
-} IN;
+} OUT;
 
 float SampleShadow(sampler2D map, vec2 coords, float compare) {
     return step(compare, texture(map, coords).r);
@@ -45,7 +45,7 @@ float ShadowCalculation(vec4 fragPosLightSpace) {
 
     if (shadowCoords.z > 1.0)
         return 1.0;
-    float bias = max((1.0/4096.0) * (1.0 - dot(IN.normal, normalize(lights.directional.direction.xyz))), 0.003);
+    float bias = max((1.0/4096.0) * (1.0 - dot(OUT.normal, normalize(lights.directional.direction.xyz))), 0.003);
     vec2 texel_size = 1.0 / textureSize(shadow_map, 0);
 
     const float SAMPLES = 3;
@@ -61,14 +61,14 @@ float ShadowCalculation(vec4 fragPosLightSpace) {
 }
 
 vec3 do_directional_light(Directional_Light light) {
-    vec3 tex = vec3(texture(albedo_map, IN.frag_uv));
+    vec3 tex = vec3(texture(albedo_map, OUT.frag_uv));
 
-    vec3 N = normalize(texture(normal_map, IN.frag_uv).rgb * 2.0 - 1.0);
-    vec3 L = normalize(IN.tangent_light_dir);
-    vec3 V = normalize(IN.tangent_view_pos - IN.tangent_frag_pos);
+    vec3 N = normalize(texture(normal_map, OUT.frag_uv).rgb * 2.0 - 1.0);
+    vec3 L = normalize(OUT.tangent_light_dir);
+    vec3 V = normalize(OUT.tangent_view_pos - OUT.tangent_frag_pos);
 
-    vec3 I = IN.frag_pos - scene_data.view_position.xyz;
-    vec3 R = reflect(I, normalize(IN.normal));
+    vec3 I = OUT.frag_pos - scene_data.view_position.xyz;
+    vec3 R = reflect(I, normalize(OUT.normal));
     vec4 reflection = texture(reflection_map, R);
 
     vec3 ambient = scene_data.ambient_color.rgb * tex * 0.1;
@@ -76,22 +76,22 @@ vec3 do_directional_light(Directional_Light light) {
     vec3 specular = pow(max(dot(normalize(L+V), N), 0.0), 128) * tex * (1 - material.roughness);
     diffuse *= max(vec3(1, 1, 1), reflection.xyz * (1 - material.roughness));
 
-    float shadow = ShadowCalculation(IN.pos_light_space);
+    float shadow = ShadowCalculation(OUT.pos_light_space);
     // float shadow = 1.0;
 
     return (ambient + shadow * (specular + diffuse)) * material.albedo_color.rgb;
 }
 
 vec3 do_point_light(PointLight light) {
-    vec3 tex = vec3(texture(albedo_map, IN.frag_uv));
+    vec3 tex = vec3(texture(albedo_map, OUT.frag_uv));
 
-    // vec3 N = normalize(texture(normal_map, IN.frag_uv).rgb * 2.0 - 1.0);
-    vec3 N = normalize(IN.normal);
-    vec3 L = normalize(light.position - IN.frag_pos);
-    // vec3 V = normalize(IN.tangent_view_pos - IN.tangent_frag_pos);
-    vec3 V = normalize(scene_data.view_position.xyz - IN.frag_pos);
+    // vec3 N = normalize(texture(normal_map, OUT.frag_uv).rgb * 2.0 - 1.0);
+    vec3 N = normalize(OUT.normal);
+    vec3 L = normalize(light.position - OUT.frag_pos);
+    // vec3 V = normalize(OUT.tangent_view_pos - OUT.tangent_frag_pos);
+    vec3 V = normalize(scene_data.view_position.xyz - OUT.frag_pos);
 
-    float distance = length(light.position - IN.frag_pos);
+    float distance = length(light.position - OUT.frag_pos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + 
                  light.quadratic * (distance * distance));
 
@@ -102,7 +102,7 @@ vec3 do_point_light(PointLight light) {
     diffuse *= attenuation;
     specular *= attenuation;
 
-    // float shadow = ShadowCalculation(IN.pos_light_space);
+    // float shadow = ShadowCalculation(OUT.pos_light_space);
     float shadow = 1.0;
 
     return (shadow * (specular + diffuse)) * material.albedo_color.rgb;

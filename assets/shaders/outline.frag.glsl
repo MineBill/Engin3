@@ -1,8 +1,8 @@
-#version 460 core
+#version 450 core
 
-layout(location = 0) in VS_IN {
+layout(location = 0) in VS_OUT {
     vec2 uv;
-} IN;
+} OUT;
 
 layout(binding = 0) uniform usampler2D stencil_texture;
 
@@ -19,7 +19,7 @@ void main() {
     for (int y = -WIDTH;  y <= WIDTH;  ++y) {
         for (int x = -WIDTH;  x <= WIDTH;  ++x) {
             vec2 dUV = vec2(float(x) * pixelSize.x, float(y) * pixelSize.y);
-            float mask = texture(stencil_texture, IN.uv + dUV).r;
+            float mask = texture(stencil_texture, OUT.uv + dUV).r;
             coverage += mask;
             if (mask >= 0.5) {
                 dist = min(dist, sqrt(float(x * x + y * y)));

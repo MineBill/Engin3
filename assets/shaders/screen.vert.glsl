@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 vec4 plane[6] = vec4[](
     vec4(-1.0,  1.0,  0.0, 1.0),
@@ -10,12 +10,14 @@ vec4 plane[6] = vec4[](
     vec4( 1.0,  1.0,  1.0, 1.0)
 );
 
-layout(location = 0) out VS_OUT {
+struct VertexOutput {
     vec2 uv;
-} OUT;
+};
+
+layout(location = 0) out VertexOutput Out;
 
 void main() {
-    OUT.uv = plane[gl_VertexID].zw;
-    vec2 p = plane[gl_VertexID].xy;
+    Out.uv = plane[gl_VertexIndex].zw;
+    vec2 p = plane[gl_VertexIndex].xy;
     gl_Position = vec4(p, 0.0, 1.0);
 }

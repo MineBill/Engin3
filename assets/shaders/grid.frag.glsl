@@ -1,12 +1,13 @@
 #version 460 core
-// frag
 
-layout(location = 0) in VS_IN {
+struct VertexOutput {
     vec3 near_point;
     vec3 far_point;
     mat4 projection;
     mat4 view;
-} IN;
+};
+
+layout(location = 0) in VertexOutput In;
 
 layout(location = 0) out vec4 out_color;
 
@@ -31,25 +32,25 @@ vec4 grid(vec3 frag_pos, float scale) {
 }
 
 const float near = 0.1;
-const float far = 200;
+const float far = 1000;
 
 float compute_depth(vec3 pos) {
-    vec4 clip_space_pos = IN.projection * IN.view * vec4(pos.xyz, 1.0);
+    vec4 clip_space_pos = In.projection * In.view * vec4(pos.xyz, 1.0);
     float t = (clip_space_pos.z / clip_space_pos.w);
     return (t);
 }
 
 float compute_linear_depth(vec3 pos) {
-    vec4 clip_space_pos = IN.projection * IN.view * vec4(pos.xyz, 1.0);
+    vec4 clip_space_pos = In.projection * In.view * vec4(pos.xyz, 1.0);
     float clip_space_depth = (clip_space_pos.z / clip_space_pos.w) * 2.0 - 1.0; // put back between -1 and 1
     float linearDepth = (2.0 * near * far) / (far + near - clip_space_depth * (far - near)); // get linear value between 0.01 and 100
     return linearDepth / far; // normalize
 }
 
 void main() {
-    float t = (0-IN.near_point.y) / (IN.far_point.y - IN.near_point.y);
+    float t = (0-In.near_point.y) / (In.far_point.y - In.near_point.y);
 
-    vec3 frag_pos = IN.near_point + (t) * (IN.far_point - IN.near_point);
+    vec3 frag_pos = In.near_point + (t) * (In.far_point - In.near_point);
 
     float d = compute_depth(frag_pos);
     // gl_FragDepth =  (((1 - 0) * d) + (1 + 0)) / 2.0;
