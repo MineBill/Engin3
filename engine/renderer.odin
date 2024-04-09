@@ -4,6 +4,15 @@ import array "core:container/small_array"
 import "core:log"
 _ :: log
 
+MSAA_Level :: enum {
+    x1 = 1,
+    x2 = 2,
+    x4 = 4,
+    x8 = 8,
+}
+
+g_msaa_level: MSAA_Level = .x2
+
 RenderStats :: struct {
     draw_calls: int,
 }
@@ -29,9 +38,12 @@ UniformBuffer :: struct($T: typeid) {
     handle: RenderHandle,
 
     using data : T,
+
+    bind_index: u32,
 }
 
 create_uniform_buffer :: proc($T: typeid, bind_index: int) -> (buffer: UniformBuffer(T)) {
+    buffer.bind_index = u32(bind_index)
     gl.CreateBuffers(1, &buffer.handle)
 
     gl.NamedBufferStorage(buffer.handle, size_of(T), nil, gl.DYNAMIC_STORAGE_BIT)
@@ -41,9 +53,16 @@ create_uniform_buffer :: proc($T: typeid, bind_index: int) -> (buffer: UniformBu
 }
 
 uniform_buffer_upload :: proc(buffer: ^UniformBuffer($T), offset := uintptr(0), size := size_of(T)) {
-    // data := uintptr(&buffer.data) + 0
-    // gl.NamedBufferSubData(buffer.handle, int(offset), int(size), rawptr(data)):
     gl.NamedBufferSubData(buffer.handle, 0, size_of(buffer.data), &buffer.data)
+}
+
+uniform_buffer_set_data :: proc(buffer: ^UniformBuffer($T), offset := uintptr(0), size := size_of(T)) {
+    data := uintptr(&buffer.data) + offset
+    gl.NamedBufferSubData(buffer.handle, int(offset), int(size), rawptr(data))
+}
+
+uniform_buffer_rebind :: proc(buffer: ^UniformBuffer($T)) {
+    gl.BindBufferBase(gl.UNIFORM_BUFFER, buffer.bind_index, buffer.handle)
 }
 
 Box :: struct {
@@ -137,6 +156,8 @@ invalidate_framebuffer :: proc(fb: ^FrameBuffer) {
 
             gl.TextureParameteri(texture, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
             gl.TextureParameteri(texture, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+            gl.TextureParameteri(texture, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+            gl.TextureParameteri(texture, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
         }
 
         gl.NamedFramebufferTexture(fb, u32(gl.COLOR_ATTACHMENT0 + index), texture, 0)
@@ -216,8 +237,9 @@ get_depth_attachment :: proc(fb: FrameBuffer) -> RenderHandle {
     return fb.depth_attachment
 }
 
-blit_framebuffer :: proc(from, to: FrameBuffer, src_box, dst_box: Box, index := 0) {
+blit_framebuffer :: proc(from, to: FrameBuffer, src_box, dst_box: Box, index := 0, index2 := 0) {
     gl.NamedFramebufferReadBuffer(from.handle, u32(gl.COLOR_ATTACHMENT0 + index))
+    gl.NamedFramebufferDrawBuffer(to.handle, u32(gl.COLOR_ATTACHMENT0 + index2))
 
     gl.BlitNamedFramebuffer(
         from.handle,

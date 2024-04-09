@@ -2,5 +2,8 @@
     "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
     "workspace.library": ["cache/lua/"],
     "runtime.version": "Lua 5.3",
-    "hint.enable": false
+    "hint.enable": false,
+    "runtime.special": {
+        "import": "require"
+    }
 }

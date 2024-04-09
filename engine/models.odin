@@ -33,7 +33,7 @@ Material :: struct {
 bind_material :: proc(m: ^Material) {
     gl.BindTextureUnit(0, m.albedo_texture.handle)
     gl.BindTextureUnit(1, m.normal_texture.handle)
-    gl.BindBufferBase(gl.UNIFORM_BUFFER, 2, m.ubo)
+    gl.BindBufferBase(gl.UNIFORM_BUFFER, 10, m.ubo)
 }
 
 default_material :: proc() -> Material {

@@ -31,7 +31,7 @@ dbg_init :: proc(d: ^DebugDrawContext) {
     assert(ok)
 
     gl.CreateBuffers(1, &d.vbo)
-    gl.NamedBufferData(d.vbo, MAX_LINES * 2 * size_of(LinePoint), nil, gl.DYNAMIC_DRAW)
+    gl.NamedBufferStorage(d.vbo, MAX_LINES * 2 * size_of(LinePoint), nil, gl.DYNAMIC_STORAGE_BIT)
 
     gl.CreateVertexArrays(1, &d.vao)
 
@@ -93,8 +93,9 @@ dbg_render :: proc(d: ^DebugDrawContext) {
 
     gl.UseProgram(d.shader.program)
     gl.BindVertexArray(d.vao)
-    gl.LineWidth(1)
-    gl.DrawArrays(gl.LINES, 0, i32(len(d.lines) ))
+    gl.LineWidth(2)
+    // gl.DrawArrays(gl.LINES, 0, i32(len(d.lines) ))
+    draw_arrays(gl.LINES, 0, len(d.lines))
 
     clear(&d.lines)
 }

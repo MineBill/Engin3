@@ -35,6 +35,9 @@ ComponentVTable :: struct {
     // Called when a component property changes.
     prop_changed: #type proc(this: rawptr, prop: any),
 
+    // Used by components to draw themselves in the editor.
+    debug_draw: #type proc(this: rawptr, ctx: ^DebugDrawContext),
+
     // @Editor: Editor only field, allows a component to have custom imgui.
     editor_ui: #type proc(this: rawptr, editor: ^Editor, s: any) -> bool,
 
@@ -57,6 +60,8 @@ component_default_editor_ui :: proc(this: rawptr, editor: ^Editor, s: any) -> bo
     return imgui_draw_struct(editor, s)
 }
 
+component_default_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {}
+
 component_default_copy :: proc(this: rawptr) -> rawptr {
     assert(false, "Copy needs to be implemented")
     return nil
@@ -72,6 +77,7 @@ default_component_constructor :: proc() -> Component {
         prop_changed = component_default_prop_changed,
         editor_ui    = component_default_editor_ui,
         copy         = component_default_copy,
+        debug_draw   = component_default_debug_draw,
     }
 }
 
@@ -270,6 +276,8 @@ World :: struct {
     local_id_to_uuid: map[int]UUID,
     next_local_id: int,
     root: Handle,
+
+    ambient_color: Color,
 
     using editor_data: WorldEditorData,
 }
@@ -504,6 +512,12 @@ serialize_world :: proc(world: World, file: string) {
     {
         serialize_do_field(&s, "Name", world.name)
 
+        serialize_begin_table(&s, "Environment")
+        {
+            serialize_do_field(&s, "AmbientColor", world.ambient_color)
+        }
+        serialize_end_table(&s)
+
         serialize_begin_array(&s, "Entities")
         {
             i := 0
@@ -545,6 +559,14 @@ deserialize_world :: proc(world: ^World, file: string) -> bool {
     serialize_begin_table(&s, "Scene")
     {
         serialize_do_field(&s, "Name", world.name)
+
+        if serialize_begin_table(&s, "Environment") {
+            if color, ok := serialize_get_field(&s, "AmbientColor", Color); ok {
+                world.ambient_color = color
+            }
+            serialize_end_table(&s)
+        }
+
         serialize_begin_array(&s, "Entities")
         {
             len := serialize_get_array(&s)

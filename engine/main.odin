@@ -21,10 +21,10 @@ main :: proc() {
     )
 
     defer {
-        for ptr, entry in tracking.allocation_map {
-            log.warnf("Leak detected!")
-            log.warnf("\t%v bytes at %v", entry.size, entry.location)
-        }
+        // for ptr, entry in tracking.allocation_map {
+        //     log.warnf("Leak detected!")
+        //     log.warnf("\t%v bytes at %v", entry.size, entry.location)
+        // }
     }
 
     engine: Engine

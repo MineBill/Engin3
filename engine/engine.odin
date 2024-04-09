@@ -17,6 +17,7 @@ import "core:math/rand"
 import "core:intrinsics"
 import "core:fmt"
 import "core:reflect"
+import "core:os"
 
 g_engine: ^Engine
 
@@ -25,39 +26,6 @@ GL_DEBUG_CONTEXT :: ODIN_DEBUG
 CAMERA_DEFAULT_POSITION :: vec3{0, 3, 10}
 
 SHADOW_MAP_RES :: 4096
-
-Scene_Data :: struct {
-    using block : struct {
-        view_position: vec4,
-        ambient_color: vec4,
-    },
-
-    ubo: u32,
-}
-
-Lights_Data :: struct {
-    using block : struct {
-        directional: struct {
-            direction: vec4,
-            color: Color,
-            light_space_matrix: mat4,
-        },
-
-        pointlights: [MAX_POINTLIGHTS]struct {
-            color: Color,
-            position: vec3,
-
-            constant: f32,
-            linear: f32,
-            quadratic: f32,
-            _: f32,
-        },
-        spotlights: [MAX_SPOTLIGHTS]struct {
-            _: f32,
-        },
-    },
-    ubo: u32,
-}
 
 EngineMode :: enum {
     Game,
@@ -80,8 +48,6 @@ Engine :: struct {
 
     ubo:          u32,
     material_ubo: u32,
-    scene_data:   Scene_Data,
-    lights:       Lights_Data,
 
     light_entity: int,
     box_entity: int,
@@ -99,11 +65,6 @@ Engine :: struct {
     world: World,
 
     shader_monitor: monitor.Monitor,
-
-    viewport_fb:          FrameBuffer,
-    depth_fb:             FrameBuffer,
-    viewport_resolved_fb: FrameBuffer,
-    scene_fb:             FrameBuffer,
 
     dbg_draw: DebugDrawContext,
     asset_manager: AssetManager,
@@ -161,141 +122,6 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     game_init(&e.game, e)
 
-    // === POST INITIALIZE ===
-    ok: bool
-    e.triangle_shader, ok = shader_load_from_file(
-        "assets/shaders/triangle.vert.glsl",
-        "assets/shaders/pbr.frag.glsl")
-    if !ok {
-        return .Shader
-    }
-
-    e.outline_shader, ok = shader_load_from_file(
-        "assets/shaders/outline.vert.glsl",
-        "assets/shaders/outline.frag.glsl")
-    if !ok {
-        return .Shader
-    }
-
-    e.grid_shader, ok = shader_load_from_file(
-        "assets/shaders/grid.vert.glsl",
-        "assets/shaders/grid.frag.glsl")
-    if !ok {
-        return .Shader
-    }
-
-    e.depth_shader, ok = shader_load_from_file(
-        "assets/shaders/depth.vert.glsl",
-        "assets/shaders/depth.frag.glsl")
-    if !ok {
-        return .Shader
-    }
-
-    gl.CreateVertexArrays(1, &e.grid_va)
-
-    {
-        SCREEN_VERTEX_SRC : string : `
-#version 460 core
-
-layout(location = 0) in vec2 position;
-layout(location = 1) in vec2 uv;
-
-layout(location = 0) out VS_OUT {
-    vec2 uv;
-} OUT;
-
-void main() {
-    OUT.uv = uv;
-    gl_Position = vec4(position, 0.0, 1.0);
-}
-        `
-        SCREEN_FRAG_SRC : string : `
-#version 460 core
-
-layout(location = 0) in VS_IN {
-    vec2 uv;
-} IN;
-
-layout(binding = 0) uniform sampler2D screen_texture;
-
-layout(location = 0) out vec4 out_color;
-
-void main() {
-    out_color = texture(screen_texture, IN.uv);
-    out_color.rgb = pow(out_color.rgb, vec3(1.0 / 2.2));
-}
-        `
-        e.screen_shader, ok = shader_load_from_memory(
-            transmute([]byte)SCREEN_VERTEX_SRC,
-            transmute([]byte)SCREEN_FRAG_SRC)
-        if !ok {
-            return .Shader
-        }
-
-    }
-
-    /*
-
-    // View_Data UBO
-    {
-        gl.CreateBuffers(1, &e.ubo)
-        gl.NamedBufferData(e.ubo, size_of(Uniform), nil, gl.DYNAMIC_DRAW)
-
-        // e.camera.fov = 45.0;
-        // e.camera.projection = linalg.matrix4_perspective_f32(e.camera.fov, 16.0 / 9.0, 0.1, 1000.0)
-        // gl.NamedBufferSubData(e.ubo, 0, size_of(mat4), &e.camera.projection)
-
-        // view := linalg.matrix4_translate(vec3{0, 3, -10})
-        // gl.NamedBufferSubData(e.ubo, size_of(mat4), size_of(mat4), &view)
-        // e.camera.position = CAMERA_DEFAULT_POSITION
-
-        gl.BindBufferBase(gl.UNIFORM_BUFFER, 0, e.ubo)
-    }
-
-    // Scene_Data UBO
-    {
-        gl.CreateBuffers(1, &e.scene_data.ubo)
-        gl.NamedBufferData(e.scene_data.ubo, size_of(e.scene_data.block), &e.scene_data.block, gl.DYNAMIC_DRAW)
-
-        gl.BindBufferBase(gl.UNIFORM_BUFFER, 1, e.scene_data.ubo)
-    }
-
-    {
-        gl.CreateBuffers(1, &e.lights.ubo)
-        gl.NamedBufferData(e.lights.ubo, size_of(e.lights.block), &e.lights.block, gl.DYNAMIC_DRAW)
-
-        gl.BindBufferBase(gl.UNIFORM_BUFFER, 3, e.lights.ubo)
-    }
-
-    */
-
-    // model_loc := gl.GetUniformLocation(e.triangle_shader.program, "model")
-    // e.triangle_shader.uniforms["model"] = model_loc
-
-    /*
-    spec := FrameBufferSpecification {
-        width = 800,
-        height = 800,
-        attachments = attachment_list(.RGBA16F, .RED_INTEGER, .DEPTH),
-        samples = 1,
-    }
-    e.viewport_fb          = create_framebuffer(spec)
-
-    spec.attachments = attachment_list(.RGBA16F, .DEPTH)
-    e.viewport_resolved_fb = create_framebuffer(spec)
-    e.scene_fb             = create_framebuffer(spec)
-
-    spec.width       = SHADOW_MAP_RES
-    spec.height      = SHADOW_MAP_RES
-    spec.attachments = attachment_list(.DEPTH32F)
-    spec.samples = 1
-    e.depth_fb       = create_framebuffer(spec)
-    */
-
-    // e.viewport_fb          = gen_framebuffer(800, 800, format = gl.RGBA16F)
-    // e.viewport_resolved_fb = gen_framebuffer(800, 800, format = gl.RGBA16F)
-    // e.scene_fb             = gen_framebuffer(800, 800, format = gl.RGBA16F)
-    // e.depth_fb             = gen_framebuffer(SHADOW_MAP_RES, SHADOW_MAP_RES, pure_depth = true)
     e.width = 800
     e.height = 800
 
@@ -359,26 +185,26 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
         log.debug("Shader reload triggered")
         e.shader_monitor.triggered = false
 
-        {
-            copy := e.triangle_shader
-            if shader_reload(&copy) {
-                e.triangle_shader = copy
-            }
-        }
+        // {
+        //     copy := e.triangle_shader
+        //     if shader_reload(&copy) {
+        //         e.triangle_shader = copy
+        //     }
+        // }
 
-        {
-            copy := e.outline_shader
-            if shader_reload(&copy) {
-                e.outline_shader = copy
-            }
-        }
+        // {
+        //     copy := e.outline_shader
+        //     if shader_reload(&copy) {
+        //         e.outline_shader = copy
+        //     }
+        // }
 
-        {
-            copy := e.grid_shader
-            if shader_reload(&copy) {
-                e.grid_shader = copy
-            }
-        }
+        // {
+        //     copy := e.grid_shader
+        //     if shader_reload(&copy) {
+        //         e.grid_shader = copy
+        //     }
+        // }
     }
 
     if is_key_just_released(.F1) {
@@ -748,12 +574,6 @@ engine_draw :: proc(e: ^Engine) {
 }
 
 engine_deinit :: proc(e: ^Engine) {
-    shader_deinit(&e.triangle_shader)
-    shader_deinit(&e.outline_shader)
-    shader_deinit(&e.grid_shader)
-    shader_deinit(&e.depth_shader)
-    shader_deinit(&e.screen_shader)
-
     destroy_world(&e.world)
 
     editor_deinit(&e.editor)
@@ -852,4 +672,8 @@ g_rand_device := rand.create(u64(intrinsics.read_cycle_counter()))
 
 generate_uuid :: proc() -> UUID {
     return UUID(rand.uint64(&g_rand_device))
+}
+
+get_cwd :: proc() -> string {
+    return os.get_current_directory()
 }

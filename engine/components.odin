@@ -206,7 +206,6 @@ mesh_renderer_prop_changed :: proc(this: rawptr, prop: any) {
 
     switch field.name {
     case "material":
-        log.debug("Material")
         upload_material(this.material)
     }
 }
@@ -243,7 +242,8 @@ serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^SerializeCont
 }
 
 mesh_renderer_update_material :: proc(mr: ^MeshRenderer) {
-    upload_material(mr.material)
+    update_material_new(&mr.material)
+    // upload_material(mr.material)
 }
 
 @(component="Core/Lights")
@@ -251,8 +251,8 @@ PointLightComponent :: struct {
     using base: Component,
 
     color: Color,
-    distance: f32 `range:"0.0, 100.0"`,
-    power: f32 `range:"0.0, 10.0"`,
+    distance: f32 `range: "0.0, 100.0"`,
+    power: f32 `range: "0.0, 10.0"`,
 
     constant: f32 `hide:""`,
     linear: f32 `hide:""`,
@@ -353,31 +353,26 @@ DirectionalLight :: struct {
 
     // direction
     color: Color,
+
+    shadow: struct {
+        splits: int `range:"1, 4"`,
+        correction: f32 `range:"0.0, 1.5"`,
+    },
 }
 
 @(constructor=DirectionalLight)
 make_directional_light :: proc() -> rawptr {
     light := new(DirectionalLight)
     light.base = default_component_constructor()
-    // light.init = directional_light_init
+    light.debug_draw = directional_light_debug_draw
 
     light.color = COLOR_WHITE
 
     return light
 }
 
-json_array_to_vec :: proc($V: typeid/[$N]$E, arr: json.Array) -> (vec: V)
-where N == 2 || N == 3 || N == 4 {
-    when E == f32 {
-        for i in 0..<N {
-            vec[i] = f32(arr[i].(json.Float))
-        }
-    } else when E == i32 {
-        for i in 0..<N {
-            vec[i] = i32(arr[i].(json.Integer))
-        }
-    }
-    return
+directional_light_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {
+    this := cast(^DirectionalLight)this
 }
 
 @(serializer=DirectionalLight)
@@ -385,9 +380,23 @@ serialize_directional_light :: proc(this: rawptr, serialize: bool, s: ^Serialize
     this := cast(^DirectionalLight)this
     if serialize {
         serialize_do_field(s, "Color", this.color)
+        serialize_begin_table(s, "Shadow")
+        serialize_do_field(s, "Splits", this.shadow.splits)
+        serialize_do_field(s, "Correction", this.shadow.correction)
+        serialize_end_table(s)
     } else {
         if color, ok := serialize_get_field(s, "Color", Color); ok {
             this.color = color
+        }
+
+        if serialize_begin_table(s, "Shadow") {
+            if splits, ok := serialize_get_field(s, "Splits", int); ok {
+                this.shadow.splits = splits
+            }
+            if correction, ok := serialize_get_field(s, "Correction", f32); ok {
+                this.shadow.correction = correction
+            }
+            serialize_end_table(s)
         }
     }
 }
@@ -549,16 +558,18 @@ Camera :: struct {
     using base: Component,
 
     fov: f32,
-    near_plane: f32 `range: "0.1, 1000.0"`,
-    far_plane: f32 `range: "0.1, 1000.0"`,
+    near_plane: f32 `range:"0.1, 1000.0"`,
+    far_plane: f32 `range:"0.1, 1000.0"`,
 
-    projection: mat4 `hide:""`,
+    rotation: quaternion128,
+    projection, view: mat4 `hide:""`,
 }
 
 @(constructor=Camera)
 make_camera :: proc() -> rawptr {
     camera := new(Camera)
     camera.base = default_component_constructor()
+    camera.debug_draw = camera_debug_draw
 
     camera.fov = 50
     camera.near_plane = 0.1
@@ -567,6 +578,43 @@ make_camera :: proc() -> rawptr {
     camera.projection = linalg.matrix4_perspective_f32(camera.fov, aspect, 0.1, 1000.0)
 
     return camera
+}
+
+camera_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {
+    this := cast(^Camera)this
+    entity := get_object(this.world, this.owner)
+
+    euler := entity.transform.local_rotation
+    this.rotation = linalg.quaternion_from_euler_angles(
+        euler.x * math.RAD_PER_DEG,
+        euler.y * math.RAD_PER_DEG,
+        euler.z * math.RAD_PER_DEG,
+        .XYZ)
+
+    this.view = linalg.matrix4_from_quaternion(this.rotation) *
+                    linalg.inverse(linalg.matrix4_translate(entity.transform.position))
+    this.projection = linalg.matrix4_perspective_f32(math.to_radians(f32(this.fov)), f32(g_engine.width) / f32(g_engine.height), this.near_plane, this.far_plane)
+    corners := get_frustum_corners_world_space(
+        this.projection,
+        this.view)
+
+    color := Color{0.2, 0.2, 0.7, 1.0}
+
+    dbg_draw_line(ctx, corners[0].xyz, corners[1].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[2].xyz, corners[3].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[4].xyz, corners[5].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[6].xyz, corners[7].xyz, 2.0, color = color)
+
+    dbg_draw_line(ctx, corners[0].xyz, corners[2].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[2].xyz, corners[6].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[6].xyz, corners[4].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[4].xyz, corners[0].xyz, 2.0, color = color)
+
+    dbg_draw_line(ctx, corners[1].xyz, corners[3].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[3].xyz, corners[7].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[7].xyz, corners[5].xyz, 2.0, color = color)
+    dbg_draw_line(ctx, corners[5].xyz, corners[1].xyz, 2.0, color = color)
+
 }
 
 camera_prop_changed :: proc(this: rawptr, prop: any) {
@@ -613,6 +661,9 @@ ScriptComponent :: struct {
     script_fields:          map[string]LuaValue,
     script:                 ^LuaScript,
     instance:               ScriptInstance,
+
+    scripts: [dynamic]^LuaScript,
+    instances: [dynamic]ScriptInstance,
     lua_entity:             LuaEntity,
 }
 
@@ -735,6 +786,15 @@ script_destroy :: proc(this: rawptr) {
         delete(name)
     }
     delete(this.script_fields)
+}
+
+script_component_add_script :: proc(this: ^ScriptComponent, type: ScriptType) {
+    // lua_sript := get_lua_script_from_type(type)
+    // instance := create_script_instance(lua_script)
+}
+
+script_component_get_script :: proc(this: ^ScriptComponent, type: ScriptType) -> ScriptInstance {
+    return {}
 }
 
 when USE_EDITOR {

@@ -38,6 +38,7 @@ EditorCamera :: struct {
     rotation:       quaternion128,
     euler_angles:   vec3,
     fov:            f32,
+    near_plane, far_plane: f32,
 
     projection, view: mat4,
 }
@@ -67,6 +68,7 @@ Editor :: struct {
 
     force_show_fields: bool,
     show_asset_manager: bool,
+    show_undo_redo: bool,
 
     allocator: mem.Allocator,
 
@@ -87,13 +89,18 @@ Editor :: struct {
 
     editor_va: RenderHandle,
 
+    // Texture view to visualize individual layers of the shadow map texture array.
+    shadow_map_texture_view: TextureView,
+
     scripting_engine: ScriptingEngine,
 
     style: EditorStyle,
+    undo: Undo,
 }
 
 editor_init :: proc(e: ^Editor, engine: ^Engine) {
     tracy.ZoneN("Editor Init")
+    undo_init(&e.undo)
     e.engine = engine
     e.state = .Edit
     // TODO(minebill):  Save the editor camera for each scene in a cache somewhere
@@ -101,12 +108,16 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.camera = EditorCamera {
         position = DEFAULT_EDITOR_CAMERA_POSITION,
         fov = f32(60.0),
+        near_plane = 0.1,
+        far_plane = 1000.0,
     }
 
     gl.CreateVertexArrays(1, &e.editor_va)
 
     e.logger = create_capture_logger(&e.log_entries)
     context.logger = e.logger
+
+    // compile_shader("assets/shaders/test.vert.glsl", .glsl_vertex_shader)
 
     e.content_browser.root_dir = filepath.join({os.get_current_directory(allocator = context.temp_allocator), "assets"})
     cb_navigate_to_folder(&e.content_browser, e.content_browser.root_dir)
@@ -127,12 +138,12 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
         "assets/shaders/screen.vert.glsl",
         "assets/shaders/outline.frag.glsl",
     )
-    assert(ok)
+    assert(ok, "Failed to read outline shader.")
     e.grid_shader, ok = shader_load_from_file(
         "assets/shaders/grid.vert.glsl",
         "assets/shaders/grid.frag.glsl",
     )
-    assert(ok)
+    assert(ok, "Failed to read grid shader.")
 
     imgui.CreateContext(nil)
     io := imgui.GetIO()
@@ -160,6 +171,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     io.FontDefault = e.fonts[.Normal]
 
     world_renderer_init(&e.renderer)
+    e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map)
 
     e.scripting_engine = create_scripting_engine()
 }
@@ -176,6 +188,8 @@ editor_deinit :: proc(e: ^Editor) {
     delete(e.content_browser.root_dir)
     delete(e.content_browser.current_dir)
     delete(e.content_browser.items)
+
+    destroy_texture_view(e.shadow_map_texture_view)
 }
 
 editor_update :: proc(e: ^Editor, _delta: f64) {
@@ -210,7 +224,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             } else if ev.button == .left {
                 if ev.state == .pressed && e.is_viewport_focused && e.state == .Edit {
                     mouse := g_event_ctx.mouse + g_event_ctx.window_position - e.viewport_position
-                    color := read_pixel(e.renderer.world_frame_buffer, int(mouse.x), int(e.viewport_size.y) - int(mouse.y), 1)
+                    color := read_pixel(e.renderer.world_frame_buffer, int(mouse.x), int(e.viewport_size.y) - int(mouse.y), 2)
 
                     id := color[0]
                     handle := e.engine.world.local_id_to_uuid[int(id)]
@@ -239,6 +253,10 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                             new_entity := duplicate_entity(&e.engine.world, entity)
                             select_entity(e, new_entity)
                         }
+                    case .Z:
+                        undo_undo(&e.undo)
+                    case .Y:
+                        undo_redo(&e.undo)
                     }
                 }
 
@@ -277,7 +295,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             // e.engine.camera_position   = e.camera.position
             e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
             // e.engine.camera_view       = e.camera.view
-            e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), 0.1, 200.0)
+            e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), e.camera.near_plane, e.camera.far_plane)
             // e.engine.camera_rotation   = e.camera.rotation
 
             editor_render_scene(e)
@@ -323,6 +341,10 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 e.show_asset_manager = true
             }
 
+            if imgui.MenuItem("Undo/Redo Stack") {
+                e.show_undo_redo = true
+            }
+
             imgui.EndMenu()
         }
 
@@ -336,12 +358,18 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
     imgui.DockSpaceOverViewport(imgui.GetMainViewport(), {.PassthruCentralNode})
 
-    if show_depth_buffer && imgui.Begin("Depth Buffer", &show_depth_buffer, {}) {
+    if show_depth_buffer && imgui.Begin("Shadow Map", &show_depth_buffer, {}) {
+        @(static) active_image := i32(0)
+        if imgui.SliderInt("ShadowMap Layer", &active_image, 0, 3) {
+            destroy_texture_view(e.shadow_map_texture_view)
+            e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map, u32(active_image))
+        }
+
         size := imgui.GetContentRegionAvail()
 
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
-        imgui.Image(transmute(rawptr)u64(get_depth_attachment(e.renderer.depth_frame_buffer)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        imgui.Image(transmute(rawptr)u64(e.shadow_map_texture_view.handle), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
         imgui.End()
     }
 
@@ -356,8 +384,11 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     editor_ui_toolstrip(e)
 
     editor_asset_manager(e)
+    editor_undo_redo_window(e)
 
     reset_draw_stats()
+
+    undo_commit(&e.undo)
 }
 
 editor_render_scene :: proc(e: ^Editor) {
@@ -369,11 +400,21 @@ editor_render_scene :: proc(e: ^Editor) {
             view       = e.camera.view,
             position   = e.camera.position,
             rotation   = e.camera.rotation,
+            near       = e.camera.near_plane,
+            far        = e.camera.far_plane,
         },
+    }
+    for id, &obj in e.engine.world.objects {
+        if id in e.entity_selection {
+            for type, component in obj.components {
+                component->debug_draw(g_dbg_context)
+            }
+        }
     }
 
     // Render world normally
     render_world(&e.renderer, packet)
+
     dbg_render(g_dbg_context)
 
     // Render editor stuff (grid, outlines, gizmo)
@@ -419,6 +460,8 @@ runtime_render_scene :: proc(e: ^Editor) {
                 view       = camera_view,
                 position   = go.transform.local_position,
                 rotation   = rotation,
+                near       = camera.near_plane,
+                far        = camera.far_plane,
             },
         }
         // Render world normally
@@ -456,21 +499,10 @@ editor_env_panel :: proc(e: ^Editor) {
             gl.ClearColor(expand_values(clear_color), 1.0)
         }
 
-        @(static) ambient_color := vec3{0.1, 0.1, 0.1}
-        if imgui.ColorEdit4("Ambent Color", &e.engine.scene_data.ambient_color, {}) {
-            gl.NamedBufferSubData(e.engine.scene_data.ubo, int(offset_of(Scene_Data, ambient_color)), size_of(vec4), &e.engine.scene_data.ambient_color)
-        }
+        imgui.ColorEdit4("Ambent Color", cast(^vec4)&e.engine.world.ambient_color, {})
     }
     imgui.End()
 }
-
-MSAA_Level :: enum {
-    x1 = 1,
-    x2 = 2,
-    x4 = 4,
-    x8 = 8,
-}
-g_msaa_level: MSAA_Level = .x2
 
 editor_viewport :: proc(e: ^Editor) {
     imgui.PushStyleVarImVec2(.WindowPadding, vec2{0, 0})
@@ -590,9 +622,12 @@ editor_entidor :: proc(e: ^Editor) {
                 imgui.TextDisabled(fmt.ctprintf("Local ID: %v", go.local_id))
                 imgui.PopFont()
 
+                undo_push(&e.undo, &go.flags, tag = "Change Flags")
                 imgui_flags_box("Flags", &go.flags)
 
                 imgui.SameLine()
+
+                undo_push(&e.undo, &go.enabled, tag = "Enabled")
                 imgui.Checkbox("Enabled", &go.enabled)
 
                 imgui.Separator()
@@ -606,14 +641,40 @@ editor_entidor :: proc(e: ^Editor) {
                     imgui.Indent()
                     if imgui.BeginChild("Transformm", vec2{}, {.AutoResizeY}, {}) {
                         // TOOD(minebill):  Add some kind of 'debug' view to view global position as well?
+
+                        // Push on start edit, commit on stop edit
+
                         imgui.TextUnformatted("Position")
-                        modified |= imgui_vec3("position", &go.transform.local_position)
+                        modified_position, pos_activated, pos_deactivated := imgui_vec3("position", &go.transform.local_position)
+                        if pos_activated {
+                            undo_push_single(&e.undo, &go.transform.local_position, tag = "Position")
+                        }
+
+                        if pos_deactivated {
+                            undo_commit_single(&e.undo, tag = "Position")
+                        }
 
                         imgui.TextUnformatted("Rotation")
-                        modified |= imgui_vec3("rotation", &go.transform.local_rotation)
+                        rot_modified, rot_activated, rot_deactivated := imgui_vec3("rotation", &go.transform.local_rotation)
+                        if rot_activated {
+                            undo_push_single(&e.undo, &go.transform.local_position, tag = "LocalRotation")
+                        }
+
+                        if rot_deactivated {
+                            undo_commit_single(&e.undo, tag = "LocalRotation")
+                        }
 
                         imgui.TextUnformatted("Scale")
-                        modified |= imgui_vec3("scale", &go.transform.local_scale)
+                        scale_modified, scale_activated, scale_deactivated := imgui_vec3("scale", &go.transform.local_scale)
+                        if scale_activated {
+                            undo_push_single(&e.undo, &go.transform.local_scale, tag = "LocalScale")
+                        }
+
+                        if scale_deactivated {
+                            undo_commit_single(&e.undo, tag = "LocalScale")
+                        }
+
+                        modified |= modified_position | rot_modified | scale_modified
                     }
                     imgui.EndChild()
                     imgui.Unindent()
@@ -887,11 +948,14 @@ editor_content_browser :: proc(e: ^Editor) {
                     texture = .Script
                 case ".glb":
                     texture = .Model
+                case ".png": fallthrough
+                case ".jpg":
+                    texture = .Texture
                 }
             }
             imgui.ImageButton(cstr(item.name), transmute(rawptr)u64(e.content_browser.textures[texture].handle), size)
 
-            if imgui.BeginDragDropSource({}) {
+            if imgui.BeginDragDropSource() {
                 path := item.fullpath
 
                 imgui.SetDragDropPayload(CONTENT_ITEM_TYPES[texture], raw_data(path), len(path) * size_of(byte), .Once)
@@ -1200,6 +1264,55 @@ editor_asset_manager :: proc(e: ^Editor) {
     }
 }
 
+editor_undo_redo_window :: proc(e: ^Editor) {
+    if e.show_undo_redo {
+        if imgui.Begin("Undo/Redo Stack", &e.show_undo_redo) {
+            size := imgui.GetContentRegionAvail()
+
+            flags := imgui.TableFlags_Borders
+            child_flags: imgui.ChildFlags = {.FrameStyle, .Border}
+            imgui.BeginChild("##undo_stack", vec2{0, size.y / 2.0}, child_flags)
+                if imgui.BeginTable("##__undo_stack", 3, flags) {
+                    imgui.TableSetupColumn("Tag")
+                    imgui.TableSetupColumn("Size")
+                    imgui.TableSetupColumn("LOC")
+                    imgui.TableHeadersRow()
+
+                    for item in e.undo.undo_items {
+                        imgui.TableNextColumn()
+                        imgui.TextUnformatted(cstr(item.tag) if item.tag != "" else "None")
+                        imgui.TableNextColumn()
+                        imgui.TextUnformatted(fmt.ctprintf("%v bytes", item.size))
+                        imgui.TableNextColumn()
+                        imgui.TextUnformatted(fmt.ctprintf("%v", item.loc))
+                    }
+                    imgui.EndTable()
+                }
+            imgui.EndChild()
+
+            imgui.BeginChild("##redo_stack", vec2{0, size.y / 2.0}, child_flags)
+                if imgui.BeginTable("##__redo_stack", 3, flags) {
+                    imgui.TableSetupColumn("Tag")
+                    imgui.TableSetupColumn("Size")
+                    imgui.TableSetupColumn("LOC")
+                    imgui.TableHeadersRow()
+
+                    for item in e.undo.redo_items {
+                        imgui.TableNextColumn()
+                        imgui.TextUnformatted(cstr(item.tag) if item.tag != "" else "None")
+                        imgui.TableNextColumn()
+                        imgui.TextUnformatted(fmt.ctprintf("%v bytes", item.size))
+                        imgui.TableNextColumn()
+                        imgui.TextUnformatted(fmt.ctprintf("%v", item.loc))
+                    }
+                    imgui.EndTable()
+                }
+            imgui.EndChild()
+        }
+        imgui.End()
+    }
+}
+
 reset_selection :: proc(e: ^Editor) {
     for entity, _ in e.entity_selection {
         if go := get_object(&e.engine.world, entity); go != nil {
@@ -1350,7 +1463,7 @@ imgui_flags_box :: proc(name: string,  flags: ^$B/bit_set[$E]) {
     }
 }
 
-imgui_vec3 :: proc(id: cstring, v: ^vec3) -> (modified: bool) {
+imgui_vec3 :: proc(id: cstring, v: ^vec3) -> (modified: bool, activated, deactivated: bool) {
     X_COLOR :: vec4{0.92, 0.24, 0.27, 1.0}
     X_COLOR_HOVER :: vec4{0.76, 0.20, 0.22, 1.0}
     Y_COLOR :: vec4{0.20, 0.67, 0.32, 1.0}
@@ -1381,6 +1494,9 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) -> (modified: bool) {
     modified |= imgui.DragFloat("##x", &v.x, 0.01, min(f32), max(f32), "%.2f", {})
     imgui.PopStyleColor(2)
 
+    activated |= imgui.IsItemActivated()
+    deactivated |= imgui.IsItemDeactivated()
+
     imgui.SameLine()
 
     imgui.PushStyleColorImVec4(.Text, Y_COLOR)
@@ -1394,6 +1510,9 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) -> (modified: bool) {
     modified |= imgui.DragFloat("##y", &v.y, 0.01, min(f32), max(f32), "%.2f", {})
     imgui.PopStyleColor(2)
 
+    activated |= imgui.IsItemActivated()
+    deactivated |= imgui.IsItemDeactivated()
+
     imgui.SameLine()
 
     imgui.PushStyleColorImVec4(.Text, Z_COLOR)
@@ -1406,6 +1525,9 @@ imgui_vec3 :: proc(id: cstring, v: ^vec3) -> (modified: bool) {
     imgui.PushStyleColorImVec4(.FrameBgHovered, Z_COLOR_HOVER)
     modified |= imgui.DragFloat("##z", &v.z, 0.01, min(f32), max(f32), "%.2f", {})
     imgui.PopStyleColor(2)
+
+    activated |= imgui.IsItemActivated()
+    deactivated |= imgui.IsItemDeactivated()
 
     imgui.PopID()
     return
@@ -1488,30 +1610,21 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
     case reflect.is_float(field.type):
         fallthrough
     case reflect.is_integer(field.type):
-
-        range_str, ok := reflect.struct_tag_lookup(field.tag, "range")
-        if ok {
-            limits, _ := strings.split(range_str, ",", allocator = context.temp_allocator)
-            if len(limits) == 2 {
-                min, min_ok := strconv.parse_f32(strings.trim_space(limits[0]))
-                if !min_ok {
-                    help_marker("Failed to parse lower bound of range tag", .Warning)
-                    return
-                }
-
-                max, max_ok := strconv.parse_f32(strings.trim_space(limits[1]))
-                if !max_ok {
-                    help_marker("Failed to parse upper bound of range tag", .Warning)
-                    return
-                }
-
+        if min, max, ok := parse_range_tag(field.tag); ok {
+            if reflect.is_integer(field.type) {
+                // We use the biggest integer type to cover all cases.
+                min, max := i128(min), i128(max)
                 modified = imgui.SliderScalar(
                     cstr(field.name),
                     number_to_imgui_scalar(value),
                     value.data,
                     &min, &max)
             } else {
-                help_marker("Missing upper bound in range tag", .Warning)
+                modified = imgui.SliderScalar(
+                    cstr(field.name),
+                    number_to_imgui_scalar(value),
+                    value.data,
+                    &min, &max)
             }
         } else {
             modified = imgui.DragScalar(
@@ -1717,6 +1830,30 @@ imgui_draw_slice :: proc(name: string, slice: any) -> (changed: bool) {
     return
 }
 
+parse_range_tag :: proc(tag: reflect.Struct_Tag) -> (min: f32, max: f32, ok: bool) {
+    range_str: string
+    range_str, ok = reflect.struct_tag_lookup(tag, "range")
+    if ok {
+        limits, _ := strings.split(range_str, ",", allocator = context.temp_allocator)
+        if len(limits) == 2 {
+            min, ok = strconv.parse_f32(strings.trim_space(limits[0]))
+            if !ok {
+                help_marker("Failed to parse lower bound of range tag", .Warning)
+                return
+            }
+
+            max, ok = strconv.parse_f32(strings.trim_space(limits[1]))
+            if !ok {
+                help_marker("Failed to parse upper bound of range tag", .Warning)
+                return
+            }
+        } else {
+            help_marker("Missing upper bound in range tag", .Warning)
+        }
+    }
+    return
+}
+
 // TODO(minebill):  This is pretty much a wrapper around a dynamic byte array.
 //                  Probably shouldn't exist.
 DynamicString :: struct {
@@ -1810,10 +1947,10 @@ help_marker :: proc(message: string, help_mode: HelpMode = .Info) {
         imgui.Text("(?)")
     case .Warning:
         imgui.PushStyleColorImVec4(.Text, vec4{1, 1, 0, 1})
-        imgui.Text("(?) Warning")
+        imgui.Text("(?)")
     case .Error:
         imgui.PushStyleColorImVec4(.Text, vec4{1, 0, 0, 1})
-        imgui.Text("(!) Error")
+        imgui.Text("(!)")
     }
 
     if imgui.BeginItemTooltip() {

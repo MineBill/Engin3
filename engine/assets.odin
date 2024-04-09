@@ -5,6 +5,7 @@ import "core:intrinsics"
 import "core:encoding/json"
 import "core:os"
 import "core:log"
+import "core:fmt"
 
 AssetLoader :: #type proc(data: []byte) -> ^Asset
 
@@ -17,6 +18,8 @@ AssetManager :: struct {
 }
 
 asset_manager_init :: proc(am: ^AssetManager) {}
+
+asset_manager_deinit :: proc(manager: ^AssetManager) {}
 
 Asset :: struct {
     id: UUID,
@@ -42,7 +45,7 @@ load_asset :: proc(path: Path, type: typeid, id: Maybe(UUID) = nil) -> ^Asset {
     // find loader for type
     when USE_EDITOR {
         data, ok := os.read_entire_file(path)
-        assert(ok)
+        fmt.assertf(ok, "Could not open file '%v' for reading", path)
         defer delete(data)
     } else when COOKED_GAME {
         #assert( false )
