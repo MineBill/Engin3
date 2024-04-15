@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:strings"
 import "core:slice"
 
-write_lua_struct_init :: proc(sb: ^strings.Builder, exports: FileExports, s: StructExport) {
+write_lua_struct_init :: proc(config: ^GeneratorConfig, sb: ^strings.Builder, exports: FileExports, s: StructExport, package_exports: ^PackageExports) {
     using strings, fmt
 
     exportAttribs := s.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_STRUCT_ATTRIBUTES
@@ -43,10 +43,10 @@ write_lua_struct_init :: proc(sb: ^strings.Builder, exports: FileExports, s: Str
     write_string(sb, "expStruct.type = ")
     write_string(sb, s.name)
     write_string(sb, "\n    ")
-    
+
+    write_string(sb, "expStruct.methods = make(map[mani.LuaName]lua.CFunction)")
+    write_string(sb, "\n    ")
     if methodsAttrib, found := exportAttribs["Methods"]; found {
-        write_string(sb, "expStruct.methods = make(map[mani.LuaName]lua.CFunction)")
-        write_string(sb, "\n    ")
         methods := methodsAttrib.(Attributes) 
         for odinName, attribVal in methods {
             luaName: string
@@ -64,9 +64,28 @@ write_lua_struct_init :: proc(sb: ^strings.Builder, exports: FileExports, s: Str
             write_string(sb, fullName)
             write_string(sb, "\n    ")
         }
-        
     }
 
+    if s.name in config.methods {
+        for proc_export in config.methods[s.name] {
+            odin_name := proc_export.name
+            attribs := proc_export.attribs["LuaExport"].(Attributes) or_else DEFAULT_PROC_ATTRIBUTES
+
+            lua_name := odin_name
+            if "Name" in attribs {
+                lua_name = attribs["Name"].(String) or_else odin_name
+            }
+
+            full_name := strings.concatenate({"_mani_", odin_name}, context.temp_allocator)
+            write_string(sb, "expStruct.methods[")
+            write_rune(sb, '"')
+            write_string(sb, lua_name)
+            write_rune(sb, '"')
+            write_string(sb, "] = ")
+            write_string(sb, full_name)
+            write_string(sb, "\n    ")
+        }
+    }
 
     if allowLight {
         write_string(sb, "\n    ")
@@ -170,18 +189,18 @@ write_lua_struct_init :: proc(sb: ^strings.Builder, exports: FileExports, s: Str
     write_string(sb, "\n}\n\n")
 }
 
-write_lua_newstruct :: proc(sb: ^strings.Builder, exports: FileExports, s: StructExport) {
+write_lua_newstruct :: proc(sb: ^strings.Builder, exports: FileExports, s: StructExport, package_exports: ^PackageExports) {
     
 }
 
-write_lua_index :: proc(sb: ^strings.Builder, exports: FileExports, s: StructExport) {
+write_lua_index :: proc(config: ^GeneratorConfig, sb: ^strings.Builder, exports: FileExports, s: StructExport, package_exports: ^PackageExports) {
     using strings
     exportAttribs := s.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_STRUCT_ATTRIBUTES
     luaFields := exportAttribs["Fields"].(Attributes) if "Fields" in exportAttribs else nil
     udataType := exportAttribs["Type"].(Attributes)  
     allowLight := "Light" in udataType
     allowFull := "Full" in udataType
-    hasMethods := "Methods" in exportAttribs
+    hasMethods := "Methods" in exportAttribs || s.name in config.methods
 
 
     if allowFull {
@@ -326,7 +345,7 @@ _mani_index_{0:s}_ref :: proc "c" (L: ^lua.State) -> c.int {{
     
 }
 
-write_lua_newindex :: proc(sb: ^strings.Builder, exports: FileExports, s: StructExport) {
+write_lua_newindex :: proc(sb: ^strings.Builder, exports: FileExports, s: StructExport, package_exports: ^PackageExports) {
     using strings
     exportAttribs := s.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_STRUCT_ATTRIBUTES
     luaFields := exportAttribs["Fields"].(Attributes) if "Fields" in exportAttribs else nil
@@ -435,7 +454,7 @@ _mani_newindex_{0:s}_ref :: proc "c" (L: ^lua.State) -> c.int {{
     }
 }
 
-write_struct_meta :: proc(config: ^GeneratorConfig, exports: FileExports, s: StructExport) {
+write_struct_meta :: proc(config: ^GeneratorConfig, exports: FileExports, s: StructExport, package_exports: ^PackageExports) {
     using strings
     sb := &(&config.files[exports.symbols_package]).lua_builder
     
@@ -494,12 +513,31 @@ write_struct_meta :: proc(config: ^GeneratorConfig, exports: FileExports, s: Str
             }
 
             procExport := exports.symbols[key].(ProcedureExport)
-            write_proc_meta(config, exports, procExport, fmt.tprintf("%s:%s", className, methodName), 1)
+            write_proc_meta(config, exports, procExport, package_exports, fmt.tprintf("%s:%s", className, methodName), 1)
+        }
+    }
+
+    if s.name in config.methods {
+        methods := config.methods[s.name]
+
+        for method in methods {
+            // val := methods[key]
+            // methodName: string 
+            // if name, found := val.(String); found {
+            //     methodName = name 
+            // } else {
+            //     methodName = key
+            // }
+
+            method_name := method.attribs["LuaExport"].(Attributes)["Name"].(String) or_else method.name
+
+            // procExport := exports.symbols[key].(ProcedureExport)
+            write_proc_meta(config, exports, method, package_exports, fmt.tprintf("%s:%s", className, method_name), 1)
         }
     }
 }
 
-write_enum_meta :: proc(config: ^GeneratorConfig, exports: FileExports, e: EnumExport) {
+write_enum_meta :: proc(config: ^GeneratorConfig, exports: FileExports, e: EnumExport, package_exports: ^PackageExports) {
     e := e
     sb := &(&config.files[exports.symbols_package]).lua_builder
 

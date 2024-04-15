@@ -28,6 +28,7 @@ GeneratorConfig :: struct {
     lua_ext: string,
 
     declared_modules: map[string]struct{},
+    methods: map[string][dynamic]ProcedureExport, // Exported struct name -> Method Proc
 }
 
 PackageFile :: struct {
@@ -159,33 +160,31 @@ config_package :: proc(config: ^GeneratorConfig, pkg: string, filename: string) 
     }
 }
 
-generate_struct_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, s: StructExport, filename: string) {
+generate_struct_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, s: StructExport, filename: string, package_exports: ^PackageExports) {
     using strings 
     sb := &(&config.files[exports.symbols_package]).builder
     exportAttribs := s.attribs["LuaExport"].(Attributes)
-    if methods, found := exportAttribs["Methods"].(Attributes); found {
-        generate_methods_mapping(config, exports, methods, s.name)
-    }
-    write_lua_index(sb, exports, s)
-    write_lua_newindex(sb, exports, s)
-    write_lua_struct_init(sb, exports, s)
+
+    generate_methods_mapping(config, exports, exportAttribs, s.name, package_exports)
+
+    write_lua_index(config, sb, exports, s , package_exports)
+    write_lua_newindex(sb, exports, s , package_exports)
+    write_lua_struct_init(config, sb, exports, s, package_exports)
 }
 
-generate_array_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, arr: ArrayExport, filename: string) {
+generate_array_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, arr: ArrayExport, filename: string, package_exports: ^PackageExports) {
     using strings 
     sb := &(&config.files[exports.symbols_package]).builder
-
     exportAttribs := arr.attribs["LuaExport"].(Attributes)
-    if methods, found := exportAttribs["Methods"].(Attributes); found {
-        generate_methods_mapping(config, exports, methods, arr.name)
-    }
+
+    generate_methods_mapping(config, exports, exportAttribs, arr.name, package_exports)
 
     write_lua_array_index(sb, exports, arr)
     write_lua_array_newindex(sb, exports, arr)
     write_lua_array_init(sb, exports, arr)
 }
 
-generate_methods_mapping :: proc(config: ^GeneratorConfig, exports: FileExports, methods: Attributes, name: string) {
+generate_methods_mapping :: proc(config: ^GeneratorConfig, exports: FileExports, attributes: Attributes, name: string, package_exports: ^PackageExports) {
     using strings, fmt
     sb := &(&config.files[exports.symbols_package]).builder
 
@@ -195,14 +194,30 @@ generate_methods_mapping :: proc(config: ^GeneratorConfig, exports: FileExports,
     write_string(sb, name)
     write_string(sb, " := map[string]lua.CFunction {\n")
 
-    for odinName, v in methods {
-        luaName := v.(String)
-        sbprintf(sb, "    \"%s\" = _mani_%s,\n", luaName, odinName)
+    if methods, ok := attributes["Methods"].(Attributes); ok {
+        for odinName, v in methods {
+            luaName := v.(String)
+            sbprintf(sb, "    \"%s\" = _mani_%s,\n", luaName, odinName)
+        }
+    }
+
+    if name in config.methods {
+        for proc_export in config.methods[name] {
+            odin_name := proc_export.name
+            attribs := proc_export.attribs["LuaExport"].(Attributes) or_else DEFAULT_PROC_ATTRIBUTES
+
+            lua_name := odin_name
+            if "Name" in attribs {
+                lua_name = attribs["Name"].(String) or_else odin_name
+            }
+
+            sbprintf(sb, "    \"%s\" = _mani_%s,\n", lua_name, odin_name)
+        }
     }
     write_string(sb, "}\n")
 }
 
-generate_enum_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, the_enum: EnumExport, filename: string) {
+generate_enum_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, the_enum: EnumExport, filename: string, package_exports: ^PackageExports) {
     using strings, fmt
     sb := &(&config.files[exports.symbols_package]).builder
 
@@ -236,7 +251,7 @@ add_import :: proc(file: ^PackageFile, import_statement: FileImport) {
     }
 }
 
-generate_lua_exports :: proc(config: ^GeneratorConfig, exports: FileExports) {
+generate_lua_exports :: proc(config: ^GeneratorConfig, exports: FileExports, package_exports: ^PackageExports) {
     using strings
     config_package(config, exports.symbols_package, exports.relpath)
     file := &config.files[exports.symbols_package]
@@ -248,32 +263,54 @@ generate_lua_exports :: proc(config: ^GeneratorConfig, exports: FileExports) {
     keys, _ := slice.map_keys(exports.symbols)
     slice.sort(keys)
 
+    config.methods = make(map[string][dynamic]ProcedureExport)
+
+    for key in keys {
+        exp := exports.symbols[key]
+
+        #partial switch x in exp {
+        case ProcedureExport:
+            attribs := x.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_PROC_ATTRIBUTES
+            if "MethodOf" in attribs {
+                the_struct := attribs["MethodOf"]
+                #partial switch s in the_struct {
+                case Identifier:
+                    str := string(s)
+                    if str not_in config.methods {
+                        config.methods[str] = make([dynamic]ProcedureExport)
+                    }
+                    append(&config.methods[str], x)
+                }
+            }
+        }
+    }
+
     for key in keys {
         exp := exports.symbols[key]
 
         switch x in exp {
         case ProcedureExport: {
             if "LuaExport" in x.attribs {
-                generate_proc_lua_wrapper(config, exports, x, exports.relpath)
-                write_proc_meta(config, exports, x)
+                generate_proc_lua_wrapper(config, exports, x, exports.relpath, package_exports)
+                write_proc_meta(config, exports, x, package_exports)
             } else if "LuaImport" in x.attribs {
-                generate_pcall_wrapper(config, exports, x, exports.relpath)
+                generate_pcall_wrapper(config, exports, x, exports.relpath, package_exports)
             }
         }
 
         case StructExport: {
-            generate_struct_lua_wrapper(config, exports, x, exports.relpath)
-            write_struct_meta(config, exports, x)
+            generate_struct_lua_wrapper(config, exports, x, exports.relpath, package_exports)
+            write_struct_meta(config, exports, x, package_exports)
         }
 
         case ArrayExport: {
-            generate_array_lua_wrapper(config, exports, x, exports.relpath)
-            write_array_meta(config, exports, x)
+            generate_array_lua_wrapper(config, exports, x, exports.relpath, package_exports)
+            write_array_meta(config, exports, x, package_exports)
         }
 
         case EnumExport:
-            generate_enum_wrapper(config, exports, x, exports.relpath)
-            write_enum_meta(config, exports, x)
+            generate_enum_wrapper(config, exports, x, exports.relpath, package_exports)
+            write_enum_meta(config, exports, x, package_exports)
         }
     }
 }

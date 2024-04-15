@@ -114,6 +114,10 @@ FileExports :: struct {
     imports: map[string]FileImport,
 }
 
+PackageExports :: struct {
+    exports: [dynamic]FileExports,
+}
+
 file_exports_make :: proc(allocator := context.allocator) -> FileExports {
     result := FileExports{}
     result.symbols = make(map[string]SymbolExport, 128, allocator)
@@ -272,8 +276,8 @@ parse_lua_annotations :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, mapp
             lines := strings.split_lines(text, context.temp_allocator)
             for line in lines {
                 for c, i in line {
-                    if c == '@' {
-                        append(&docs, line[i:])
+                    if c == '!' {
+                        append(&docs, line[i + 1:])
                     }
                 }
             }

@@ -5,11 +5,16 @@ import "core:strings"
 
 import cw "code_writer"
 
-write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: ProcedureExport, override_lua_name := "", start_param := 0) {
+write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: ProcedureExport, package_exports: ^PackageExports, override_lua_name := "", start_param := 0) {
     using strings, fmt
     sb := &(&config.files[exports.symbols_package]).lua_builder
 
     exportAttribs := fn.attribs[LUAEXPORT_STR].(Attributes) or_else DEFAULT_PROC_ATTRIBUTES
+
+    if override_lua_name == "" && "MethodOf" in exportAttribs {
+        // Since this is a method, the struct will take care of meta generation.
+        return
+    }
 
     if module_name, ok := exportAttribs["Module"].(String); ok {
         if module_name not_in config.declared_modules {
@@ -32,15 +37,20 @@ write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: Proc
         if type, found := config.lua_types[paramType]; found {
             luaType = type 
         } else {
-            #partial switch type in exports.symbols[paramType] {
-                case ArrayExport: {
+            param_loop: for file_exports in package_exports.exports {
+                #partial switch type in file_exports.symbols[paramType] {
+                case ArrayExport:
                     // Note(Dragos): Not the best. Will need some refactoring
                     luaType = type.attribs["LuaExport"].(Attributes)["Name"].(String) or_else type.name
-     
-                }
+                    break param_loop
 
-                case StructExport: {
+                case StructExport:
                     luaType = type.attribs["LuaExport"].(Attributes)["Name"].(String) or_else type.name
+                    break param_loop
+
+                case EnumExport:
+                    luaType = type.attribs["LuaExport"].(Attributes)["Name"].(String) or_else type.name
+                    break param_loop
                 }
             }
         }
@@ -53,15 +63,20 @@ write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: Proc
         if type, found := config.lua_types[resultType]; found {
             luaType = type 
         } else {
-            #partial switch type in exports.symbols[resultType] {
-                case ArrayExport: {
+            type_loop: for file_exports in package_exports.exports {
+                #partial switch type in file_exports.symbols[resultType] {
+                case ArrayExport:
                     // Note(Dragos): Not the best. Will need some refactoring
                     luaType = type.attribs["LuaExport"].(Attributes)["Name"].(String) or_else type.name
-     
-                }
+                    break type_loop
 
-                case StructExport: {
+                case StructExport:
                     luaType = type.attribs["LuaExport"].(Attributes)["Name"].(String) or_else type.name
+                    break type_loop
+
+                case EnumExport:
+                    luaType = type.attribs["LuaExport"].(Attributes)["Name"].(String) or_else type.name
+                    break type_loop
                 }
             }
         }
@@ -88,7 +103,7 @@ write_proc_meta :: proc(config: ^GeneratorConfig, exports: FileExports, fn: Proc
     write_string(sb, ") end\n\n")
 }
 
-generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, fn: ProcedureExport, filename: string) {
+generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, fn: ProcedureExport, filename: string, package_exports: ^PackageExports) {
     using strings
     fn_name := strings.concatenate({"_mani_", fn.name}, context.temp_allocator)
 
@@ -205,7 +220,7 @@ generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports
     write_string(sb, "}\n\n")
 }
 
-generate_pcall_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, fn: ProcedureExport, filename: string) {
+generate_pcall_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports, fn: ProcedureExport, filename: string, package_exports: ^PackageExports) {
     using strings, fmt
     fn_name := strings.concatenate({"_mani_", fn.name}, context.temp_allocator)
     

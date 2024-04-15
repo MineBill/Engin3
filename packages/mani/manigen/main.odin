@@ -36,6 +36,8 @@ main :: proc() {
         fprintf(os.stderr, "Could not open input directory %s\n", config.input_directory)
     }
 
+    package_exports: PackageExports
+
     dirQueue := make([dynamic]string)
     append(&dirQueue, config.input_directory)
     for len(dirQueue) > 0 {
@@ -44,13 +46,14 @@ main :: proc() {
             defer os.close(dirfd)
             pop(&dirQueue)
             if files, err := os.read_dir(dirfd, 0); err == os.ERROR_NONE {
-                for file in files {    
+                for file in files {
                     if os.is_dir(file.fullpath) {
                         // append(&dirQueue, file.fullpath)
                     } else if filepath.long_ext(file.fullpath) == ".odin" {
                         symbols := parse_symbols(file.fullpath)
                         // Note(Dragos): I should generate a file per package. Have a map[package]file0
-                        generate_lua_exports(&config, symbols)
+                        append(&package_exports.exports, symbols)
+                        // generate_lua_exports(&config, symbols)
                     }
                 }
             }
@@ -60,6 +63,10 @@ main :: proc() {
         }
     }
     delete(dirQueue)
+
+    for pkg in package_exports.exports {
+        generate_lua_exports(&config, pkg, &package_exports)
+    }
 
     for pkg, file in &config.files {
         when os.OS != .Windows { fperms := 0o666 }

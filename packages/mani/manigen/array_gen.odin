@@ -547,7 +547,7 @@ int_pow :: proc(x: int, exp: uint) -> (result: int) {
     return
 }
 
-write_array_meta :: proc(config: ^GeneratorConfig, exports: FileExports, arr: ArrayExport) {
+write_array_meta :: proc(config: ^GeneratorConfig, exports: FileExports, arr: ArrayExport, package_exports: ^PackageExports) {
     using strings
     sb := &(&config.files[exports.symbols_package]).lua_builder
     
@@ -616,7 +616,7 @@ write_array_meta :: proc(config: ^GeneratorConfig, exports: FileExports, arr: Ar
 
             
             procExport := exports.symbols[odinProc].(ProcedureExport)
-            write_proc_meta(config, exports, procExport, fmt.tprintf("%s:%s", className, methodName), 1)
+            write_proc_meta(config, exports, procExport, package_exports, fmt.tprintf("%s:%s", className, methodName), 1)
 
         }
     }
