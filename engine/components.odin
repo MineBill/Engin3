@@ -1,19 +1,19 @@
 package engine
+import "core:encoding/json"
+import "core:io"
 import "core:log"
-import "core:math/linalg"
 import "core:math"
-import "core:reflect"
+import "core:math/linalg"
 import "core:os"
+import "core:reflect"
+import "core:slice"
+import "core:strings"
+import "packages:mani/mani"
+import "packages:odin-lua/lua"
+import "packages:odin-lua/luaL"
 import gl "vendor:OpenGL"
 import imgui "packages:odin-imgui"
 import tracy "packages:odin-tracy"
-import "core:io"
-import "core:encoding/json"
-import "packages:odin-lua/luaL"
-import "packages:odin-lua/lua"
-import "packages:mani/mani"
-import "core:strings"
-import "core:slice"
 
 // Proc used to serialize components.
 // If a proc is this type and it is marked with @(constructor=C), it will be used to serialize component C.
@@ -82,9 +82,9 @@ update_transform :: proc(go: ^Entity, this: ^TransformComponent, update: f64) {
 
     s := linalg.matrix4_scale(go.transform.local_scale)
     rot := go.transform.local_rotation
-    r := linalg.matrix4_from_euler_angles_xyz(
-        rot.x * math.RAD_PER_DEG,
+    r := linalg.matrix4_from_euler_angles_yxz(
         rot.y * math.RAD_PER_DEG,
+        rot.x * math.RAD_PER_DEG,
         rot.z * math.RAD_PER_DEG,
     )
     t := linalg.matrix4_translate(go.transform.local_position)
@@ -146,8 +146,8 @@ printer_update :: proc(this: rawptr, delta: f64) {
 MeshRenderer :: struct {
     using base: Component,
 
-    model:    ^Model,
-    material: Material,
+    mesh:    AssetHandle `asset:"Mesh"`,
+    material: AssetHandle `asset:"PbrMaterial"`,
 }
 
 @(constructor=MeshRenderer)
@@ -155,35 +155,11 @@ make_mesh_renderer :: proc() -> rawptr {
     mr := new(MeshRenderer)
     mr^ = {
         base = default_component_constructor(),
-        material = default_material(),
     }
 
-    create_material(&mr.material)
-    update_material_new(&mr.material)
-
-    // update_material(&mr.material,
-    //     mr.material.albedo_image.data,
-    //     mr.material.normal_image.data,
-    //     mr.material.height_image.data)
-
-    mr.init         = mesh_renderer_init
-    mr.update       = mesh_renderer_update
-    mr.destroy      = mesh_renderer_destroy
     mr.prop_changed = mesh_renderer_prop_changed
     mr.copy         = mesh_renderer_copy
     return mr
-}
-
-mesh_renderer_init :: proc(this: rawptr) {
-    component_default_init(this)
-}
-
-mesh_renderer_update :: proc(this: rawptr, delta: f64) {
-    component_default_update(this, delta)
-}
-
-mesh_renderer_destroy :: proc(this: rawptr) {
-    component_default_destroy(this)
 }
 
 mesh_renderer_copy :: proc(this: rawptr) -> rawptr {
@@ -192,8 +168,9 @@ mesh_renderer_copy :: proc(this: rawptr) -> rawptr {
     new := cast(^MeshRenderer)make_mesh_renderer()
 
     // TODO: make MeshRenderer.model a pointer
-    new.model = get_asset(&g_engine.asset_manager, this.model.path, Model)
-    new.material = clone_material(this.material)
+    // new.mesh = get_asset(&EngineInstance.asset_manager, this.mesh, Mesh)
+    new.mesh = this.mesh
+    new.material = this.material
     mesh_renderer_update_material(new)
 
     return new
@@ -206,43 +183,28 @@ mesh_renderer_prop_changed :: proc(this: rawptr, prop: any) {
 
     switch field.name {
     case "material":
-        upload_material(this.material)
     }
 }
 
-mesh_renderer_set_model :: proc(this: ^MeshRenderer, model: ^Model) {
-    this.model = model
+mesh_renderer_set_mesh :: proc(this: ^MeshRenderer, new_mesh: AssetHandle) {
+    this.mesh = new_mesh
 }
 
 @(serializer=MeshRenderer)
 serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^MeshRenderer)this
-    am := &g_engine.asset_manager
-    serialize_asset(am, s, serialize, "Model", &this.model)
+    am := &EngineInstance.asset_manager
+    serialize_asset_handle(am, s, "Mesh", &this.mesh)
+    serialize_asset_handle(am, s, "PbrMaterial", &this.material)
 
-    serialize_asset(am, s, serialize, "Material_Albedo_Image", &this.material.albedo_image)
-    serialize_asset(am, s, serialize, "Material_Normal_Image", &this.material.normal_image)
-    serialize_asset(am, s, serialize, "Material_Height_Image", &this.material.height_image)
-    if serialize {
-        serialize_do_field(s, "MaterialAlbedoColor", this.material.albedo_color)
-        serialize_do_field(s, "MaterialRoughness", this.material.roughness_factor)
-        serialize_do_field(s, "MaterialMetalness", this.material.metallic_factor)
-    } else {
-        if color, ok := serialize_get_field(s, "MaterialAlbedoColor", vec4); ok {
-            this.material.albedo_color = Color(color)
-        }
-        if roughness, ok := serialize_get_field(s, "MaterialRoughness", f32); ok {
-            this.material.roughness_factor = roughness
-        }
-        if metalness, ok := serialize_get_field(s, "MaterialMetalness", f32); ok {
-            this.material.metallic_factor = metalness
-        }
+    switch s.mode {
+    case .Serialize:
+    case .Deserialize:
         mesh_renderer_update_material(this)
     }
 }
 
 mesh_renderer_update_material :: proc(mr: ^MeshRenderer) {
-    update_material_new(&mr.material)
     // upload_material(mr.material)
 }
 
@@ -357,6 +319,7 @@ DirectionalLight :: struct {
     shadow: struct {
         splits: int `range:"1, 4"`,
         correction: f32 `range:"0.0, 1.5"`,
+        distances: vec4,
     },
 }
 
@@ -405,7 +368,7 @@ serialize_directional_light :: proc(this: rawptr, serialize: bool, s: ^Serialize
 CubemapComponent :: struct {
     using base: Component,
 
-    texture: Texture2D,
+    texture: AssetHandle `asset:"CubeTexture"`,
     shader: Shader,
 }
 
@@ -426,131 +389,41 @@ make_cubemap :: proc() -> rawptr {
 
     created := false
 
-    for image_path, i in images {
-        data, ok := os.read_entire_file(image_path)
-        defer delete(data)
-        if !ok do continue
-        image, image_loaded := load_image_memory(data)
-        defer destroy_image(&image)
-        if !image_loaded {
-            log.warnf("Failed to load image '%v'", image_path)
-            continue // NOTE(minebill): Maybe abort?
-        }
-        if !created {
-            params := DEFAULT_TEXTURE_PARAMS
-            params.format = gl.RGBA8
-            cube.texture = create_cubemap_texture(image.width, image.height, params)
-            created = true
-        }
+    // for image_path, i in images {
+    //     data, ok := os.read_entire_file(image_path)
+    //     defer delete(data)
+    //     if !ok do continue
+    //     image, image_loaded := load_image_memory(data)
+    //     defer destroy_image(&image)
+    //     if !image_loaded {
+    //         log.warnf("Failed to load image '%v'", image_path)
+    //         continue // NOTE(minebill): Maybe abort?
+    //     }
+    //     if !created {
+    //         spec := TextureSpecification {
+    //             format = .RGBA8,
+    //             width = image.width,
+    //             height = image.height,
+    //         }
+    //         texture := get_asset(&EngineInstance.asset_manager, cube.texture, Texture2D)
+    //         // cube.texture = create_texture2d(spec)
+    //         created = true
+    //     }
 
-        gl.TextureSubImage3D(
-            cube.texture.handle,
-            0, 0, 0, i32(i),
-            cast(i32)image.width,
-            cast(i32)image.height,
-            1,
-            gl.RGBA, gl.UNSIGNED_BYTE, raw_data(image.data))
-    }
+    //     texture := get_asset(&EngineInstance.asset_manager, cube.texture, Texture2D)
+    //     set_texture2d_data(texture^, image.data, layer = i)
+    // }
 
     ok: bool
     cube.shader, ok = shader_load_from_file(
         "assets/shaders/cubemap.vert.glsl",
-        "assets/shaders/cubemap.frag.glsl")
+        "assets/shaders/cubemap.frag.glsl",
+        )
     if !ok {
         log.warnf("Failed to load shader")
     }
 
     return cube
-}
-
-@(component="Testing")
-BallGenerator :: struct {
-    using base: Component,
-
-    object_to_clone: Handle,
-
-    draw_preview: bool,
-    spawn_count: vec3i,
-    size: vec3,
-}
-
-@(constructor=BallGenerator)
-make_ball_generator :: proc() -> rawptr {
-    this := new(BallGenerator)
-    this.base = default_component_constructor()
-    this.update = bg_update
-
-    this.spawn_count = vec3i{5, 1, 5}
-
-    when USE_EDITOR {
-        this.editor_ui = bg_editor_ui
-    }
-
-    return this
-}
-
-bg_init :: proc(this: rawptr) {
-    this := cast(^BallGenerator)this
-}
-
-bg_update :: proc(this: rawptr, delta: f64) {
-    this := cast(^BallGenerator)this
-
-    if this.draw_preview {
-        d := g_dbg_context
-        go := get_object(this.world, this.owner)
-
-        for x in 0..<this.spawn_count.x {
-            for z in 0..<this.spawn_count.z {
-                dbg_draw_cube(d, go.transform.position + vec3{f32(x), 0, f32(z)}, vec3{0.5, 0.5, 0.5})
-            }
-        }
-
-        dbg_draw_cube(d, go.transform.position, linalg.array_cast(this.spawn_count, f32) + vec3{0.5, 0.5, 0.5})
-    }
-}
-
-when USE_EDITOR {
-
-bg_editor_ui :: proc(this: rawptr, editor: ^Editor, s: any) -> (modified: bool) {
-    modified |= component_default_editor_ui(this, editor, s)
-    this := cast(^BallGenerator)this
-
-    imgui.Separator()
-
-    if imgui.Button("Generate") {
-        material := default_material()
-        update_material(&material, nil, nil, nil)
-
-        material.albedo_color = Color{1, 0, 0, 1}
-
-        to_clone_mr := get_component(this.world, this.object_to_clone, MeshRenderer)
-        if to_clone_mr == nil do return
-
-        metalness := f32(1) / f32(this.spawn_count.x)
-        for x in 0..<this.spawn_count.x {
-            roughness := f32(1) / f32(this.spawn_count.z)
-            for z in 0..<this.spawn_count.z {
-                handle := new_object(this.world, parent = this.owner)
-                mr := get_or_add_component(this.world, handle, MeshRenderer)
-                mr.model = to_clone_mr.model
-
-                mr.material = clone_material(material)
-                // mr.material.albedo_color = color{0, 1, 0, 1}
-                mr.material.roughness_factor = roughness
-                mr.material.metallic_factor = metalness
-                mesh_renderer_update_material(mr)
-
-                go := get_object(this.world, handle)
-                go.transform.local_position = vec3{f32(x), 0, f32(z)}
-                roughness += f32(1) / f32(this.spawn_count.z)
-            }
-            metalness += f32(1) / f32(this.spawn_count.x)
-        }
-    }
-    return
-}
-
 }
 
 @(component="Core")
@@ -574,7 +447,7 @@ make_camera :: proc() -> rawptr {
     camera.fov = 50
     camera.near_plane = 0.1
     camera.far_plane = 100.0
-    aspect := f32(g_engine.width) / f32(g_engine.height)
+    aspect := f32(EngineInstance.width) / f32(EngineInstance.height)
     camera.projection = linalg.matrix4_perspective_f32(camera.fov, aspect, 0.1, 1000.0)
 
     return camera
@@ -593,7 +466,7 @@ camera_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {
 
     this.view = linalg.matrix4_from_quaternion(this.rotation) *
                     linalg.inverse(linalg.matrix4_translate(entity.transform.position))
-    this.projection = linalg.matrix4_perspective_f32(math.to_radians(f32(this.fov)), f32(g_engine.width) / f32(g_engine.height), this.near_plane, this.far_plane)
+    this.projection = linalg.matrix4_perspective_f32(math.to_radians(f32(this.fov)), f32(EngineInstance.width) / f32(EngineInstance.height), this.near_plane, this.far_plane)
     corners := get_frustum_corners_world_space(
         this.projection,
         this.view)
@@ -626,7 +499,7 @@ camera_prop_changed :: proc(this: rawptr, prop: any) {
     case "fov":
     case "near_plane":
     case "far_plane":
-        aspect := f32(g_engine.width) / f32(g_engine.height)
+        aspect := f32(EngineInstance.width) / f32(EngineInstance.height)
         this.projection = linalg.matrix4_perspective_f32(this.fov, aspect, this.near_plane, this.far_plane)
         // upload_material(this.material)
     }
@@ -658,13 +531,13 @@ serialize_camera :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
 ScriptComponent :: struct {
     using base: Component,
 
-    script_fields:          map[string]LuaValue,
-    script:                 ^LuaScript,
-    instance:               ScriptInstance,
+    script_fields: map[string]LuaValue,
+    script:        AssetHandle `asset:"LuaScript"`,
+    instance:      ScriptInstance,
 
-    scripts: [dynamic]^LuaScript,
-    instances: [dynamic]ScriptInstance,
-    lua_entity:             LuaEntity,
+    scripts:       [dynamic]^LuaScript,
+    instances:     [dynamic]ScriptInstance,
+    lua_entity:    LuaEntity,
 }
 
 @(constructor=ScriptComponent)
@@ -685,8 +558,8 @@ make_script_component :: proc() -> rawptr {
 script_init :: proc(this: rawptr) {
     tracy.Zone()
     this := cast(^ScriptComponent)this
-    this.script = cast(^LuaScript)load_asset(this.script.path, LuaScript, this.script.id)
-    this.instance = create_script_instance(this.script)
+    // this.script = cast(^LuaScript)load_asset(this.script.path, LuaScript, this.script.id)
+    // this.instance = create_script_instance(this.script)
 
     go := get_object(this.world, this.owner)
     this.lua_entity = LuaEntity{
@@ -695,8 +568,8 @@ script_init :: proc(this: rawptr) {
         owner = go,
     }
 
-    if is_script_instance_valid(this.instance) {
-
+    script := get_asset(&EngineInstance.asset_manager, this.script, LuaScript)
+    if script != nil  && is_script_instance_valid(this.instance) {
         L := this.instance.state
 
         stack_before := lua.gettop(L)
@@ -706,7 +579,7 @@ script_init :: proc(this: rawptr) {
         this.instance.instance_table = i64(luaL.ref(L, lua.REGISTRYINDEX))
         lua.rawgeti(L, lua.REGISTRYINDEX, this.instance.instance_table)
 
-        for name, field in this.script.properties.fields {
+        for name, field in script.properties.fields {
             if name in this.script_fields {
                 value := this.script_fields[name]
                 log.debugf("Initializing script export %v from cache with value %v", name, value)
@@ -716,7 +589,7 @@ script_init :: proc(this: rawptr) {
             }
         }
 
-        for name, field in this.script.properties.instance_fields {
+        for name, field in script.properties.instance_fields {
             script_set_field(&this.instance, field.name, field.default, -1)
         }
 
@@ -799,26 +672,24 @@ script_component_get_script :: proc(this: ^ScriptComponent, type: ScriptType) ->
 
 when USE_EDITOR {
     script_editor_ui :: proc(this: rawptr, editor: ^Editor, s: any) -> (modified: bool) {
-        // modified |= component_default_editor_ui(this, editor, s)
         this := cast(^ScriptComponent)this
         pos := imgui.GetCursorPos()
         imgui.Dummy(imgui.GetContentRegionAvail())
 
         if imgui.BeginDragDropTarget() {
-            if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Script]); payload != nil {
-                data := transmute(^byte)payload.Data
-                path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
+            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM_ASSET"); payload != nil {
+                data := cast(^AssetHandle)payload.Data
 
-                this.script = cast(^LuaScript)load_asset(path, LuaScript)
-                this.instance = create_script_instance(this.script)
+                this.script = data^
             }
             imgui.EndDragDropTarget()
         }
 
         imgui.SetCursorPos(pos)
 
-        if this.script != nil {
-            imgui.TextUnformatted(cstr(this.script.properties.name))
+        script := get_asset(&EngineInstance.asset_manager, this.script, LuaScript)
+        if script != nil {
+            imgui.TextUnformatted(cstr(script.properties.name))
 
             if imgui.Button("Press me") {
                 log.debugf("%p", &this.script_fields)
@@ -831,7 +702,7 @@ when USE_EDITOR {
                     if name != "" {
                         if imgui.BeginItemTooltip() {
                             imgui.PushTextWrapPos(imgui.GetFontSize() * 25.0)
-                            imgui.TextUnformatted(cstr(this.script.properties.fields[name].description))
+                            imgui.TextUnformatted(cstr(script.properties.fields[name].description))
                             imgui.PopTextWrapPos()
                             imgui.EndTooltip()
                         }
@@ -871,11 +742,13 @@ when USE_EDITOR {
             @(static) show_instance_fields := false
             imgui.Checkbox("Show Intance Fields", &show_instance_fields)
             if show_instance_fields && imgui.TreeNode("Instance Fields") {
-                for name, field in this.script.properties.instance_fields {
+                for name, field in script.properties.instance_fields {
                     imgui.TextUnformatted(cstr(name))
                 }
                 imgui.TreePop()
             }
+        } else {
+            modified |= component_default_editor_ui(this, editor, s)
         }
 
         return
@@ -885,7 +758,7 @@ when USE_EDITOR {
 @(serializer=ScriptComponent)
 serialize_script_component :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^ScriptComponent)this
-    serialize_asset(&g_engine.asset_manager, s, serialize, "Script", &this.script)
+    serialize_asset_handle(&EngineInstance.asset_manager, s, "Script", &this.script)
 
     if serialize {
         serialize_begin_table(s, "Exports")
@@ -926,42 +799,15 @@ serialize_script_component :: proc(this: rawptr, serialize: bool, s: ^SerializeC
             }
         }
 
-        if this.script != nil {
-            this.instance = create_script_instance(this.script)
-            if len(this.script_fields) != len(this.script.properties.fields) {
-                for name, field in this.script.properties.fields {
+        script := get_asset(&EngineInstance.asset_manager, this.script, LuaScript)
+        if script != nil {
+            this.instance = create_script_instance(script)
+            if len(this.script_fields) != len(script.properties.fields) {
+                for name, field in script.properties.fields {
                     name := strings.clone(name)
                     this.script_fields[name] = field.default
                 }
             }
         }
-        log.debugf("%p", &this.script_fields)
     }
-}
-
-LuaScript :: struct {
-    using base: Asset,
-
-    properties: Properties,
-    bytecode: []byte,
-}
-
-json_to_lua_value :: proc(value: json.Value) -> LuaValue {
-    switch v in value {
-    case json.Null:
-        assert(false, "Null value")
-    case json.Float:
-        return LuaValue(v)
-    case json.Integer:
-        return LuaValue(v)
-    case json.Boolean:
-        return LuaValue(v)
-    case json.String:
-        return LuaValue(v)
-    case json.Object:
-        assert(false, "Object/Array not implementd for lua desirialization")
-    case json.Array:
-        assert(false, "Object/Array not implementd for lua desirialization")
-    }
-    return nil
 }

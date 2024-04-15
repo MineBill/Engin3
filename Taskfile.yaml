@@ -92,7 +92,8 @@ tasks:
         -use-separate-modules \
         -collection:packages=packages \
         -define:TRACY_ENABLE={{.USE_TRACY}} {{.USE_DEBUG}} \
-        -ignore-unknown-attributes
+        -ignore-unknown-attributes \
+        -define:GL_DEBUG=false
     sources:
       - engine/**/*.odin
     generates:

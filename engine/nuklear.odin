@@ -54,16 +54,14 @@ nk_device_create :: proc() -> (ok: bool) {
     dev := &nk_context.device
     nk.buffer_init_default(&dev.cmds)
 
-    VERTEX_SRC   :: #load("../assets/shaders/nuklear.vert.glsl")
-    FRAGMENT_SRC :: #load("../assets/shaders/nuklear.frag.glsl")
+    dev.shader = shader_load_from_file(
+        "assets/shaders/nuklear.vert.glsl",
+        "assets/shaders/nuklear.frag.glsl") or_return
 
-    log.debug(dev.shader)
-    dev.shader = shader_load_from_memory(VERTEX_SRC, FRAGMENT_SRC) or_return
-    
-    shader_cache_uniforms(&dev.shader, {
-        "Texture",
-        "ProjMtx",
-    })
+    // shader_cache_uniforms(&dev.shader, {
+    //     "Texture",
+    //     "ProjMtx",
+    // })
 
     pos := u32(0)
     uv := u32(1)
@@ -208,7 +206,7 @@ nk_render :: proc() {
     gl.Enable(gl.SCISSOR_TEST)
 
     gl.UseProgram(dev.shader.program)
-    gl.UniformMatrix4fv(dev.shader.uniforms["ProjMtx"], 1, false, &ortho[0][0])
+    // gl.UniformMatrix4fv(dev.shader.uniforms["ProjMtx"], 1, false, &ortho[0][0])
     gl.Viewport(0, 0, nk_context.display_width, nk_context.display_height)
     {
         gl.BindVertexArray(dev.vao)

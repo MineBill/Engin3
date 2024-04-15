@@ -7,37 +7,6 @@ import "packages:mani/mani"
 import "core:path/filepath"
 import "core:strings"
 
-api_import :: proc "c" (L: ^lua.State) -> i32 {
-    context = mani.default_context()
-
-    path := luaL.checkstring(L, 1)
-    PREFIX :: "proj://"
-    if strings.contains(path, PREFIX) {
-        new_path := path[len(PREFIX):]
-        joined := filepath.join({get_cwd(), new_path}, context.temp_allocator)
-
-        if luaL.dofile(L, cstr(joined)) != lua.OK {
-            log.errorf("Failed to import %v", joined)
-            return 0
-        }
-
-        if lua.pcall(L, 0, 1, 0) != lua.OK {
-            log.errorf("Failed to execute import: %v", lua.tostring(L, -1))
-            return 0
-        }
-
-        return 1
-    } else {
-        // If the path doesn't start with 'proj://', use default behavior
-        lua.getglobal(L, "require")
-        lua.pushvalue(L, 1) // Push the module name onto the stack
-        lua.call(L, 1, 1)   // Call require with the module name
-
-        return 1
-    }
-
-}
-
 Fields :: map[string]LuaField
 
 @(LuaExport = {
@@ -52,18 +21,12 @@ Properties :: struct {
     instance_fields: Fields,
 }
 
+//!Represents an entity into the world. It is the entity scripts are attached to.
 @(LuaExport = {
     Type = {Full, Light},
     Fields = {
         properties = "Properties",
         owner = "owner",
-    },
-    Methods = {
-        lua_entity_set_position = "set_position",
-        lua_entity_get_position = "get_position",
-        lua_entity_translate    = "translate",
-        lua_entity_set_active = "set_active",
-        lua_entity_is_active = "is_active",
     },
     Metamethods = {
         __tostring = lua_entity_to_string,
@@ -76,65 +39,105 @@ LuaEntity :: struct {
     properties: Properties,
 }
 
-// This is a doc comment
-@(LuaExport)
+@(LuaExport = {
+    Name = "do_barrel_roll",
+    MethodOf = LuaEntity,
+})
+lua_entity_do_barrel_roll :: proc(e: LuaEntity) {
+
+}
+
+//!Sets the position of the entity to `position`.
+@(LuaExport = {
+    Name = "set_position",
+    MethodOf = LuaEntity,
+})
 lua_entity_set_position :: proc(le: LuaEntity, position: vec3) {
-    go := get_object(le.world, UUID(le.entity))
+    go := get_object(le.world, EntityHandle(le.entity))
     if go == nil do return
 
     go.transform.local_position = position
 }
 
-@(LuaExport)
+//!Gets the local position of the entity.
+//!To get the world space position(global) use `get_global_position`.
+//!@see LuaEntity.get_global_position
+@(LuaExport = {
+    Name = "get_position",
+    MethodOf = LuaEntity,
+})
 lua_entity_get_position :: proc(le: LuaEntity) -> vec3 {
-    go := get_object(le.world, UUID(le.entity))
+    go := get_object(le.world, EntityHandle(le.entity))
     if go == nil do return vec3{}
 
     return go.transform.local_position
 }
 
-@(LuaExport)
+//!Gets the global position of the entity.
+//!To get the local position use `get_position`.
+//!@see LuaEntity.get_position
+@(LuaExport = {
+    Name = "get_global_position",
+    MethodOf = LuaEntity,
+})
+lua_entity_get_global_position :: proc(le: LuaEntity) -> vec3 {
+    go := get_object(le.world, EntityHandle(le.entity))
+    if go == nil do return vec3{}
+
+    return go.transform.position
+}
+
+@(LuaExport = {
+    Name = "translate",
+    MethodOf = LuaEntity,
+})
 lua_entity_translate :: proc(le: LuaEntity, offset: vec3) {
-    go := get_object(le.world, UUID(le.entity))
+    go := get_object(le.world, EntityHandle(le.entity))
     if go == nil do return
 
     go.transform.local_position += offset
 }
 
-@(LuaExport)
-lua_entity_to_string :: proc(le: LuaEntity) -> string {
-    go := get_object(le.world, UUID(le.entity))
-    if go == nil do return ""
-    return fmt.tprintf("Entity[%v, %v]", ds_to_string(go.name), le.entity)
-}
-
-@(LuaExport)
+@(LuaExport = {
+    Name = "set_active",
+    MethodOf = LuaEntity,
+})
 lua_entity_set_active :: proc(le: LuaEntity, active: bool) {
-    go := get_object(le.world, UUID(le.entity))
+    go := get_object(le.world, EntityHandle(le.entity))
     if go == nil do return
 
     go.enabled = active
 }
 
-@(LuaExport)
+@(LuaExport = {
+    Name = "is_active",
+    MethodOf = LuaEntity,
+})
 lua_entity_is_active :: proc(le: LuaEntity) -> bool {
-    go := get_object(le.world, UUID(le.entity))
+    go := get_object(le.world, EntityHandle(le.entity))
     if go == nil do return false
     return go.enabled
 }
 
 @(LuaExport)
-v2 :: proc(x, y: f32) -> vec2 {
+lua_entity_to_string :: proc(le: LuaEntity) -> string {
+    go := get_object(le.world, EntityHandle(le.entity))
+    if go == nil do return ""
+    return fmt.tprintf("Entity[%v, %v]", ds_to_string(go.name), le.entity)
+}
+
+@(LuaExport)
+make_vec2 :: proc(x, y: f32) -> vec2 {
     return vec2{x, y}
 }
 
 @(LuaExport)
-v3 :: proc(x, y, z: f32) -> vec3 {
+make_vec3 :: proc(x, y, z: f32) -> vec3 {
     return vec3{x, y, z}
 }
 
 @(LuaExport)
-v4 :: proc(x, y, z, w: f32) -> vec4 {
+make_vec4 :: proc(x, y, z, w: f32) -> vec4 {
     return vec4{x, y, z, w}
 }
 
@@ -166,24 +169,28 @@ api_find_entity_by_name :: proc(name: string) -> LuaEntity {
     return {}
 }
 
-// Returns whether the specified key is currently pressed.
-// awdawd
+//!Returns whether the `key` is being pressed. This will keep returning true
+//!while the key is being pressed.
 @(LuaExport = {
     Module = "Input",
     Name = "is_key_down",
 })
-api_is_key_down :: proc(key: int) -> bool {
-    return is_key_pressed(Key(key))
+api_is_key_down :: proc(key: Key) -> bool {
+    return is_key_pressed(key)
 }
 
+//!Returns whether the `key` is currently NOT being pressed. This will keep returning true
+//!while the key is NOT being pressed.
 @(LuaExport = {
     Module = "Input",
     Name = "is_key_up",
 })
-api_is_key_up :: proc(key: int) -> bool {
-    return is_key_released(Key(key))
+api_is_key_up :: proc(key: Key) -> bool {
+    return is_key_released(key)
 }
 
+//!Returns whether the `key` was just pressed the previous frame. It will only return true once.
+//!To return true again, the key must be released and pressed again.
 @(LuaExport = {
     Module = "Input",
     Name = "is_key_just_pressed",
@@ -192,6 +199,7 @@ api_is_key_just_pressed :: proc(key: Key) -> bool {
     return is_key_just_pressed(Key(key))
 }
 
+//!Returns the mouse delta movement between this and the previous frame.
 @(LuaExport = {
     Module = "Input",
     Name = "get_mouse_delta",

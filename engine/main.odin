@@ -1,7 +1,10 @@
 package engine
 import "core:log"
-import "core:time"
 import "core:mem"
+import "core:os"
+import "core:strings"
+import "core:time"
+import "packages:back"
 import tracy "packages:odin-tracy"
 
 main :: proc() {
@@ -10,22 +13,22 @@ main :: proc() {
         .Terminal_Color,
     }, ident = "engine")
 
-    tracking: mem.Tracking_Allocator
-    mem.tracking_allocator_init(&tracking, context.allocator)
-    context.allocator = mem.tracking_allocator(&tracking)
-    context.allocator = tracy.MakeProfiledAllocator(
+    back.register_segfault_handler()
+    context.assertion_failure_proc = back.assertion_failure_proc
+
+    tracy_allocator := tracy.MakeProfiledAllocator(
         self              = &tracy.ProfiledAllocatorData{},
         callstack_size    = 5,
         backing_allocator = context.allocator,
         secure            = false,
     )
 
-    defer {
-        // for ptr, entry in tracking.allocation_map {
-        //     log.warnf("Leak detected!")
-        //     log.warnf("\t%v bytes at %v", entry.size, entry.location)
-        // }
-    }
+    track: back.Tracking_Allocator
+    back.tracking_allocator_init(&track, tracy_allocator)
+    defer back.tracking_allocator_destroy(&track)
+
+    context.allocator = back.tracking_allocator(&track)
+    // defer back.tracking_allocator_print_results(&track)
 
     engine: Engine
     engine.ctx = context

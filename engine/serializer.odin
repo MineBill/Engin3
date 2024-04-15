@@ -41,6 +41,14 @@ serialize_init_data :: proc(s: ^SerializeContext, data: []byte) {
     s.L = luaL.newstate()
     L := s.L
 
+    s.mode = .Deserialize
+    s.is_global = true
+
+    if len(data) <= 0 {
+        log.error("data is empty")
+        return
+    }
+
     bytecode := cstring(&data[0])
     if luaL.loadbufferx(L, bytecode, c.ptrdiff_t(len(data)), "Config", "b") != lua.OK {
         log.error("Error reading bytecode")
@@ -51,9 +59,6 @@ serialize_init_data :: proc(s: ^SerializeContext, data: []byte) {
         log.errorf("Error executing bytecode: %v", lua.tostring(L, -1))
         return
     }
-
-    s.mode = .Deserialize
-    s.is_global = true
 }
 
 serialize_init_file :: proc(s: ^SerializeContext, file_name: string) {
@@ -481,6 +486,13 @@ serialize_read_field :: proc(s: ^SerializeContext, value: any) -> bool {
 
             serialize_do_field_int(s, i + 1, elem)
         }
+    case rt.Type_Info_Enum:
+        if lua.isstring(L, -1) == 0 do return false
+        enum_name := lua.tostring(L, -1)
+        enum_value, ok := reflect.enum_from_name_any(value.id, enum_name)
+        if !ok do return false
+
+        assign_int(a, enum_value)
     case:
         unreachable()
     }
@@ -711,7 +723,11 @@ function tableToLuaStringWithTableName(tbl, tableName, indent)
                 valueString = tostring(value)
             end
 
-            result = result .. indent .. "    " .. keyString .. " = " .. valueString .. ",\n"
+            if type(key) == "number" then
+                result = result .. indent .. "    " .. valueString .. ",\n"
+            else
+                result = result .. indent .. "    " .. keyString .. " = " .. valueString .. ",\n"
+            end
         end
 
         result = result .. indent .. "}"
@@ -725,6 +741,7 @@ end
 return tableToLuaStringWithTableName
 `
 
+// Converts the config into a string and writes it to the file located at `output`.
 serialize_dump :: proc(s: ^SerializeContext, output: string) {
     assert(s.table_count == 0, "Did not close all the tables")
     L := s.L

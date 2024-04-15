@@ -1,3 +1,5 @@
+---@class TestComponent
+---@field entity LuaEntity
 TestComponent = {
     Properties = {
         Name = "Test Name",
@@ -11,24 +13,15 @@ TestComponent = {
             ]],
         },
     },
-    Instance = {
-    },
 }
 
----@param self LuaEntity
 function TestComponent:on_init()
-    -- print("Hi, my name is " .. self:name())
-    print("My position is " .. tostring(self:get_position()))
-
-    --[[ print(self.movement_speed)
-    print(self.a_field)
-    print(self.will_not_be_serialized) ]]
+    print("I am the TestComponent and my entity's position is " .. tostring(self.entity:get_position()))
 end
 
----@param self LuaEntity
 function TestComponent:on_update(delta)
-    local translation = v3(0, 1 * delta, 0)
-    self:translate(translation)
+    local translation = make_vec3(0, 1 * delta, 0)
+    self.entity:translate(translation)
 end
 
 return TestComponent

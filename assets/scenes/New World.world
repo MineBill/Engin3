@@ -1,53 +1,163 @@
 Scene = {
     Entities = {
-        [1] = {
+        {
             Components = {
                 MeshRenderer = {
                     Enabled = true,
-                    MaterialAlbedoColor = {
-                        [1] = 1.0,
-                        [2] = 1.0,
-                        [3] = 1.0,
-                        [4] = 1.0,
-                    },
-                    MaterialMetalness = 0.0,
-                    MaterialRoughness = 0.5,
-                    Material_Albedo_Image = {
-                    },
-                    Material_Height_Image = {
-                    },
-                    Material_Normal_Image = {
-                    },
-                    Model = {
-                        Path = "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb",
-                        UUID = "14589644993695996332",
-                    },
+                    Mesh = "13441014186314726441",
+                    PbrMaterial = "14136671354918817915",
                 },
             },
             Enabled = true,
+            Flags = 0,
+            Name = "New Entity",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    0.0,
+                    2.0,
+                    10.0,
+                },
+                LocalRotation = {
+                    0.0,
+                    0.0,
+                    0.0,
+                },
+                LocalScale = {
+                    10.0,
+                    2.0,
+                    0.25,
+                },
+            },
+            UUID = "686673623577277869",
+        },
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "Small Cube",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    0.0,
+                    0.0,
+                    0.0,
+                },
+                LocalRotation = {
+                    0.0,
+                    0.0,
+                    0.0,
+                },
+                LocalScale = {
+                    1.0,
+                    1.0,
+                    1.0,
+                },
+            },
+            UUID = "1556243119976518390",
+        },
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                    Mesh = "13441014186314726441",
+                    PbrMaterial = "4261957541286600184",
+                },
+                ScriptComponent = {
+                    Enabled = true,
+                    Exports = {
+                    },
+                    Script = "8718054030635944577",
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "Pepegas",
+            Parent = "16494353188410001922",
+            Transform = {
+                LocalPosition = {
+                    -0.31000000238419,
+                    0.46000000834465,
+                    -1.1399999856949,
+                },
+                LocalRotation = {
+                    0.0,
+                    0.0,
+                    0.0,
+                },
+                LocalScale = {
+                    1.0,
+                    1.0,
+                    1.0,
+                },
+            },
+            UUID = "2354797943880597301",
+        },
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                },
+            },
+            Enabled = false,
             Flags = 0,
             Name = "New Model",
             Parent = "0",
             Transform = {
                 LocalPosition = {
-                    [1] = 0.43999999761581,
-                    [2] = 3.4900000095367,
-                    [3] = -2.3199999332428,
+                    4.9899997711182,
+                    -5.0100002288818,
+                    -2.3199999332428,
                 },
                 LocalRotation = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
+                    0.0,
+                    0.0,
+                    0.0,
                 },
                 LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
+                    7.3099999427795,
+                    16.090000152588,
+                    1.0,
                 },
             },
-            UUID = "6390490886094633336",
+            UUID = "2366393847683645636",
         },
-        [2] = {
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                    Mesh = "13441014186314726441",
+                    PbrMaterial = "14136671354918817915",
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "New Entity",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    -10.0,
+                    2.0,
+                    0.0,
+                },
+                LocalRotation = {
+                    0.0,
+                    90.0,
+                    0.0,
+                },
+                LocalScale = {
+                    10.0,
+                    2.0,
+                    0.25,
+                },
+            },
+            UUID = "5964625253908969706",
+        },
+        {
             Components = {
                 CubemapComponent = {
                     Enabled = true,
@@ -59,77 +169,29 @@ Scene = {
             Parent = "0",
             Transform = {
                 LocalPosition = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
+                    0.0,
+                    0.0,
+                    0.0,
                 },
                 LocalRotation = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
+                    -0.30000001192093,
+                    0.0,
+                    0.0,
                 },
                 LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
+                    1.0,
+                    1.0,
+                    1.0,
                 },
             },
             UUID = "7324407398260384646",
         },
-        [3] = {
-            Components = {
-                Camera = {
-                    Enabled = true,
-                    FarPlane = 100.0,
-                    Fov = 50.0,
-                    NearPlane = 0.10000000149012,
-                },
-            },
-            Enabled = true,
-            Flags = 0,
-            Name = "Camera",
-            Parent = "0",
-            Transform = {
-                LocalPosition = {
-                    [1] = 0.0,
-                    [2] = 1.3099999427795,
-                    [3] = 5.3699998855591,
-                },
-                LocalRotation = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
-                },
-                LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
-                },
-            },
-            UUID = "8724168565904052871",
-        },
-        [4] = {
+        {
             Components = {
                 MeshRenderer = {
                     Enabled = true,
-                    MaterialAlbedoColor = {
-                        [1] = 1.0,
-                        [2] = 1.0,
-                        [3] = 1.0,
-                        [4] = 1.0,
-                    },
-                    MaterialMetalness = 0.1089999973774,
-                    MaterialRoughness = 0.5,
-                    Material_Albedo_Image = {
-                    },
-                    Material_Height_Image = {
-                    },
-                    Material_Normal_Image = {
-                    },
-                    Model = {
-                        Path = "W:\\source\\projects\\Engin3\\assets\\models\\plane.glb",
-                        UUID = "3169124805583412260",
-                    },
+                    Mesh = "6632964195035872250",
+                    PbrMaterial = "12459610237755324974",
                 },
             },
             Enabled = true,
@@ -138,92 +200,26 @@ Scene = {
             Parent = "0",
             Transform = {
                 LocalPosition = {
-                    [1] = 0.0,
-                    [2] = 0.15000000596046,
-                    [3] = 0.0,
+                    0.0,
+                    0.03999999910593,
+                    0.0,
                 },
                 LocalRotation = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
+                    180.0,
+                    0.0,
+                    0.0,
                 },
                 LocalScale = {
-                    [1] = 10.0,
-                    [2] = 1.0,
-                    [3] = 10.0,
+                    10.0,
+                    1.0,
+                    10.0,
                 },
             },
-            UUID = "9624511177947510047",
+            UUID = "8185288743151030096",
         },
-        [5] = {
+        {
             Components = {
                 MeshRenderer = {
-                    Enabled = true,
-                    MaterialAlbedoColor = {
-                        [1] = 0.77486908435822,
-                        [2] = 0.0,
-                        [3] = 0.0,
-                        [4] = 1.0,
-                    },
-                    MaterialMetalness = 0.625,
-                    MaterialRoughness = 0.34400001168251,
-                    Material_Albedo_Image = {
-                    },
-                    Material_Height_Image = {
-                    },
-                    Material_Normal_Image = {
-                    },
-                    Model = {
-                        Path = "W:\\source\\projects\\Engin3\\assets\\models\\cube.glb",
-                        UUID = "14589644993695996332",
-                    },
-                },
-                ScriptComponent = {
-                    Enabled = true,
-                    Exports = {
-                        max_stuff_to_do = 42.0,
-                        movement_speed = 13.0,
-                        pepegas = true,
-                        should_do_thing = true,
-                    },
-                    Script = {
-                        Path = "W:\\source\\projects\\Engin3\\assets\\scripts\\test.lua",
-                        UUID = "14298605602629216277",
-                    },
-                },
-            },
-            Enabled = true,
-            Flags = 0,
-            Name = "New Model",
-            Parent = "0",
-            Transform = {
-                LocalPosition = {
-                    [1] = -3.1199998855591,
-                    [2] = 4.0300002098083,
-                    [3] = -3.2200000286102,
-                },
-                LocalRotation = {
-                    [1] = 0.0,
-                    [2] = 0.0,
-                    [3] = 0.0,
-                },
-                LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
-                },
-            },
-            UUID = "16494353188410001922",
-        },
-        [6] = {
-            Components = {
-                DirectionalLight = {
-                    Color = {
-                        [1] = 0.79175460338593,
-                        [2] = 0.9109947681427,
-                        [3] = 0.7967489361763,
-                        [4] = 1.0,
-                    },
                     Enabled = true,
                 },
             },
@@ -233,22 +229,247 @@ Scene = {
             Parent = "0",
             Transform = {
                 LocalPosition = {
-                    [1] = 24.889999389648,
-                    [2] = 11.800000190735,
-                    [3] = 13.199999809265,
+                    3.0,
+                    0.0,
+                    1.0,
                 },
                 LocalRotation = {
-                    [1] = 38.799999237061,
-                    [2] = 0.0,
-                    [3] = 0.0,
+                    0.0,
+                    0.0,
+                    0.0,
                 },
                 LocalScale = {
-                    [1] = 1.0,
-                    [2] = 1.0,
-                    [3] = 1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                },
+            },
+            UUID = "8413499443907223464",
+        },
+        {
+            Components = {
+                Camera = {
+                    Enabled = true,
+                    FarPlane = 123.0,
+                    Fov = 56.0,
+                    NearPlane = 0.10000000149012,
+                },
+                ScriptComponent = {
+                    Enabled = true,
+                    Exports = {
+                        max_stuff_to_do = 42.0,
+                        movement_speed = 2.0,
+                        pepegas = false,
+                        should_do_thing = false,
+                    },
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "Camera",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    0.20000000298023,
+                    3.4000000953674,
+                    0.75,
+                },
+                LocalRotation = {
+                    21.520000457764,
+                    0.0,
+                    0.0,
+                },
+                LocalScale = {
+                    1.0,
+                    1.0,
+                    1.0,
+                },
+            },
+            UUID = "8724168565904052871",
+        },
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                    Mesh = "13441014186314726441",
+                    PbrMaterial = "14136671354918817915",
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "New Entity",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    10.0,
+                    2.0,
+                    0.0,
+                },
+                LocalRotation = {
+                    0.0,
+                    90.0,
+                    0.0,
+                },
+                LocalScale = {
+                    10.0,
+                    2.0,
+                    0.25,
+                },
+            },
+            UUID = "8929293459984810631",
+        },
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                    Mesh = "6632964195035872250",
+                    PbrMaterial = "2011284891540221483",
+                },
+                ScriptComponent = {
+                    Enabled = true,
+                    Exports = {
+                    },
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "New Model",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    0.0,
+                    0.03999999910593,
+                    0.0,
+                },
+                LocalRotation = {
+                    0.0,
+                    0.0,
+                    0.0,
+                },
+                LocalScale = {
+                    10.0,
+                    1.0,
+                    10.0,
+                },
+            },
+            UUID = "9624511177947510047",
+        },
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                    Mesh = "13441014186314726441",
+                    PbrMaterial = "14136671354918817915",
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "New Entity",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    0.0,
+                    2.0,
+                    -10.0,
+                },
+                LocalRotation = {
+                    0.0,
+                    0.0,
+                    0.0,
+                },
+                LocalScale = {
+                    10.0,
+                    2.0,
+                    0.25,
+                },
+            },
+            UUID = "14157770344068075881",
+        },
+        {
+            Components = {
+                MeshRenderer = {
+                    Enabled = true,
+                    Mesh = "13441014186314726441",
+                    PbrMaterial = "4261957541286600184",
+                },
+                ScriptComponent = {
+                    Enabled = true,
+                    Exports = {
+                        another_speed = 0.0,
+                        movement_speed = 2.0,
+                    },
+                    Script = "8655789773585384344",
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "Pepegas",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    -1.0700000524521,
+                    0.52999997138977,
+                    -4.5199999809265,
+                },
+                LocalRotation = {
+                    0.0,
+                    66.160003662109,
+                    0.0,
+                },
+                LocalScale = {
+                    1.0,
+                    1.0,
+                    1.0,
+                },
+            },
+            UUID = "16494353188410001922",
+        },
+        {
+            Components = {
+                DirectionalLight = {
+                    Color = {
+                        1.0,
+                        1.0,
+                        1.0,
+                        1.0,
+                    },
+                    Enabled = true,
+                    Shadow = {
+                        Correction = 1.0,
+                        Splits = 4,
+                    },
+                },
+            },
+            Enabled = true,
+            Flags = 0,
+            Name = "Directional Light",
+            Parent = "0",
+            Transform = {
+                LocalPosition = {
+                    23.719999313354,
+                    9.8900003433228,
+                    13.199999809265,
+                },
+                LocalRotation = {
+                    48.709999084473,
+                    0.0,
+                    0.0,
+                },
+                LocalScale = {
+                    1.0,
+                    1.0,
+                    1.0,
                 },
             },
             UUID = "17639684018359485358",
+        },
+    },
+    Environment = {
+        AmbientColor = {
+            0.088895581662655,
+            0.10110879689455,
+            0.12041884660721,
+            0.0,
         },
     },
     Name = "New World",

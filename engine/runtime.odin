@@ -5,16 +5,32 @@ import "core:math"
 import "core:math/linalg"
 import gl "vendor:OpenGL"
 import tracy "packages:odin-tracy"
+import "core:math/rand"
+import "core:intrinsics"
+import "core:mem"
 
 VISUALIZE_CASCADES :: false
+
+// Maybe we could make this work??
+// @(shader_export)
+SSAO_KERNEL_SIZE :: 64
+
+SSAOData :: struct {
+    params: vec4,
+    kernel: [SSAO_KERNEL_SIZE]vec3,
+
+    // radius, bias: f32,
+}
 
 ViewData :: struct {
     projection: mat4,
     view: mat4,
+    screen_size: vec2,
 }
 
 SceneData :: struct {
     view_position: vec3, _: f32,
+    view_direction: vec3, _: f32,
     ambient_color: Color,
 }
 
@@ -47,12 +63,15 @@ LightData :: struct {
     },
     point_lights: [MAX_POINTLIGHTS]struct {
         color: Color,
-        position: vec3,
+        position: vec4,
 
         constant: f32,
         linear: f32,
         quadratic: f32,
         _: f32,
+    },
+    spot_lights: [MAX_SPOTLIGHTS]struct {
+        _: vec4,
     },
 
     shadow_split_distances: vec4,
@@ -72,6 +91,8 @@ WorldRenderer :: struct {
     view_data:       UniformBuffer(ViewData),
     light_data:      UniformBuffer(LightData),
     scene_data:      UniformBuffer(SceneData),
+    ssao_data:       UniformBuffer(SSAOData),
+    ssao_noise_texture: AssetHandle,
 
     depth_pass_per_object_data: UniformBuffer(DepthPassPerObjectData),
 
@@ -79,16 +100,13 @@ WorldRenderer :: struct {
     world_frame_buffer:    FrameBuffer,
     resolved_frame_buffer: FrameBuffer,
     final_frame_buffer:    FrameBuffer,
+    g_buffer:              FrameBuffer,
+    ssao_frame_buffer:     FrameBuffer,
 
     bloom_vertical_fb:    FrameBuffer,
     bloom_horizontal_fb:    FrameBuffer,
 
-    depth_shader:  Shader,
-    pbr_shader:    Shader,
-    screen_shader: Shader,
-    bloom_shader:  Shader,
-    bloom_vertical_shader:  Shader,
-    blend_shader:  Shader,
+    shaders: map[string]Shader,
 
     shadow_map: Texture2DArray,
 }
@@ -109,6 +127,13 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     spec.attachments = attachment_list(.RGBA8, .DEPTH)
     renderer.final_frame_buffer = create_framebuffer(spec)
 
+    // Position, Normal
+    spec.attachments = attachment_list(.RGBA16F, .RGBA16F, .DEPTH)
+    renderer.g_buffer = create_framebuffer(spec)
+
+    spec.attachments = attachment_list(.RED_FLOAT)
+    renderer.ssao_frame_buffer = create_framebuffer(spec)
+
     spec.attachments             = attachment_list(.RGBA16F)
     renderer.bloom_vertical_fb   = create_framebuffer(spec)
     renderer.bloom_horizontal_fb = create_framebuffer(spec)
@@ -125,78 +150,147 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     renderer.view_data       = create_uniform_buffer(ViewData, 1)
     renderer.scene_data      = create_uniform_buffer(SceneData, 2)
     renderer.light_data      = create_uniform_buffer(LightData, 3)
+    renderer.ssao_data       = create_uniform_buffer(SSAOData, 11)
 
     renderer.depth_pass_per_object_data = create_uniform_buffer(DepthPassPerObjectData, 0)
 
     // TODO(minebill): These shaders should probably be loaded from the asset system.
     ok: bool
-    renderer.depth_shader, ok = shader_load_from_file(
+    renderer.shaders["depth"], ok = shader_load_from_file(
         "assets/shaders/depth.vert.glsl",
         "assets/shaders/depth.frag.glsl",
     )
     assert(ok)
 
-    renderer.pbr_shader, ok = shader_load_from_file(
+    renderer.shaders["pbr"], ok = shader_load_from_file(
         "assets/shaders/triangle.vert.glsl",
         "assets/shaders/pbr.frag.glsl",
     )
     assert(ok)
 
-    renderer.screen_shader, ok = shader_load_from_file(
+    renderer.shaders["screen"], ok = shader_load_from_file(
         "assets/shaders/screen.vert.glsl",
         "assets/shaders/screen.frag.glsl",
     )
     assert(ok)
 
-    renderer.bloom_shader, ok = shader_load_from_file(
+    renderer.shaders["bloom"], ok = shader_load_from_file(
         "assets/shaders/screen.vert.glsl",
         "assets/shaders/bloom.frag.glsl",
     )
     assert(ok)
 
-    renderer.bloom_vertical_shader, ok = shader_load_from_file(
+    renderer.shaders["bloom_vertical"], ok = shader_load_from_file(
         "assets/shaders/screen.vert.glsl",
         "assets/shaders/postprocess/bloom_vertical.frag.glsl",
     )
     assert(ok)
 
-    renderer.blend_shader, ok = shader_load_from_file(
+    renderer.shaders["blend"], ok = shader_load_from_file(
         "assets/shaders/screen.vert.glsl",
         "assets/shaders/postprocess/blend.frag.glsl",
     )
     assert(ok)
+
+    renderer.shaders["cubemap"], ok = shader_load_from_file(
+        "assets/shaders/cubemap.vert.glsl",
+        "assets/shaders/cubemap.frag.glsl",
+    )
+    assert(ok)
+
+    renderer.shaders["geometry"], ok = shader_load_from_file(
+        "assets/shaders/triangle.vert.glsl",
+        "assets/shaders/geometry_pass.frag.glsl",
+    )
+    assert(ok)
+
+    renderer.shaders["ssao"], ok = shader_load_from_file(
+        "assets/shaders/screen.vert.glsl",
+        "assets/shaders/postprocess/ssao.frag.glsl",
+    )
+    assert(ok)
+
+    device := rand.create(u64(intrinsics.read_cycle_counter()))
+
+    for i in 0..<len(renderer.ssao_data.kernel) {
+        sample := vec3{
+            rand.float32(&device) * 2.0 - 1.0,
+            rand.float32(&device) * 2.0 - 1.0,
+            rand.float32(&device),
+        }
+
+        sample = linalg.normalize(sample)
+        sample *= rand.float32(&device)
+
+        scale := f32(i) / len(renderer.ssao_data.kernel)
+        lerp :: proc(a, b, f: f32) -> f32 {
+            return a + f * (b - a);
+        }
+        scale = cast(f32) lerp(f32(0.1), f32(1.0), scale * scale)
+        sample *= scale
+        // TODO: More options, choose samples closer to the center of the sphere.
+        renderer.ssao_data.kernel[i] = sample
+    }
+    uniform_buffer_set_data(
+        &renderer.ssao_data,
+        offset_of(renderer.ssao_data.data.kernel),
+        size_of(renderer.ssao_data.data.kernel))
+
+    ssao_noise: [4 * 4]vec3
+    for i in 0..<len(ssao_noise) {
+        noise := vec3{
+            rand.float32(&device) * 2.0 - 1.0,
+            rand.float32(&device) * 2.0 - 1.0,
+            0,
+        }
+        ssao_noise[i] = noise
+    }
+
+    texture_spec := TextureSpecification {
+        width = 4,
+        height = 4,
+        format = .RGB8,
+        desired_format = .RGBA16F,
+        wrap = .Repeat,
+        filter = .Nearest,
+        pixel_type = .Float,
+    }
+
+    bytes := mem.slice_to_bytes(ssao_noise[:])
+    renderer.ssao_noise_texture = create_virtual_asset(&EngineInstance.asset_manager, new_texture2d(texture_spec, bytes), "SSAO Noise")
 }
 
 RenderPacket :: struct {
     camera: RenderCamera,
     world: ^World,
     size: vec2i,
+    clear_color: Color,
 }
 
 render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
     world_renderer.world = packet.world
+    asset_manager := &EngineInstance.asset_manager
 
     world := world_renderer.world
     view_data := &world_renderer.view_data
     light_data := &world_renderer.light_data
+
+    view_data.screen_size = EngineInstance.screen_size
+    uniform_buffer_set_data(
+        view_data,
+        offset_of(view_data.data.screen_size),
+        size_of(view_data.data.screen_size))
 
     mesh_components := make([dynamic]^MeshRenderer, allocator = context.temp_allocator)
     {
         tracy.ZoneN("Mesh Collection")
         for handle, &go in world.objects do if go.enabled && has_component(world, handle, MeshRenderer) {
             mr := get_component(world, handle, MeshRenderer)
-            if mr.model != nil && is_model_valid(mr.model^) {
+            if is_asset_handle_valid(asset_manager, mr.mesh) {
                 append(&mesh_components, mr)
             }
         }
     }
-
-    light_data.shadow_split_distances = do_depth_pass(world_renderer, mesh_components[:], packet)
-    uniform_buffer_rebind(light_data)
-    uniform_buffer_set_data(
-        light_data,
-        offset_of(light_data.data.shadow_split_distances),
-        size_of(light_data.data.shadow_split_distances))
 
     // TODO(minebill): Different uniform buffer for point_lights/spot_lights?
     num_point_lights := 0
@@ -216,28 +310,34 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
             light.linear = point_light.linear
             light.constant = point_light.constant
             light.quadratic = point_light.quadratic
-            light.position = go.transform.position
+            light.position.xyz = go.transform.position
 
             num_point_lights += 1
         }
 
         if num_point_lights > 0 {
-            uniform_buffer_upload(
+            uniform_buffer_set_data(
                 light_data,
                 offset_of(light_data.data.point_lights),
                 size_of(light_data.point_lights[0]) * num_point_lights)
         }
     }
 
+    light_data.shadow_split_distances = do_depth_pass(world_renderer, mesh_components[:], packet)
+    uniform_buffer_rebind(light_data)
+    uniform_buffer_set_data(
+        light_data,
+        offset_of(light_data.data.shadow_split_distances),
+        size_of(light_data.data.shadow_split_distances))
+
+    per_object := &world_renderer.per_object_data
+    uniform_buffer_rebind(per_object)
+
     scene_data := &world_renderer.scene_data
     world_fb := &world_renderer.world_frame_buffer
 
-    gl.BindFramebuffer(gl.FRAMEBUFFER, world_fb.handle)
-    gl.Viewport(0, 0, packet.size.x, packet.size.y)
-
-    gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
-
     scene_data.view_position = packet.camera.position
+    scene_data.view_direction = linalg.quaternion_mul_vector3(packet.camera.rotation, vec3{0, 0, -1})
     scene_data.ambient_color = world.ambient_color
     uniform_buffer_upload(scene_data)
 
@@ -246,40 +346,106 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         view_data,
         offset_of(view_data.data.projection),
         size_of(view_data.data.projection))
+    view_data.view = packet.camera.view
+    uniform_buffer_set_data(view_data, offset_of(view_data.data.view), size_of(view_data.view))
+
+    // Geometry pass
+    {
+        gl.Enable(gl.DEPTH_TEST)
+        gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.g_buffer.handle)
+        gl.Viewport(0, 0, packet.size.x, packet.size.y)
+        gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+        geometry_shader := &world_renderer.shaders["geometry"]
+
+        gl.UseProgram(geometry_shader.program)
+
+        for mr in mesh_components {
+            mesh := get_asset(asset_manager, mr.mesh, Mesh)
+            if mesh == nil do continue
+
+            go := get_object(world, mr.owner)
+            gl.BindVertexArray(mesh.vertex_array)
+
+            per_object.model = go.transform.global_matrix
+            uniform_buffer_set_data(
+                per_object,
+                offset_of(per_object.data.model),
+                size_of(per_object.data.model))
+            draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
+        }
+    }
+
+    PLANE_VERT_COUNT :: 6
+
+    // [SSAO]
+    {
+        uniform_buffer_rebind(&world_renderer.ssao_data)
+        uniform_buffer_set_data(
+            &world_renderer.ssao_data,
+            offset_of(world_renderer.ssao_data.data.params),
+            size_of(world_renderer.ssao_data.data.params),
+        )
+
+        gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.ssao_frame_buffer.handle)
+        gl.Clear(gl.COLOR_BUFFER_BIT)
+        gl.UseProgram(world_renderer.shaders["ssao"].program)
+        gl.BindTextureUnit(0, get_color_attachment(world_renderer.g_buffer, 0))
+        gl.BindTextureUnit(1, get_color_attachment(world_renderer.g_buffer, 1))
+        noise := get_asset(&EngineInstance.asset_manager, world_renderer.ssao_noise_texture, Texture2D)
+        if noise != nil do gl.BindTextureUnit(2, noise.handle)
+
+        draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
+    }
+
+    gl.BindFramebuffer(gl.FRAMEBUFFER, world_fb.handle)
+    gl.Viewport(0, 0, packet.size.x, packet.size.y)
+
+    gl.ClearColor(expand_values(packet.clear_color))
+    gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
 
     { // Cubemap Skybox
         if cubemap := find_first_component(world, CubemapComponent); cubemap != nil {
-            gl.Disable(gl.DEPTH_TEST)
+            texture := get_asset(asset_manager, cubemap.texture, Texture2D)
+            if texture != nil {
+                gl.Disable(gl.DEPTH_TEST)
 
-            view_data.view = linalg.matrix4_from_quaternion(packet.camera.rotation)
-            uniform_buffer_set_data(view_data, offset_of(view_data.data.view), size_of(view_data.data.view))
+                view_data.view = linalg.matrix4_from_quaternion(packet.camera.rotation)
+                uniform_buffer_set_data(view_data, offset_of(view_data.data.view), size_of(view_data.data.view))
 
-            gl.UseProgram(cubemap.shader.program)
-            gl.BindTextureUnit(6, cubemap.texture.handle)
-            gl.DrawArrays(gl.TRIANGLES, 0, 36)
+                gl.UseProgram(cubemap.shader.program)
+                gl.BindTextureUnit(6, texture.handle)
+                gl.DrawArrays(gl.TRIANGLES, 0, 36)
 
-            gl.Enable(gl.DEPTH_TEST)
+                gl.Enable(gl.DEPTH_TEST)
+            }
         }
     }
 
     view_data.view = packet.camera.view
     uniform_buffer_upload(view_data, offset_of(view_data.data.view), size_of(view_data.view))
 
-    per_object := &world_renderer.per_object_data
     uniform_buffer_rebind(per_object)
+
     // Draw meshes
     {
-        pbr_shader := &world_renderer.pbr_shader
+        pbr_shader := &world_renderer.shaders["pbr"]
 
         gl.UseProgram(pbr_shader.program)
         // gl.BindTextureUnit(2, get_depth_attachment(world_renderer.depth_frame_buffer))
         gl.BindTextureUnit(2, world_renderer.shadow_map.handle)
+        gl.BindTextureUnit(3, get_color_attachment(world_renderer.ssao_frame_buffer, 0))
 
         for mr in mesh_components {
+            mesh := get_asset(asset_manager, mr.mesh, Mesh)
+            if mesh == nil do continue
+
             go := get_object(world, mr.owner)
-            gl.BindVertexArray(mr.model.vertex_array)
-            bind_material(&mr.material)
-            // gl.BindBuffer(gl.UNIFORM_BUFFER, model.material.ubo)
+            gl.BindVertexArray(mesh.vertex_array)
+
+            material := get_asset(&EngineInstance.asset_manager, mr.material, PbrMaterial)
+            if material != nil {
+                bind_pbr_material(material)
+            }
 
             per_object.model = go.transform.global_matrix
             uniform_buffer_set_data(
@@ -296,9 +462,8 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
             // gl.UniformMatrix4fv(uniform(pbr_shader, "model"), 1, false, &mm[0][0])
             // gl.Uniform1i(uniform(pbr_shader, "gameobject_id"), i32(go.local_id))
 
-            draw_elements(gl.TRIANGLES, mr.model.num_indices, gl.UNSIGNED_SHORT)
+            draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
         }
-
 
         gl.Enable(gl.STENCIL_TEST)
         gl.Disable(gl.DEPTH_TEST)
@@ -309,19 +474,21 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         gl.UseProgram(pbr_shader.program)
         for handle, &go in world.objects do if go.enabled && .Outlined in go.flags && has_component(world, handle, MeshRenderer) {
             mr := get_component(world, handle, MeshRenderer)
-            if mr.model != nil && is_model_valid(mr.model^) {
-                gl.BindVertexArray(mr.model.vertex_array)
 
-                per_object.model = go.transform.global_matrix
-                uniform_buffer_set_data(
-                    per_object,
-                    offset_of(per_object.data.model),
-                    size_of(per_object.data.model))
-                // TODO(minebill): Use a simple shader here.
-                // gl.UniformMatrix4fv(uniform(pbr_shader, "model"), 1, false, &mm[0][0])
+            mesh := get_asset(asset_manager, mr.mesh, Mesh)
+            if mesh == nil do continue
 
-                draw_elements(gl.TRIANGLES, mr.model.num_indices, gl.UNSIGNED_SHORT)
-            }
+            gl.BindVertexArray(mesh.vertex_array)
+
+            per_object.model = go.transform.global_matrix
+            uniform_buffer_set_data(
+                per_object,
+                offset_of(per_object.data.model),
+                size_of(per_object.data.model))
+            // TODO(minebill): Use a simple shader here.
+            // gl.UniformMatrix4fv(uniform(pbr_shader, "model"), 1, false, &mm[0][0])
+
+            draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
         }
 
         gl.Disable(gl.STENCIL_TEST)
@@ -358,50 +525,43 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
             {{0, 0}, {width, height}},
         )
 
-        PLANE_VERT_COUNT :: 6
 
         gl.BindTextureUnit(0, get_color_attachment(world_renderer.resolved_frame_buffer))
         gl.BindTextureUnit(1, get_color_attachment(world_renderer.resolved_frame_buffer, 1))
-        gl.UseProgram(world_renderer.screen_shader.program)
+        gl.BindTextureUnit(2, get_color_attachment(world_renderer.ssao_frame_buffer, 0))
+        gl.UseProgram(world_renderer.shaders["screen"].program)
 
         gl.Disable(gl.DEPTH_TEST)
         gl.Enable(gl.BLEND)
 
         draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
 
-        {
-            horizontal := false
-            first := true
-            for i in 0..<5 {
-                gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.bloom_horizontal_fb.handle if horizontal else world_renderer.bloom_vertical_fb.handle)
-                gl.UseProgram(world_renderer.bloom_shader.program if horizontal else world_renderer.bloom_vertical_shader.program)
+        // {
+        //     horizontal := false
+        //     first := true
+        //     for i in 0..<5 {
+        //         gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.bloom_horizontal_fb.handle if horizontal else world_renderer.bloom_vertical_fb.handle)
+        //         gl.UseProgram(world_renderer.shaders["bloom"].program if horizontal else world_renderer.shaders["bloom_vertical"].program)
 
-                if first {
-                    gl.BindTextureUnit(1, get_color_attachment(world_renderer.resolved_frame_buffer, 1))
-                } else {
-                    gl.BindTextureUnit(1, get_color_attachment(world_renderer.bloom_horizontal_fb if !horizontal else world_renderer.bloom_vertical_fb))
-                }
+        //         if first {
+        //             gl.BindTextureUnit(1, get_color_attachment(world_renderer.resolved_frame_buffer, 1))
+        //         } else {
+        //             gl.BindTextureUnit(1, get_color_attachment(world_renderer.bloom_horizontal_fb if !horizontal else world_renderer.bloom_vertical_fb))
+        //         }
 
-                if is_key_pressed(.L) {
-                    loc := gl.GetUniformLocation(world_renderer.bloom_shader.program, "push.horizontal")
-                    if loc == -1 {
-                        log.error("fuck")
-                    }
-                    gl.Uniform1i(loc, 1 if horizontal else 0)
-                }
-                draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
-                horizontal = !horizontal
-                first = false
-            }
-        }
+        //         draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
+        //         horizontal = !horizontal
+        //         first = false
+        //     }
+        // }
 
-        {
-            gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.final_frame_buffer.handle)
-            gl.UseProgram(world_renderer.blend_shader.program)
-            gl.BindTextureUnit(0, get_color_attachment(world_renderer.resolved_frame_buffer))
-            gl.BindTextureUnit(1, get_color_attachment(world_renderer.bloom_vertical_fb))
-            draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
-        }
+        // {
+        //     gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.final_frame_buffer.handle)
+        //     gl.UseProgram(world_renderer.shaders["blend"].program)
+        //     gl.BindTextureUnit(0, get_color_attachment(world_renderer.resolved_frame_buffer))
+        //     gl.BindTextureUnit(1, get_color_attachment(world_renderer.bloom_vertical_fb))
+        //     draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
+        // }
         gl.Enable(gl.DEPTH_TEST)
 
     }
@@ -439,13 +599,14 @@ do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRe
                     i32(split),
                 )
                 gl.Clear(gl.DEPTH_BUFFER_BIT)
-                near := distances[split - 1] if split > 0 else packet.camera.near
+                near := packet.camera.near
 
                 z := get_split_depth(split + 1, dir_light.shadow.splits, near, packet.camera.far, dir_light.shadow.correction)
+                // z := dir_light.shadow.distances[split]
                 distances[split] = z / packet.camera.far
 
                 // camera_view := linalg.matrix4_from_quaternion(packet.camera.rotation) * linalg.inverse(linalg.matrix4_translate(packet.camera.position))
-                proj := linalg.matrix4_perspective_f32(math.to_radians(f32(50)), f32(packet.size.x) / f32(packet.size.y), near, z)
+                proj := linalg.matrix4_perspective_f32(math.to_radians(f32(50)), f32(packet.size.x) / f32(packet.size.y), distances[split - 1] if split > 0 else near, z)
                 corners := get_frustum_corners_world_space(
                     proj,
                     packet.camera.view)
@@ -524,12 +685,15 @@ do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRe
                     offset_of(light_data.data.directional),
                     size_of(light_data.data.directional))
 
-                gl.UseProgram(world_renderer.depth_shader.program)
+                gl.UseProgram(world_renderer.shaders["depth"].program)
 
                 per_object.light_space = light_data.directional.light_space_matrix[split]
                 uniform_buffer_set_data(per_object, offset_of(per_object.data.light_space), size_of(per_object.data.light_space))
                 for mr in mesh_components {
-                    gl.BindVertexArray(mr.model.vertex_array)
+                    mesh := get_asset(&EngineInstance.asset_manager, mr.mesh, Mesh)
+                    if mesh == nil do continue
+
+                    gl.BindVertexArray(mesh.vertex_array)
 
                     go := get_object(world, mr.owner)
 
@@ -539,7 +703,7 @@ do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRe
                         offset_of(per_object.data.model),
                         size_of(per_object.data.model))
 
-                    draw_elements(gl.TRIANGLES, mr.model.num_indices, gl.UNSIGNED_SHORT)
+                    draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
                 }
             }
         }
@@ -553,6 +717,8 @@ world_renderer_resize :: proc(world_renderer: ^WorldRenderer, width, height: int
     resize_framebuffer(&world_renderer.final_frame_buffer, width, height)
     resize_framebuffer(&world_renderer.world_frame_buffer, width, height)
     resize_framebuffer(&world_renderer.resolved_frame_buffer, width, height)
+    resize_framebuffer(&world_renderer.g_buffer, width, height)
+    resize_framebuffer(&world_renderer.ssao_frame_buffer, width, height)
 
     resize_framebuffer(&world_renderer.bloom_vertical_fb, width, height)
     resize_framebuffer(&world_renderer.bloom_horizontal_fb, width, height)
@@ -584,4 +750,113 @@ get_split_depth :: proc(current_split, max_splits: int, near, far: f32, l := f32
     split_ratio := f32(current_split) / f32(max_splits)
     z := near * math.pow(far / near, split_ratio)
     return l * z + (1.0 - l) * (near +  split_ratio * (far - near))
+}
+
+render_material_preview :: proc(packet: RenderPacket, target: ^FrameBuffer, material: ^PbrMaterial, mesh: ^Mesh, renderer: ^WorldRenderer, cubemap_texture: ^Texture2D) {
+    spec := FrameBufferSpecification{
+        width = int(packet.size.x),
+        height = int(packet.size.y),
+        attachments = attachment_list(.RGBA16F, .DEPTH),
+        samples = 4,
+    }
+    // TODO(minebill): This just feels wrong. Is there a better way to do this instead
+    //                  of creating and destroying frame buffers every frame???
+    buffer := create_framebuffer(spec)
+    defer destroy_framebuffer(buffer)
+
+    spec.samples = 1
+    spec.attachments = attachment_list(.RGBA8)
+    resolve_target := create_framebuffer(spec)
+    defer destroy_framebuffer(resolve_target)
+
+    gl.BindFramebuffer(gl.FRAMEBUFFER, buffer.handle)
+    gl.Viewport(0, 0, packet.size.x, packet.size.y)
+
+    gl.ClearColor(expand_values(packet.clear_color))
+    gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+
+    // Render a cube
+    per_object := &renderer.per_object_data
+    view_data := &renderer.view_data
+    light_data := &renderer.light_data
+    scene_data := &renderer.scene_data
+
+    scene_data.view_position = packet.camera.position
+    dir := linalg.quaternion_mul_vector3(packet.camera.rotation, vec3{0, 0, -1})
+    scene_data.view_direction = dir
+    scene_data.ambient_color = Color{0.5, 0.5, 0.5, 1.0}
+    uniform_buffer_rebind(scene_data)
+    uniform_buffer_set_data(scene_data)
+
+    quat := linalg.quaternion_look_at(vec3{1, 1, 1}, vec3{0, 0, 0}, vec3{0, 1, 0})
+    dir = linalg.quaternion_mul_vector3(quat, vec3{0, 0, -1})
+    light_data.directional.direction = vec4{dir.x, dir.y, dir.z, 0}
+    light_data.directional.color = COLOR_WHITE
+    light_data.directional.light_space_matrix[0] = {}
+    light_data.directional.light_space_matrix[1] = {}
+    light_data.directional.light_space_matrix[2] = {}
+    light_data.directional.light_space_matrix[3] = {}
+
+    uniform_buffer_rebind(light_data)
+    uniform_buffer_set_data(light_data,
+        offset_of(light_data.data.directional),
+        size_of(light_data.data.directional))
+
+    view_data.projection = packet.camera.projection
+    uniform_buffer_set_data(
+        view_data,
+        offset_of(view_data.data.projection),
+        size_of(view_data.data.projection))
+
+    { // Cubemap Skybox
+            if cubemap_texture != nil {
+                gl.Disable(gl.DEPTH_TEST)
+
+                view_data.view = linalg.matrix4_from_quaternion(packet.camera.rotation)
+                uniform_buffer_set_data(view_data, offset_of(view_data.data.view), size_of(view_data.data.view))
+
+                gl.UseProgram(renderer.shaders["cubemap"].program)
+                gl.BindTextureUnit(6, cubemap_texture.handle)
+                gl.DrawArrays(gl.TRIANGLES, 0, 36)
+
+                gl.Enable(gl.DEPTH_TEST)
+            }
+    }
+
+    view_data.view = packet.camera.view
+    uniform_buffer_set_data(view_data, offset_of(view_data.data.view), size_of(view_data.view))
+
+    {
+        gl.UseProgram(renderer.shaders["pbr"].program)
+        gl.BindVertexArray(mesh.vertex_array)
+
+        bind_pbr_material(material)
+
+        per_object.model = linalg.matrix4_translate(vec3{0.0, 0.0, 0.0})
+        uniform_buffer_set_data(
+            per_object,
+            offset_of(per_object.data.model),
+            size_of(per_object.data.model))
+
+        draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
+    }
+
+    width, height := f32(packet.size.x), f32(packet.size.y)
+    blit_framebuffer(
+        buffer,
+        resolve_target,
+        {{0, 0}, {width, height}},
+        {{0, 0}, {width, height}})
+
+    gl.BindFramebuffer(gl.FRAMEBUFFER, target.handle)
+
+    PLANE_VERT_COUNT :: 6
+
+    gl.BindTextureUnit(0, get_color_attachment(resolve_target))
+    gl.UseProgram(renderer.shaders["screen"].program)
+
+        gl.Disable(gl.DEPTH_TEST)
+    draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
+
+        gl.Enable(gl.DEPTH_TEST)
 }

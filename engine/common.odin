@@ -39,12 +39,28 @@ vec4 :: [4]f32
 
 Color :: distinct vec4
 
-COLOR_RED   :: Color{1, 0, 0, 1}
-COLOR_GREEN :: Color{0, 1, 0, 1}
-COLOR_BLUE  :: Color{0, 0, 1, 1}
-COLOR_BLACK :: Color{0, 0, 0, 1}
-COLOR_WHITE :: Color{1, 1, 1, 1}
-COLOR_YELLOW :: Color{1, 1, 0, 1}
+COLOR_RED       :: Color{1, 0, 0, 1}
+COLOR_GREEN     :: Color{0, 1, 0, 1}
+COLOR_BLUE      :: Color{0, 0, 1, 1}
+COLOR_BLACK     :: Color{0, 0, 0, 1}
+COLOR_WHITE     :: Color{1, 1, 1, 1}
+COLOR_YELLOW    :: Color{1, 1, 0, 1}
+COLOR_CYAN      :: Color{0, 1, 1, 1}
+COLOR_MAGENTA   :: Color{1, 0, 1, 1}
+COLOR_ORANGE    :: Color{1, 0.5, 0, 1}
+COLOR_PURPLE    :: Color{0.5, 0, 1, 1}
+COLOR_PINK      :: Color{1, 0.75, 0.8, 1}
+COLOR_LIME      :: Color{0.75, 1, 0, 1}
+COLOR_SKY_BLUE  :: Color{0.53, 0.81, 0.98, 1}
+COLOR_LAVENDER  :: Color{0.71, 0.49, 0.86, 1}
+COLOR_PEACH     :: Color{1, 0.8, 0.6, 1}
+COLOR_MINT      :: Color{0.74, 0.99, 0.83, 1}
+COLOR_CORAL     :: Color{1, 0.5, 0.31, 1}
+COLOR_GOLD      :: Color{1, 0.84, 0, 1}
+COLOR_SILVER    :: Color{0.75, 0.75, 0.75, 1}
+COLOR_PLUM      :: Color{0.56, 0.27, 0.52, 1}
+COLOR_TURQUOISE :: Color{0.25, 0.88, 0.82, 1}
+COLOR_ROSE      :: Color{1, 0.3, 0.5, 1}
 
 color_hex :: proc(hex: int) -> Color {
     r: f32 = f32(hex >> 24) / 255
@@ -70,179 +86,12 @@ Engine_Error :: union #shared_nil {
     }
 }
 
-Uniform :: struct {
-    projection: mat4,
-    view:       mat4,
-}
-
-Vertex :: struct {
-    position:   vec3,
-    normal:     vec3,
-    tangent:    vec3,
-    uv:         vec2,
-    color:      vec3,
-}
-
-Texture_Filter :: enum {
-    Linear = gl.LINEAR,
-    Nearest = gl.NEAREST,
-    MipMapLinear = gl.LINEAR_MIPMAP_LINEAR,
-    MipMapNearest = gl.NEAREST_MIPMAP_NEAREST,
-}
-
-Texture_Wrap :: enum {
-    Clamp,
-    
-}
-
-TextureType :: enum {
-    Normal,
-    CubeMap,
-}
-
-Texture2D :: struct {
-    handle: u32,
-    width, height: i32,
-    type: TextureType,
-    params: Texture_Params,
-}
-
-Texture_Params :: struct {
-    samples:    i32,
-    format:     u32,
-    min_filter:     Texture_Filter,
-    mag_filter:     Texture_Filter,
-    anisotropy: i32,
-}
-
-DEFAULT_TEXTURE_PARAMS :: Texture_Params {
-    samples = 1,
-    format = gl.RGBA,
-    min_filter = .Linear,
-    mag_filter = .Linear,
-    anisotropy = 1,
-}
-
-create_texture :: proc(width, height: int, params := DEFAULT_TEXTURE_PARAMS) -> (texture: Texture2D) {
-    width, height := i32(width), i32(height)
-    texture.width = width
-    texture.height = height
-    texture.params = params
-    texture.type = .Normal
-    using params
-
-    min_image_count := i32(math.floor(math.log2(f32(math.max(width, height))))) + 1
-
-    if samples == 1 {
-        gl.CreateTextures(gl.TEXTURE_2D, 1, &texture.handle)
-        gl.TextureStorage2D(texture.handle, min_image_count, format, width, height)
-    } else {
-        gl.CreateTextures(gl.TEXTURE_2D_MULTISAMPLE, 1, &texture.handle)
-        gl.TextureStorage2DMultisample(texture.handle, samples, format, width, height, true)
+clone_map :: proc(m: map[$K]$V, allocator := context.allocator) -> map[K]V {
+    r := make(map[K]V, len(m), allocator)
+    for k, v in m {
+        r[k] = v
     }
-
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_MIN_FILTER, i32(min_filter))
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_MAG_FILTER, i32(mag_filter))
-
-    // gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-    // gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-
-    // gl.TextureParameteri(texture.handle, gl.TEXTURE_MAX_LEVEL, 10)
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_MAX_ANISOTROPY, anisotropy)
-    return
-}
-
-set_texture_data :: proc(texture: Texture2D, data: []byte, level: i32 = 0) {
-    gl.TextureSubImage2D(
-        texture.handle,
-        level,
-        0, 0,
-        texture.width, texture.height,
-        gl.RGBA, gl.UNSIGNED_BYTE,
-        raw_data(data),
-    )
-
-    gl.GenerateTextureMipmap(texture.handle)
-}
-
-load_texture_from_file :: proc(file: string) -> (texture: Texture2D) {
-    image, ok := load_image_from_file(file)
-    assert(ok)
-    defer destroy_image(&image)
-
-    params := DEFAULT_TEXTURE_PARAMS
-    params.format = gl.RGBA8
-    texture = create_texture(image.width, image.height, params)
-    set_texture_data(texture, image.data)
-    return
-}
-
-// params.samples is ignored.
-create_cubemap_texture :: proc(width, height: int, params := DEFAULT_TEXTURE_PARAMS) -> (texture: Texture2D) {
-    width, height := i32(width), i32(height)
-    texture.width = width
-    texture.height = height
-    texture.params = params
-    texture.type = .CubeMap
-
-    gl.CreateTextures(gl.TEXTURE_CUBE_MAP, 1, &texture.handle)
-
-    gl.TextureStorage2D(texture.handle, 1, params.format, width, height)
-
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_MIN_FILTER, i32(params.min_filter))
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_MAG_FILTER, i32(params.mag_filter))
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
-
-    return
-}
-
-Texture2DArray :: struct {
-    handle: RenderHandle,
-    layers: i32,
-    width, height: i32,
-    format: u32,
-}
-
-create_texture_array :: proc(width, height: i32, format: u32, layers: i32 = 1) -> (texture: Texture2DArray) {
-    texture.layers = layers
-    texture.width = width
-    texture.height = height
-    texture.format = format
-
-    gl.CreateTextures(gl.TEXTURE_2D_ARRAY, 1, &texture.handle)
-    gl.TextureStorage3D(texture.handle, 1, format, width, height, layers)
-
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-
-    border_color := []f32 { 1.0, 1.0, 1.0, 1.0 }
-    gl.TextureParameterfv(texture.handle, gl.TEXTURE_BORDER_COLOR, raw_data(border_color))
-
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-    gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-    return
-}
-
-destroy_texture_array :: proc(texture: Texture2DArray) {
-    texture := texture
-    gl.DeleteTextures(1, &texture.handle)
-}
-
-TextureView :: struct {
-    handle: RenderHandle,
-}
-
-create_texture_view :: proc(array: Texture2DArray, layer: u32 = 0) -> (view: TextureView) {
-    gl.GenTextures(1, &view.handle)
-    gl.TextureView(view.handle, gl.TEXTURE_2D, array.handle, array.format, 0, 1, layer, 1)
-    return
-}
-
-destroy_texture_view :: proc(view: TextureView) {
-    view := view
-    gl.DeleteTextures(1, &view.handle)
+    return r
 }
 
 OwnedString :: struct {
@@ -265,3 +114,4 @@ free_owned_string :: proc(os: ^OwnedString) {
 cstr :: proc(s: string, allocator := context.temp_allocator) -> cstring {
     return strings.clone_to_cstring(s, allocator)
 }
+

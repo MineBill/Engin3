@@ -9,8 +9,48 @@ import intr "base:intrinsics"
 import "core:reflect"
 import "core:strings"
 import "core:fmt"
+import "core:path/filepath"
 
-g_scripting_engine: ^ScriptingEngine
+@(asset = {
+    ImportFormats = ".lua",
+})
+LuaScript :: struct {
+    using base: Asset,
+
+    properties: Properties,
+    bytecode: []byte,
+}
+
+InvalidPropertyNameError :: struct {
+    property_name: string,
+}
+
+MetadataError :: enum {
+    None,
+    MissingTable,
+    MissingName,
+    ExportNotAStruct,
+    DefaultValueIsNil,
+    UnknownExportType,
+}
+
+ScriptMetadataError :: union {
+    MetadataError,
+    InvalidPropertyNameError,
+}
+
+LuaError :: enum {
+    None,
+    Syntax,
+    Runtime,
+    OutOfMemory,
+    MessageHandler,
+}
+
+ScriptCompilationError :: union #shared_nil {
+    LuaError,
+    ScriptMetadataError,
+}
 
 ScriptType :: UUID
 
@@ -23,11 +63,10 @@ ScriptVTable :: struct {
 }
 
 ScriptInstance :: struct {
+    using vtable: ScriptVTable,
+
     state: ^lua.State,
     type: ScriptType,
-    // exported_fields: map[string]LuaValue,
-
-    using vtable: ScriptVTable,
 }
 
 script_set_field_value :: proc(instance: ^ScriptInstance, field: string, lua_value: LuaValue, stack_pos: Maybe(int) = nil) {
@@ -105,9 +144,6 @@ create_script_instance :: proc(script: ^LuaScript) -> (state: ScriptInstance) {
     type := generate_uuid()
     luaL.openlibs(L)
 
-    lua.pushcfunction(L, api_import)
-    lua.setglobal(L, "import")
-
     b := cstring(&script.bytecode[0])
 
     if luaL.loadbufferx(L, b, c.ptrdiff_t(len(script.bytecode)), "Script", "b") != lua.OK {
@@ -146,18 +182,23 @@ create_script_instance :: proc(script: ^LuaScript) -> (state: ScriptInstance) {
     return
 }
 
-compile_script :: proc(se: ^ScriptingEngine, data: []byte) -> (script: LuaScript) {
+compile_script :: proc(se: ^ScriptingEngine, data: []byte, strip := false) -> (script: LuaScript, error: ScriptCompilationError) {
     L := luaL.newstate()
     defer lua.close(L)
     luaL.openlibs(L)
 
-    lua.pushcfunction(L, api_import)
-    lua.setglobal(L, "import")
-
-    if luaL.loadstring(L, cstr(string(data))) != lua.OK {
+    if lua_error := luaL.loadstring(L, cstr(string(data))); lua_error != lua.OK {
         message := lua.tostring(L, -1)
         log.errorf("Error while compiling LUA: %s", message)
-        return
+
+        switch lua_error {
+        case lua.ERRSYNTAX:
+            return {}, .Syntax
+        case lua.ERRMEM:
+            return {}, .OutOfMemory
+        }
+        // lua_error CANNOT be anything else, according to the documentation
+        unreachable()
     }
 
     Writer :: struct {
@@ -179,35 +220,74 @@ compile_script :: proc(se: ^ScriptingEngine, data: []byte) -> (script: LuaScript
         return lua.OK
     }
 
-    if lua.dump(L, writer, &w, strip = 0) != lua.OK {
-        log.errorf("Error while dumping bytecode")
-    }
+    // Can't fail, out writer always return lua.OK
+    lua.dump(L, writer, &w, 1 if strip else 0)
 
     script.bytecode = make([]byte, len(w.buffer))
     copy(script.bytecode, w.buffer[:])
 
     log.infof("Compiled lua script:")
+    log.infof("\tDebug info stripped: %v", strip)
     log.infof("\tSize: %v bytes.", len(script.bytecode))
 
     // NOTE(minebill): Ideally, as soon as we got the bytecode, we would return.
     // However, we need to get some metadata about the script and we don't want to do that
     // whenever we create new instance.
 
-    if lua.pcall(L, 0, 1, 0) != lua.OK {
+    if lua_error := lua.pcall(L, 0, 1, 0); lua_error != lua.OK {
         log.errorf("Failed to execute compiled bytecode while gathering script metadata.")
-        return
+
+        switch lua_error {
+        case lua.ERRRUN:
+            return {}, .Runtime
+        case lua.ERRMEM:
+            return {}, .OutOfMemory
+        case lua.ERRERR:
+            return {}, .MessageHandler
+        }
+        unreachable()
     }
 
     if !lua.istable(L, -1) {
         log.errorf("Script must return a table!")
-        return
+        return {}, ScriptMetadataError(.MissingTable)
     }
 
-    script.properties = read_properties_table(L)
+    script.properties, error = read_properties_table(L)
 
     log.debugf("Script properties: %#v", script.properties)
-
     return
+}
+
+api_import :: proc "c" (L: ^lua.State) -> i32 {
+    context = mani.default_context()
+
+    path := luaL.checkstring(L, 1)
+    PREFIX :: "proj://"
+    if strings.contains(path, PREFIX) {
+        new_path := path[len(PREFIX):]
+        joined := filepath.join({get_cwd(), new_path}, context.temp_allocator)
+
+        if luaL.dofile(L, cstr(joined)) != lua.OK {
+            log.errorf("Failed to import %v", joined)
+            return 0
+        }
+
+        if lua.pcall(L, 0, 1, 0) != lua.OK {
+            log.errorf("Failed to execute import: %v", lua.tostring(L, -1))
+            return 0
+        }
+
+        return 1
+    } else {
+        // If the path doesn't start with 'proj://', use default behavior
+        lua.getglobal(L, "require")
+        lua.pushvalue(L, 1) // Push the module name onto the stack
+        lua.call(L, 1, 1)   // Call require with the module name
+
+        return 1
+    }
+
 }
 
 is_script_instance_valid :: proc(instance: ScriptInstance) -> bool {
@@ -226,7 +306,7 @@ end_stack :: proc(L: ^lua.State, original: i32) {
 }
 
 // TODO(minebill): Perform validation.
-read_properties_table :: proc(L: ^lua.State) -> (props: Properties) {
+read_properties_table :: proc(L: ^lua.State) -> (props: Properties, error: ScriptMetadataError) {
     begin_stack(L)
     lua.getfield(L, -1, "Properties")
     {
@@ -241,48 +321,74 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties) {
     {
         begin_stack(L)
 
-        assert(lua.istable(L, -1), fmt.tprintf("Export must be a table but it was: %v", lua.typename(L, lua.type(L, -1))))
+        if !lua.istable(L, -1) {
+            error = .ExportNotAStruct
+            return
+        }
 
         lua.pushnil(L)
         for lua.next(L, -2) != 0 {
             defer lua.pop(L, 1)
             key_type := lua.type(L, -2)
             value_type := lua.type(L, -1)
-            assert(lua.isstring(L, -2) == 1 && lua.isnumber(L, -2) != 1, "You can't export a variable with a number for a name!")
-            assert(lua.istable(L, -1), "You have to declare the variable in a table format")
+            if lua.isstring(L, -2) != 1 {
+                error = InvalidPropertyNameError{}
+                return
+            }
 
             field := LuaField{}
             field.name = strings.clone(lua.tostring(L, -2))
-            log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
 
-            lua.pushnil(L)
-            for lua.next(L, -2) != 0 {
-                defer lua.pop(L, 1)
+            if lua.istable(L, -1) {
+                log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
 
-                {
-                    begin_stack(L)
-                    lua.getfield(L, -3, "Default")
-                    assert(!lua.isnil(L, -1), "Default value must exist, to determin the type.")
+                lua.pushnil(L)
+                for lua.next(L, -2) != 0 {
+                    defer lua.pop(L, 1)
 
-                    type := lua.type(L, -1)
-                    switch type {
-                    case lua.TNUMBER:
-                        field.default = lua.tonumber(L, -1)
-                    case lua.TSTRING:
-                        field.default = strings.clone(lua.tostring(L, -1))
-                    case lua.TBOOLEAN:
-                        field.default = bool(lua.toboolean(L, -1))
-                    case:
-                        assert(false, "Unsupported export type.")
+                    {
+                        begin_stack(L)
+                        lua.getfield(L, -3, "Default")
+                        assert(!lua.isnil(L, -1), "Default value must exist, to determine the type.")
+
+                        type := lua.type(L, -1)
+                        switch type {
+                        case lua.TNUMBER:
+                            field.default = lua.tonumber(L, -1)
+                        case lua.TSTRING:
+                            field.default = strings.clone(lua.tostring(L, -1))
+                        case lua.TBOOLEAN:
+                            field.default = bool(lua.toboolean(L, -1))
+                        case:
+                            assert(false, "Unsupported export type.")
+                        }
+                    }
+
+                    description: {
+                        begin_stack(L)
+                        lua.getfield(L, -3, "Description")
+                        if lua.isnil(L, -1) do break description
+
+                            field.description = strings.clone(lua.tostring(L, -1))
                     }
                 }
+            } else {
+                if lua.isnil(L, -1) {
+                    error = .DefaultValueIsNil
+                    return
+                }
+                begin_stack(L)
 
-                description: {
-                    begin_stack(L)
-                    lua.getfield(L, -3, "Description")
-                    if lua.isnil(L, -1) do break description
-
-                    field.description = strings.clone(lua.tostring(L, -1))
+                type := lua.type(L, -1)
+                switch type {
+                case lua.TNUMBER:
+                    field.default = lua.tonumber(L, -1)
+                case lua.TSTRING:
+                    field.default = strings.clone(lua.tostring(L, -1))
+                case lua.TBOOLEAN:
+                    field.default = bool(lua.toboolean(L, -1))
+                case:
+                    return {}, .UnknownExportType
                 }
             }
 
@@ -290,38 +396,73 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties) {
         }
     }
 
-    lua.getfield(L, -3, "Instance")
-    {
-        begin_stack(L)
+    // Iterate over the rest of the fields and add them as private instance fields
+    // {
+    //     lua.pushnil(L)
 
-        assert(lua.istable(L, -1), fmt.tprintf("'Instace' must be a table but it was: %v", lua.typename(L, lua.type(L, -1))))
+    //     for lua.next(L, -3) != 0 {
+    //         defer lua.pop(L, -1)
+    //         key_type := lua.type(L, -2)
+    //         value_type := lua.type(L, -1)
 
-        lua.pushnil(L)
-        for lua.next(L, -2) != 0 {
-            defer lua.pop(L, 1)
-            key_type := lua.type(L, -2)
-            value_type := lua.type(L, -1)
-            assert(lua.isstring(L, -2) == 1 && lua.isnumber(L, -2) != 1, "You can't export a variable with a number for a name!")
-            // assert(lua.istable(L, -1), "You have to declare the variable in a table format")
+    //         if lua.isstring(L, -2) != 1 {
+    //             return {}, InvalidPropertyNameError {}
+    //         }
+    //         assert(lua.isstring(L, -2) == 1 && lua.isnumber(L, -2) != 1, "You can't export a variable with a number for a name!")
 
-            field := LuaField{}
-            field.name = strings.clone(lua.tostring(L, -2))
-            log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
+    //         field := LuaField{}
+    //         field.name = strings.clone(lua.tostring(L, -2))
+    //         log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
 
-            switch value_type {
-            case lua.TNUMBER:
-                field.default = lua.tonumber(L, -1)
-            case lua.TSTRING:
-                field.default = strings.clone(lua.tostring(L, -1))
-            case lua.TBOOLEAN:
-                field.default = bool(lua.toboolean(L, -1))
-            case:
-                assert(false, "Unsupported export type.")
-            }
+    //         switch value_type {
+    //         case lua.TNUMBER:
+    //             field.default = lua.tonumber(L, -1)
+    //         case lua.TSTRING:
+    //             field.default = strings.clone(lua.tostring(L, -1)) // @Allocation
+    //         case lua.TBOOLEAN:
+    //             field.default = bool(lua.toboolean(L, -1))
+    //         case:
+    //             return {}, .UnknownExportType
+    //         }
 
-            props.instance_fields[field.name] = field
-        }
-    }
+    //         props.instance_fields[field.name] = field
+    //     }
+    // }
+
+    // lua.getfield(L, -3, "Instance")
+    // instance: {
+    //     begin_stack(L)
+
+    //     if !lua.istable(L, -1) {
+    //         break instance
+    //     }
+
+    //     lua.pushnil(L)
+    //     for lua.next(L, -2) != 0 {
+    //         defer lua.pop(L, 1)
+    //         key_type := lua.type(L, -2)
+    //         value_type := lua.type(L, -1)
+    //         assert(lua.isstring(L, -2) == 1 && lua.isnumber(L, -2) != 1, "You can't export a variable with a number for a name!")
+    //         // assert(lua.istable(L, -1), "You have to declare the variable in a table format")
+
+    //         field := LuaField{}
+    //         field.name = strings.clone(lua.tostring(L, -2))
+    //         log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
+
+    //         switch value_type {
+    //         case lua.TNUMBER:
+    //             field.default = lua.tonumber(L, -1)
+    //         case lua.TSTRING:
+    //             field.default = strings.clone(lua.tostring(L, -1))
+    //         case lua.TBOOLEAN:
+    //             field.default = bool(lua.toboolean(L, -1))
+    //         case:
+    //             assert(false, "Unsupported export type.")
+    //         }
+
+    //         props.instance_fields[field.name] = field
+    //     }
+    // }
     return
 }
 

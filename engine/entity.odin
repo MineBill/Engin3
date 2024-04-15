@@ -86,13 +86,13 @@ Component :: struct {
 
     enabled: bool,
     world: ^World,
-    owner: Handle,
+    owner: EntityHandle,
 }
 
 ComponentConstructor :: #type proc() -> rawptr
 
 ComponentMap :: map[typeid]^Component
-Children :: [dynamic]Handle
+Children :: [dynamic]EntityHandle
 
 @(LuaExport = {
     Type = {Light},
@@ -103,8 +103,7 @@ Children :: [dynamic]Handle
 Entity :: struct {
     components: ComponentMap,
     world: ^World,
-    handle: Handle,
-    id: UUID,
+    handle: EntityHandle,
     local_id: int,
 
     enabled: bool,
@@ -112,13 +111,13 @@ Entity :: struct {
     flags: EntityFlags,
 
     transform: TransformComponent,
-    parent: Handle,
+    parent: EntityHandle,
     children: Children,
 }
 
-Handle :: UUID
+EntityHandle :: distinct UUID
 
-duplicate_entity :: proc(world: ^World, entity: Handle) -> Handle {
+duplicate_entity :: proc(world: ^World, entity: EntityHandle) -> EntityHandle {
     en := get_object(world, entity)
     new := new_object(world, ds_to_string(en.name), en.parent)
     new_en := get_object(world, new)
@@ -136,7 +135,7 @@ duplicate_entity :: proc(world: ^World, entity: Handle) -> Handle {
 @(private = "file")
 NOT_REGISTERED_MESSAGE :: "Component %v is not registered. Register the component with @(component) and define a constructor proc with @(constructor=<C>)"
 
-copy_component :: proc(w: ^World, handle, target: Handle, id: typeid) {
+copy_component :: proc(w: ^World, handle, target: EntityHandle, id: typeid) {
     tracy.Zone()
     assert(id in COMPONENT_INDICES, fmt.tprintf(NOT_REGISTERED_MESSAGE, id))
 
@@ -156,7 +155,7 @@ copy_component :: proc(w: ^World, handle, target: Handle, id: typeid) {
     // go.components[id]->init()
 }
 
-add_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) {
+add_component_typeid :: proc(w: ^World, handle: EntityHandle, id: typeid) {
     tracy.Zone()
     assert(id in COMPONENT_INDICES, fmt.tprintf(NOT_REGISTERED_MESSAGE, id))
 
@@ -169,7 +168,7 @@ add_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) {
     // go.components[id]->init()
 }
 
-add_component_type :: proc(w: ^World, handle: Handle, $C: typeid) {
+add_component_type :: proc(w: ^World, handle: EntityHandle, $C: typeid) {
     tracy.Zone()
     assert(C in COMPONENT_INDICES, fmt.tprintf(NOT_REGISTERED_MESSAGE, typeid_of(C)))
 
@@ -187,14 +186,14 @@ add_component :: proc {
     add_component_typeid,
 }
 
-get_component_type :: proc(w: ^World, handle: Handle, $C: typeid) -> ^C {
+get_component_type :: proc(w: ^World, handle: EntityHandle, $C: typeid) -> ^C {
     tracy.Zone()
     if !has_component(w, handle, C) do return nil
     go := get_object(w, handle)
     return cast(^C)go.components[C]
 }
 
-get_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) -> ^Component {
+get_component_typeid :: proc(w: ^World, handle: EntityHandle, id: typeid) -> ^Component {
     tracy.Zone()
     if !has_component(w, handle, id) do return nil
     go := get_object(w, handle)
@@ -206,7 +205,7 @@ get_component :: proc {
     // get_component_typeid,
 }
 
-get_or_add_component_type :: proc(w: ^World, handle: Handle, $C: typeid) -> ^C {
+get_or_add_component_type :: proc(w: ^World, handle: EntityHandle, $C: typeid) -> ^C {
     tracy.Zone()
     if !has_component(w, handle, C) {
         add_component(w, handle, C)
@@ -218,11 +217,11 @@ get_or_add_component :: proc {
     get_or_add_component_type,
 }
 
-remove_component_type :: proc(w: ^World, handle: Handle, $C: typeid) {
+remove_component_type :: proc(w: ^World, handle: EntityHandle, $C: typeid) {
     remove_component_typeid(w, handle, C)
 }
 
-remove_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) {
+remove_component_typeid :: proc(w: ^World, handle: EntityHandle, id: typeid) {
     tracy.Zone()
     assert(id in COMPONENT_INDICES, NOT_REGISTERED_MESSAGE)
 
@@ -242,13 +241,13 @@ remove_component :: proc {
     remove_component_typeid,
 }
 
-has_component_type :: proc(w: ^World, handle: Handle, $C: typeid) -> bool {
+has_component_type :: proc(w: ^World, handle: EntityHandle, $C: typeid) -> bool {
     tracy.Zone()
     go := get_object(w, handle)
     return C in go.components
 }
 
-has_component_typeid :: proc(w: ^World, handle: Handle, id: typeid) -> bool {
+has_component_typeid :: proc(w: ^World, handle: EntityHandle, id: typeid) -> bool {
     tracy.Zone()
     go := get_object(w, handle)
     return id in go.components
@@ -272,10 +271,10 @@ World :: struct {
     // The name of this world/level.
     name: string,
 
-    objects: map[Handle]Entity,
-    local_id_to_uuid: map[int]UUID,
+    objects: map[EntityHandle]Entity,
+    local_id_to_uuid: map[int]EntityHandle,
     next_local_id: int,
-    root: Handle,
+    root: EntityHandle,
 
     ambient_color: Color,
 
@@ -316,7 +315,7 @@ copy_world :: proc(source: ^World) -> (new: World) {
 
 world_update :: proc(world: ^World, delta: f64, update_components := true) {
     tracy.Zone()
-    update_object :: proc(go: ^Entity, handle: Handle, delta: f64, update_components: bool) {
+    update_object :: proc(go: ^Entity, handle: EntityHandle, delta: f64, update_components: bool) {
         tracy.Zone()
         update_transform(go, &go.transform, delta)
         for child_handle in go.children {
@@ -337,7 +336,7 @@ world_update :: proc(world: ^World, delta: f64, update_components := true) {
 
 world_init_components :: proc(world: ^World) {
     tracy.Zone()
-    update_object :: proc(go: ^Entity, handle: Handle) {
+    update_object :: proc(go: ^Entity, handle: EntityHandle) {
         tracy.Zone()
         for child_handle in go.children {
             child := get_object(go.world, child_handle)
@@ -353,14 +352,14 @@ world_init_components :: proc(world: ^World) {
     update_object(root, world.root)
 }
 
-get_object :: proc(world: ^World, handle: Handle) -> ^Entity {
+get_object :: proc(world: ^World, handle: EntityHandle) -> ^Entity {
     if handle in world.objects {
         return &world.objects[handle]
     }
     return nil
 }
 
-add_child :: proc(world: ^World, parent: Handle, child: Handle) {
+add_child :: proc(world: ^World, parent: EntityHandle, child: EntityHandle) {
     tracy.Zone()
     child_go := &world.objects[child]
     remove_child(world, child_go.parent, child)
@@ -371,7 +370,7 @@ add_child :: proc(world: ^World, parent: Handle, child: Handle) {
     child_go.parent = parent
 }
 
-remove_child :: proc(world: ^World, parent: Handle, child: Handle) {
+remove_child :: proc(world: ^World, parent: EntityHandle, child: EntityHandle) {
     tracy.Zone()
     entity := &world.objects[parent]
     for c, i in entity.children {
@@ -382,17 +381,17 @@ remove_child :: proc(world: ^World, parent: Handle, child: Handle) {
     }
 }
 
-reparent_entity :: proc(world: ^World, entity_h, new_parent_h: Handle) {
+reparent_entity :: proc(world: ^World, entity_h, new_parent_h: EntityHandle) {
     entity := get_object(world, entity_h)
 
     remove_child(world, entity.parent, entity_h)
     add_child(world, new_parent_h, entity_h)
 }
 
-new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Handle) = nil) -> Handle {
+new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(EntityHandle) = nil) -> EntityHandle {
     tracy.Zone()
     // handle := world.next_handle
-    id := generate_uuid()
+    id := EntityHandle(generate_uuid())
     world.objects[id] = Entity{name = make_ds(name)}
     // world.next_handle += 1
 
@@ -401,24 +400,23 @@ new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Han
         // go.parent = world.root
         add_child(world, world.root, id)
     } else {
-        // go.parent = parent.(Handle)
-        add_child(world, parent.(Handle), id)
+        // go.parent = parent.(EntityHandle)
+        add_child(world, parent.(EntityHandle), id)
     }
 
     go.world = world
     go.handle = id
-    go.id = id
     go.local_id = world.next_local_id
     go.enabled = true
     go.transform.local_scale = vec3{1, 1, 1}
 
     world.next_local_id += 1
-    world.local_id_to_uuid[go.local_id] = go.id
+    world.local_id_to_uuid[go.local_id] = go.handle
 
     return id
 }
 
-copy_entity :: proc(from_world, new_world: ^World, from_entity, new_entity: UUID) {
+copy_entity :: proc(from_world, new_world: ^World, from_entity, new_entity: EntityHandle) {
     // new.id = from.id
     // new.name = from.name // TODO: Wrong
     // new.flags = from.flags
@@ -433,35 +431,34 @@ copy_entity :: proc(from_world, new_world: ^World, from_entity, new_entity: UUID
     return
 }
 
-new_object_with_uuid :: proc(world: ^World, name: string = "New Entity", uuid: UUID, parent: Maybe(Handle) = nil) -> Handle {
+new_object_with_uuid :: proc(world: ^World, name: string = "New Entity", handle: EntityHandle, parent: Maybe(EntityHandle) = nil) -> EntityHandle {
     tracy.Zone()
     // handle := world.next_handle
-    world.objects[uuid] = Entity{name = make_ds(name)}
+    world.objects[handle] = Entity{name = make_ds(name)}
     // world.next_handle += 1
 
-    go := &world.objects[uuid]
+    go := &world.objects[handle]
     if parent == nil {
         // go.parent = world.root
-        add_child(world, world.root, uuid)
+        add_child(world, world.root, handle)
     } else {
-        // go.parent = parent.(Handle)
-        add_child(world, parent.(Handle), uuid)
+        // go.parent = parent.(EntityHandle)
+        add_child(world, parent.(EntityHandle), handle)
     }
 
     go.world = world
-    go.handle = uuid
-    go.id = uuid
+    go.handle = handle
     go.enabled = true
     go.transform.local_scale = vec3{1, 1, 1}
 
     go.local_id = world.next_local_id
     world.next_local_id += 1
-    world.local_id_to_uuid[go.local_id] = go.id
+    world.local_id_to_uuid[go.local_id] = go.handle
 
-    return uuid
+    return handle
 }
 
-delete_object :: proc(world: ^World, handle: Handle) {
+delete_object :: proc(world: ^World, handle: EntityHandle) {
     tracy.Zone()
     go := get_object(world, handle)
     if go == nil do return
@@ -523,7 +520,7 @@ serialize_world :: proc(world: World, file: string) {
             i := 0
             keys, err := slice.map_keys(world.objects, context.temp_allocator)
             assert(err == nil)
-            slice.sort_by(keys, proc(i, j: UUID) -> bool {
+            slice.sort_by(keys, proc(i, j: EntityHandle) -> bool {
                 return i < j
             })
             for id in keys {
@@ -548,7 +545,7 @@ deserialize_world :: proc(world: ^World, file: string) -> bool {
     create_world(world)
     world.file_path = strings.clone(file)
 
-    ResolvePair :: struct {entity, parent: UUID}
+    ResolvePair :: struct {entity, parent: EntityHandle}
     parents_to_resolve := make([dynamic]ResolvePair)
     defer delete(parents_to_resolve)
 
@@ -575,16 +572,17 @@ deserialize_world :: proc(world: ^World, file: string) -> bool {
 
                 uuid,  _ := serialize_get_field(&s, "UUID", u64)
                 name,  _ := serialize_get_field(&s, "Name", string)
+                defer delete(name)
                 flags, _ := serialize_get_field(&s, "Flags", EntityFlags)
                 enabled, _ := serialize_get_field(&s, "Enabled", bool)
                 parent, _ := serialize_get_field(&s, "Parent", u64)
 
-                id: UUID
-                if UUID(parent) in world.objects {
-                    id = new_object_with_uuid(world, name, UUID(uuid), UUID(parent))
+                id: EntityHandle
+                if EntityHandle(parent) in world.objects {
+                    id = new_object_with_uuid(world, name, EntityHandle(uuid), EntityHandle(parent))
                 } else {
-                    id = new_object_with_uuid(world, name, UUID(uuid))
-                    append(&parents_to_resolve, ResolvePair{entity = id, parent = UUID(parent)})
+                    id = new_object_with_uuid(world, name, EntityHandle(uuid))
+                    append(&parents_to_resolve, ResolvePair{entity = id, parent = EntityHandle(parent)})
                 }
 
                 entity := get_object(world, id)
@@ -645,7 +643,7 @@ serialize_entity :: proc(entity: ^Entity, s: ^SerializeContext) {
     }
     serialize_end_table(s)
 
-    serialize_do_field(s, "UUID", entity.id)
+    serialize_do_field(s, "UUID", entity.handle)
     serialize_do_field(s, "Name", ds_to_string(entity.name))
 
     flags := entity.flags
@@ -685,8 +683,8 @@ deserialize_component :: proc(s: ^SerializeContext, name: string, world: ^World,
     serialize_do_field(s, "Enabled", enabled)
 
     if id, ok := get_component_typeid_from_name(name); ok {
-        add_component(world, entity.id, id)
-        comp := get_component_typeid(world, entity.id, id)
+        add_component(world, entity.handle, id)
+        comp := get_component_typeid(world, entity.handle, id)
 
         if id in COMPONENT_SERIALIZERS {
             // Component has a serializer

@@ -83,6 +83,7 @@ Event_Context :: struct {
     events:       [dynamic]Event,
     characters:   [dynamic]rune,
 
+    mouse_wheel: f32,
     mouse, previous_mouse: [2]f32,
     window_position: [2]f32,
 }
@@ -115,6 +116,8 @@ setup_glfw_callbacks :: proc(window: glfw.WindowHandle, parent_context := contex
 glfw_scroll_callback :: proc "c" (win: glfw.WindowHandle, x, y: f64) {
     state := (cast(^Event_Context)(glfw.GetWindowUserPointer(win)))
     context = state.odin_context
+
+    state.mouse_wheel = f32(y)
 
     append(&state.events, MouseWheelEvent {delta = [2]f32{f32(x), f32(y)}})
 }
@@ -196,6 +199,11 @@ flush_input :: proc() {
         }
     }
     g_event_ctx.previous_mouse = g_event_ctx.mouse
+    g_event_ctx.mouse_wheel = 0
+}
+
+get_mouse_wheel_delta :: proc() -> f32 {
+    return g_event_ctx.mouse_wheel
 }
 
 get_mouse_delta :: proc() -> [2]f32 {

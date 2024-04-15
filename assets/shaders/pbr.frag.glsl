@@ -22,6 +22,8 @@ struct VertexOutput {
 
 layout(location = 0) in VertexOutput In;
 
+layout(binding = 3) uniform sampler2D s_SSAO;
+
 layout(location = 0) out vec4 o_Color;
 layout(location = 1) out vec4 o_BrightColor;
 
@@ -158,10 +160,14 @@ vec3 do_directional_light() {
     float NdotL = max(dot(N, L), 0.0);
 
     float shadow = ShadowCalculation();
+    // float shadow = 1.0;
 
+    /* vec2 frag_coords = In.frag_pos.xy / In.frag_pos.w;
+    vec2 screen_uv = frag_color * 0.5 + 0.5; */
+    float occlusion = texture(s_SSAO,  gl_FragCoord.xy / u_ViewData.screen_size).r;
     vec3 ambient = u_SceneData.ambient_color.rgb * albedo * u_MaterialData.albedo_color.rgb * 0.1;
-
-    return ambient + (kd * u_MaterialData.albedo_color.rgb * albedo / PI + specular + reflection * u_MaterialData.metallic * ks) * radiance * NdotL * shadow;
+    ambient *= occlusion;
+    return ambient + (kd * u_MaterialData.albedo_color.rgb * albedo / PI + specular + reflection * u_MaterialData.metallic * ks) * radiance * NdotL * shadow * occlusion;
 }
 
 vec3 do_point_light(PointLight light) {

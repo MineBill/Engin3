@@ -11,186 +11,21 @@ WHITE_TEXTURE :: #load("../assets/textures/white_texture.png")
 BLACK_TEXTURE :: #load("../assets/textures/black_texture.png")
 NORMAL_MAP :: #load("../assets/textures/default_normal_map.png")
 
-Material :: struct {
-    name: string,
-    using block : struct {
-        albedo_color:     Color,
-        metallic_factor:  f32 `range:"0.0, 1.0"`,
-        roughness_factor: f32 `range:"0.0, 1.0"`,
-    },
-
-    albedo_image: ^Image,
-    normal_image: ^Image,
-    height_image: ^Image,
-
-    albedo_texture: Texture2D,
-    normal_texture: Texture2D,
-    height_texture: Texture2D,
-
-    ubo: u32,
+Vertex :: struct {
+    position:   vec3,
+    normal:     vec3,
+    tangent:    vec3,
+    uv:         vec2,
+    color:      vec3,
 }
 
-bind_material :: proc(m: ^Material) {
-    gl.BindTextureUnit(0, m.albedo_texture.handle)
-    gl.BindTextureUnit(1, m.normal_texture.handle)
-    gl.BindBufferBase(gl.UNIFORM_BUFFER, 10, m.ubo)
-}
-
-default_material :: proc() -> Material {
-    return {
-        block = {
-            albedo_color = Color{1, 1, 1, 1},
-            metallic_factor = 0,
-            roughness_factor = 0.5,
-        },
-    }
-}
-
-clone_material :: proc(m: Material) -> (clone: Material) {
-    clone = m
-    create_material(&clone)
-    update_material_new(&clone)
-    return
-}
-
-upload_material :: proc(m: Material) {
-    m := m
-    gl.NamedBufferSubData(m.ubo, 0, size_of(m.block), &m.block)
-}
-
-create_material :: proc(m: ^Material) {
-    gl.CreateBuffers(1, &m.ubo)
-    gl.NamedBufferStorage(m.ubo, size_of(m.block), &m.block, gl.DYNAMIC_STORAGE_BIT)
-}
-
-update_material_new :: proc(m: ^Material) {
-    if m.albedo_image == nil {
-        m.albedo_image = cast(^Image)image_loader(WHITE_TEXTURE)
-    }
-    if m.normal_image == nil {
-        m.normal_image = cast(^Image)image_loader(NORMAL_MAP)
-    }
-    if m.height_image == nil {
-        m.height_image = cast(^Image)image_loader(BLACK_TEXTURE)
-    }
-
-    albedo := m.albedo_image
-    normal := m.normal_image
-    height := m.height_image
-
-    m.albedo_texture = create_texture(albedo.width, albedo.height, {
-        samples = 1,
-        format = gl.SRGB8_ALPHA8,
-        min_filter = .MipMapLinear,
-        mag_filter = .Linear,
-        anisotropy = 4,
-    })
-
-    set_texture_data(m.albedo_texture, albedo.data)
-
-    m.normal_texture = create_texture(normal.width, normal.height, {
-        samples = 1,
-        format = gl.RGBA8,
-        min_filter = .MipMapLinear,
-        mag_filter = .Linear,
-        anisotropy = 4,
-    })
-    set_texture_data(m.normal_texture, normal.data)
-
-    m.height_texture = create_texture(height.width, height.height, {
-        samples = 1,
-        format = gl.RGBA8,
-        min_filter = .Linear,
-        mag_filter = .Linear,
-        anisotropy = 1,
-    })
-    set_texture_data(m.height_texture, height.data)
-    upload_material(m^)
-}
-
-update_material :: proc(m: ^Material, albedo, normal, height: []byte) {
-    i, ok := load_image_memory(albedo if albedo != nil else WHITE_TEXTURE)
-    defer destroy_image(&i)
-
-    m.albedo_texture = create_texture(i.width, i.height, {
-        samples = 1,
-        format = gl.SRGB8_ALPHA8,
-        min_filter = .MipMapLinear,
-        mag_filter = .Linear,
-        anisotropy = 4,
-    })
-
-    set_texture_data(m.albedo_texture, i.data)
-
-    i2, ok2 := load_image_memory(normal if normal != nil else NORMAL_MAP)
-    defer destroy_image(&i2)
-
-    m.normal_texture = create_texture(i2.width, i2.height, {
-        samples = 1,
-        format = gl.RGBA8,
-        min_filter = .MipMapLinear,
-        mag_filter = .Linear,
-        anisotropy = 4,
-    })
-    set_texture_data(m.normal_texture, i2.data)
-
-    i3, ok3 := load_image_memory(height if height != nil else BLACK_TEXTURE)
-    defer destroy_image(&i3)
-
-    m.height_texture = create_texture(i3.width, i3.height, {
-        samples = 1,
-        format = gl.RGBA8,
-        min_filter = .Linear,
-        mag_filter = .Linear,
-        anisotropy = 1,
-    })
-    set_texture_data(m.height_texture, i3.data)
-
-    buffer: [1024]int
-
-    gl.CreateBuffers(1, &m.ubo)
-    gl.NamedBufferStorage(m.ubo, size_of(m.block), &m.block, gl.DYNAMIC_STORAGE_BIT)
-}
-
+@(asset)
 Image :: struct {
     using base: Asset,
 
     data: []byte,
     width, height: int,
     channels: int,
-    file: Maybe(string),
-}
-
-load_image_memory :: proc(data: []byte) -> (image: Image, ok: bool) {
-    w, h, c: i32
-    raw_image := stbi.load_from_memory(raw_data(data), cast(i32)len(data), &w, &h, &c, 4)
-    if raw_image == nil {
-        log.warnf("Failed to read image: %v", stbi.failure_reason())
-        return {}, false
-    }
-
-    image.data = raw_image[:w * h * c]
-    image.width = int(w)
-    image.height = int(h)
-    image.channels = int(c)
-    return image, true
-}
-
-load_image_from_file :: proc(file: string) -> (image: Image, ok: bool) {
-    data := os.read_entire_file(file) or_return
-    defer delete(data)
-    w, h, c: i32
-    raw_image := stbi.load_from_memory(raw_data(data), cast(i32)len(data), &w, &h, &c, 4)
-    if raw_image == nil {
-        log.warnf("Failed to read image: %v", stbi.failure_reason())
-        return {}, false
-    }
-
-    image.data = raw_image[:w * h * c]
-    image.width = int(w)
-    image.height = int(h)
-    image.channels = int(c)
-    return image, true
 }
 
 destroy_image :: proc(image: ^Image) {
@@ -198,7 +33,10 @@ destroy_image :: proc(image: ^Image) {
     image^ = {}
 }
 
-Model :: struct {
+@(asset = {
+    ImportFormats = ".glb, .gltf",
+})
+Mesh :: struct {
     using base: Asset,
 
     name:           string,
@@ -208,14 +46,93 @@ Model :: struct {
     num_indices:    i32,
 }
 
-is_model_valid :: proc(model: Model) -> bool {
-    return model.num_indices > 0
+is_mesh_valid :: proc(mesh: Mesh) -> bool {
+    return mesh.num_indices > 0
 }
 
-model_deinit :: proc(model: ^Model) {
-    delete(model.name)
+mesh_deinit :: proc(mesh: ^Mesh) {
+    delete(mesh.name)
 }
 
+@(asset)
+PbrMaterial :: struct {
+    using base: Asset,
+
+    albedo_texture: AssetHandle `asset:"Texture2D"`,
+    normal_texture: AssetHandle `asset:"Texture2D"`,
+    height_texture: AssetHandle `asset:"Texture2D"`,
+
+    block: UniformBuffer(struct {
+        albedo_color:     Color,
+        metallic_factor:  f32 `range:"0.0, 1.0"`,
+        roughness_factor: f32 `range:"0.0, 1.0"`,
+    }),
+}
+
+@(constructor=PbrMaterial)
+new_pbr_material :: proc() -> ^Asset {
+    material := new(PbrMaterial)
+
+    material.block = create_uniform_buffer(type_of(material.block.data), 10)
+
+    return material
+}
+
+@(serializer=PbrMaterial)
+serialize_pbr_material :: proc(this: ^Asset, s: ^SerializeContext) {
+    this := cast(^PbrMaterial)this
+
+    switch s.mode {
+    case .Serialize:
+        serialize_begin_table(s, "PbrMaterial")
+        serialize_do_field(s, "AlbedoColor", this.block.albedo_color)
+        serialize_do_field(s, "MetallicFactor", this.block.metallic_factor)
+        serialize_do_field(s, "RoughnessFactor", this.block.roughness_factor)
+        serialize_asset_handle(&EngineInstance.asset_manager, s, "AbledoTexture", &this.albedo_texture)
+        serialize_asset_handle(&EngineInstance.asset_manager, s, "NormalTexture", &this.normal_texture)
+
+        serialize_end_table(s)
+    case .Deserialize:
+        if serialize_begin_table(s, "PbrMaterial") {
+            if color, ok := serialize_get_field(s, "AlbedoColor", Color); ok {
+                this.block.albedo_color = color
+            }
+            if metallic, ok := serialize_get_field(s, "MetallicFactor", f32); ok {
+                this.block.metallic_factor = metallic
+            }
+            if roughness, ok := serialize_get_field(s, "RoughnessFactor", f32); ok {
+                this.block.roughness_factor = roughness
+            }
+
+            serialize_asset_handle(&EngineInstance.asset_manager, s, "AbledoTexture", &this.albedo_texture)
+            serialize_asset_handle(&EngineInstance.asset_manager, s, "NormalTexture", &this.normal_texture)
+            serialize_end_table(s)
+        }
+    }
+}
+
+bind_pbr_material :: proc(m: ^PbrMaterial) {
+    manager := &EngineInstance.asset_manager
+    albedo := get_asset(manager, m.albedo_texture, Texture2D)
+    if albedo == nil {
+        gl.BindTextureUnit(0, get_asset(manager, RendererInstance.white_texture, Texture2D).handle)
+    } else {
+        gl.BindTextureUnit(0, albedo.handle)
+    }
+
+    normal := get_asset(manager, m.normal_texture, Texture2D)
+    if normal == nil {
+        gl.BindTextureUnit(1, get_asset(manager, RendererInstance.normal_texture, Texture2D).handle)
+    } else {
+        gl.BindTextureUnit(1, normal.handle)
+    }
+
+    // gl.BindBufferBase(gl.UNIFORM_BUFFER, 10, m.block.handle)
+    uniform_buffer_rebind(&m.block)
+    uniform_buffer_set_data(&m.block)
+}
+
+/*
 // Currently, every object in a gltf file is be its own buffer.
 scene_load_from_file :: proc(w: ^World, file: string) {
     model_data, ok := os.read_entire_file_from_filename(file)
@@ -399,3 +316,4 @@ scene_load_from_file :: proc(w: ^World, file: string) {
 
     return
 }
+*/
