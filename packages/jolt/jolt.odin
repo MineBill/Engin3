@@ -392,60 +392,60 @@ RayCastSettings :: struct {
 }
 
 BroadPhaseLayerInterfaceVTable :: struct {
-	GetNumBroadPhaseLayers: proc "c" ()->c.uint32_t,
-	GetBroadPhaseLayer: proc "c" (in_layer:ObjectLayer)->BroadPhaseLayer,
+	GetNumBroadPhaseLayers: proc "c" () -> c.uint32_t,
+	GetBroadPhaseLayer: proc "c" (in_layer:ObjectLayer) -> BroadPhaseLayer,
 }
 
 ObjectLayerPairFilterVTable :: struct {
-	ShouldCollide: proc "c" (in_layer1:ObjectLayer,in_layer2:ObjectLayer)->bool,
+	ShouldCollide: proc "c" (in_layer1:ObjectLayer, in_layer2:ObjectLayer) -> bool,
 }
 
 ContactListenerVTable :: struct {
-	OnContactValidate: proc "c" (in_body1:^Body,in_body2:^Body,in_base_offset:[3]c.float,in_collision_result:^CollideShapeResult)->ValidateResult,
-	OnContactAdded: proc "c" (in_body1:^Body,in_body2:^Body,in_manifold:^ContactManifold,io_settings:^ContactSettings),
-	OnContactPersisted: proc "c" (in_body1:^Body,in_body2:^Body,in_manifold:^ContactManifold,io_settings:^ContactSettings),
-	OnContactRemoved: proc "c" (in_self:rawptr,in_sub_shape_pair:^SubShapeIDPair),
+	OnContactValidate: proc "c" (#by_ptr in_body1: Body, #by_ptr in_body2: Body, in_base_offset:[3]c.float, #by_ptr in_collision_result: CollideShapeResult) -> ValidateResult,
+	OnContactAdded: proc "c" (#by_ptr in_body1: Body, #by_ptr in_body2: Body, #by_ptr in_manifold: ContactManifold, io_settings: ^ContactSettings),
+	OnContactPersisted: proc "c" (#by_ptr in_body1: Body, #by_ptr in_body2: Body, #by_ptr in_manifold: ContactManifold, io_settings: ^ContactSettings),
+	OnContactRemoved: proc "c" (#by_ptr in_sub_shape_pair: SubShapeIDPair),
 }
 
 ObjectVsBroadPhaseLayerFilterVTable :: struct {
-	ShouldCollide: proc "c" (in_layer1:ObjectLayer,in_layer2:BroadPhaseLayer)->bool,
+	ShouldCollide: proc "c" (in_layer1:ObjectLayer, in_layer2:BroadPhaseLayer) -> bool,
 }
 
 CharacterContactListenerVTable :: struct {
 	__vtable_header: [2]rawptr,
-	OnAdjustBodyVelocity: proc "c" (in_self:rawptr,in_character:^CharacterVirtual,in_body2:^Body,io_linear_velocity:[3]c.float,io_angular_velocity:[3]c.float),
-	OnContactValidate: proc "c" (in_self:rawptr,in_character:^CharacterVirtual,in_body2:^Body,sub_shape_id:^SubShapeID)->bool,
-	OnContactAdded: proc "c" (in_self:rawptr,in_character:^CharacterVirtual,in_body2:^Body,sub_shape_id:^SubShapeID,contact_position:[3]c.float,contact_normal:[3]c.float,io_settings:^CharacterContactSettings),
-	OnContactSolve: proc "c" (in_self:rawptr,in_character:^CharacterVirtual,in_body2:^Body,sub_shape_id:^SubShapeID,contact_position:[3]c.float,contact_normal:[3]c.float,contact_velocity:[3]c.float,contact_material:^PhysicsMaterial,character_velocity_in:[3]c.float,character_velocity_out:[3]c.float),
+	OnAdjustBodyVelocity: proc "c" (in_self:rawptr, #by_ptr in_character: CharacterVirtual, #by_ptr in_body2: Body, io_linear_velocity:[3]c.float, io_angular_velocity:[3]c.float),
+	OnContactValidate: proc "c" (in_self:rawptr, #by_ptr in_character: CharacterVirtual, #by_ptr in_body2: Body, #by_ptr sub_shape_id: SubShapeID) -> bool,
+	OnContactAdded: proc "c" (in_self:rawptr, #by_ptr in_character: CharacterVirtual, #by_ptr in_body2: Body, #by_ptr sub_shape_id: SubShapeID, contact_position:[3]c.float, contact_normal:[3]c.float, io_settings: ^CharacterContactSettings),
+	OnContactSolve: proc "c" (in_self:rawptr, #by_ptr in_character: CharacterVirtual, #by_ptr in_body2: Body, #by_ptr sub_shape_id: SubShapeID, contact_position:[3]c.float, contact_normal:[3]c.float, contact_velocity:[3]c.float, #by_ptr contact_material: PhysicsMaterial, character_velocity_in:[3]c.float, character_velocity_out:[3]c.float),
 }
 
 ObjectLayerFilterVTable :: struct {
 	__vtable_header: [2]rawptr,
-	ShouldCollide: proc "c" (in_self:rawptr,in_layer:ObjectLayer)->bool,
+	ShouldCollide: proc "c" (in_self:rawptr, in_layer:ObjectLayer) -> bool,
 }
 
 BodyActivationListenerVTable :: struct {
 	__vtable_header: [2]rawptr,
-	OnBodyActivated: proc "c" (in_self:rawptr,in_body_id:^BodyID,in_user_data:c.uint64_t),
-	OnBodyDeactivated: proc "c" (in_self:rawptr,in_body_id:^BodyID,in_user_data:c.uint64_t),
+	OnBodyActivated: proc "c" (in_self:rawptr, #by_ptr in_body_id: BodyID, in_user_data:c.uint64_t),
+	OnBodyDeactivated: proc "c" (in_self:rawptr, #by_ptr in_body_id: BodyID, in_user_data:c.uint64_t),
 }
 
 BodyFilterVTable :: struct {
 	__vtable_header: [2]rawptr,
-	ShouldCollide: proc "c" (in_self:rawptr,in_body_id:^BodyID)->bool,
-	ShouldCollideLocked: proc "c" (in_self:rawptr,in_body:^Body)->bool,
+	ShouldCollide: proc "c" (in_self:rawptr, #by_ptr in_body_id: BodyID) -> bool,
+	ShouldCollideLocked: proc "c" (in_self:rawptr, #by_ptr in_body: Body) -> bool,
 }
 
 ShapeFilterVTable :: struct {
 	__vtable_header: [2]rawptr,
-	ShouldCollide: proc "c" (in_self:rawptr,in_shape:^Shape,in_sub_shape_id:^SubShapeID)->bool,
-	PairShouldCollide: proc "c" (in_self:rawptr,in_shape1:^Shape,in_sub_shape_id1:^SubShapeID,in_shape2:^Shape,in_sub_shape_id2:^SubShapeID)->bool,
+	ShouldCollide: proc "c" (in_self:rawptr, #by_ptr in_shape: Shape, #by_ptr in_sub_shape_id: SubShapeID) -> bool,
+	PairShouldCollide: proc "c" (in_self:rawptr, #by_ptr in_shape1: Shape, #by_ptr in_sub_shape_id1: SubShapeID, #by_ptr in_shape2: Shape, #by_ptr in_sub_shape_id2: SubShapeID) -> bool,
 	bodyId2: c.uint32_t,
 }
 
 PhysicsStepListenerVTable :: struct {
 	__vtable_header: [2]rawptr,
-	OnStep: proc "c" (in_delta_time:c.float,in_physics_system:^PhysicsSystem),
+	OnStep: proc "c" (in_delta_time:c.float, in_physics_system: ^PhysicsSystem),
 }
 
 TempAllocator :: struct{}
@@ -484,9 +484,9 @@ BodyID :: distinct c.uint32_t
 SubShapeID :: distinct c.uint32_t 
 CollisionGroupID :: distinct c.uint32_t 
 CollisionSubGroupID :: distinct c.uint32_t 
-AllocateFunction :: proc "c" (in_size:c.size_t)->rawptr
+AllocateFunction :: proc "c" (in_size:c.size_t) -> rawptr
 FreeFunction :: proc "c" (in_block:rawptr)
-AlignedAllocateFunction :: proc "c" (in_size:c.size_t,in_alignment:c.size_t)->rawptr
+AlignedAllocateFunction :: proc "c" (in_size:c.size_t, in_alignment:c.size_t) -> rawptr
 AlignedFreeFunction :: proc "c" (in_block:rawptr)
 // Maximum amount of jobs to allow
 cMaxPhysicsJobs : u32 = 2048

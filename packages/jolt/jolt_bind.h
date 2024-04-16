@@ -1005,7 +1005,7 @@ typedef struct JOLT_ContactListenerVTable
 
     // Optional, can be NULL.
     void
-    (*OnContactRemoved)(void *in_self, const JOLT_SubShapeIDPair *in_sub_shape_pair);
+    (*OnContactRemoved)(const JOLT_SubShapeIDPair *in_sub_shape_pair);
 } JOLT_ContactListenerVTable;
 
 typedef struct JOLT_ObjectVsBroadPhaseLayerFilterVTable

@@ -24,14 +24,30 @@ def process_function_ptr(x):
     input_string = 'proc "c" ('
     i = 0
     for p in x.parameters:
-        input_string += (f"{p.name}:")
+        is_rawptr = False
+        if hasattr(p.type,"ptr_to"):
+            for fs in p.type.ptr_to.typename.segments:
+                name = fs.name
+                if name == "void":
+                    is_rawptr = True
+
+        if hasattr(p.type,"ptr_to"):
+            if p.type.ptr_to.const and is_rawptr is False:
+                input_string += (f"#by_ptr {p.name}:")
+            else:
+                input_string += (f"{p.name}:")
+        else:
+            input_string += (f"{p.name}:")
         if hasattr(p.type,"ptr_to"):
             for fs in p.type.ptr_to.typename.segments:
                 name = fs.name
                 if name == "void":
                     input_string += ("rawptr")
                 else:
-                    input_string += (f"^{name}")
+                    if p.type.ptr_to.const:
+                        input_string += (f" {name}")
+                    else:
+                        input_string += (f" ^{name}")
         elif hasattr(p.type,"array_of"):
             #for t in p.type.size.tokens:
             size = p.type.size.tokens[0].value
@@ -43,7 +59,7 @@ def process_function_ptr(x):
                 input_string += (f"{s.name}")
                 #print(p.type.typename)  
         if i != len(x.parameters) - 1:
-            input_string += (",")
+            input_string += (", ")
         i = i+1
     input_string += (")")
     # return type
@@ -51,14 +67,14 @@ def process_function_ptr(x):
         if hasattr(x.return_type.ptr_to,"ptr_to"):
             for s in x.return_type.ptr_to.ptr_to.typename.segments:
                 #denotes a multipointer or pointer to a pointer
-                input_string += (f"->[^]{s.name}")
+                input_string += (f" -> [^]{s.name}")
         else:
             for s in x.return_type.ptr_to.typename.segments:
                 name = s.name
                 if name == "void":
-                    input_string += ("->rawptr")
+                    input_string += (" -> rawptr")
                 else:
-                    input_string += (f"->^{name}")
+                    input_string += (f" -> ^{name}")
                 #input_string += (f"->^{s.name}")
 
     else:
@@ -67,7 +83,7 @@ def process_function_ptr(x):
             if name == "void":
                 input_string += ("")
             else:
-                input_string += (f"->{s.name}")
+                input_string += (f" -> {s.name}")
 
     return input_string
 

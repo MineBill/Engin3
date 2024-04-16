@@ -592,48 +592,103 @@ public:
 	
 };
 
+static inline JPH::Vec3 loadVec3(const float in[3]) {
+    assert(in != nullptr);
+    return JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(in));
+}
+
+static inline JPH::Vec4 loadVec4(const float in[4]) {
+    assert(in != nullptr);
+    return JPH::Vec4::sLoadFloat4(reinterpret_cast<const JPH::Float4 *>(in));
+}
+
+static inline JPH::Mat44 loadMat44(const float in[16]) {
+    assert(in != nullptr);
+    return JPH::Mat44::sLoadFloat4x4(reinterpret_cast<const JPH::Float4 *>(in));
+}
+
+static inline JPH::RVec3 loadRVec3(const JOLT_Real in[3]) {
+    assert(in != nullptr);
+#if JOLT_DOUBLE_PRECISION == 0
+    return JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(in));
+#else
+    return JPH::DVec3(in[0], in[1], in[2]);
+#endif
+}
+
+static inline void storeRVec3(JOLT_Real out[3], JPH::RVec3Arg in) {
+    assert(out != nullptr);
+#if JOLT_DOUBLE_PRECISION == 0
+    in.StoreFloat3(reinterpret_cast<JPH::Float3 *>(out));
+#else
+    in.StoreDouble3(reinterpret_cast<JPH::Double3 *>(out));
+#endif
+}
+
+static inline void storeVec3(float out[3], JPH::Vec3Arg in) {
+    assert(out != nullptr);
+    in.StoreFloat3(reinterpret_cast<JPH::Float3 *>(out));
+}
+
+static inline void storeVec4(float out[4], JPH::Vec4Arg in) {
+    assert(out != nullptr);
+    in.StoreFloat4(reinterpret_cast<JPH::Float4 *>(out));
+}
+
+static inline void storeMat44(float out[16], JPH::Mat44Arg in) {
+    assert(out != nullptr);
+    in.StoreFloat4x4(reinterpret_cast<JPH::Float4 *>(out));
+}
+
 class InternalContactListener : public ContactListener
 {
 public:
-	// See: ContactListener
-	virtual ValidateResult	OnContactValidate(const Body &inBody1, const Body &inBody2, RVec3Arg inBaseOffset, const CollideShapeResult &inCollisionResult) override
-	{
-		// Allows you to ignore a contact before it is created (using layers to not make objects collide is cheaper!)
-		return static_cast<ValidateResult>(this->OnContactValidateFP((JOLT_Body*)&inBody1,(JOLT_Body*)&inBody2,(Vec3)inBaseOffset,(JOLT_CollideShapeResult*)(&inCollisionResult)));
-	}
+    // See: ContactListener
+    virtual ValidateResult  OnContactValidate(const Body &inBody1, const Body &inBody2, RVec3Arg inBaseOffset, const CollideShapeResult &inCollisionResult) override
+    {
+        // Allows you to ignore a contact before it is created (using layers to not make objects collide is cheaper!)
+        float vec[3] = {0, 0, 0};
+        return static_cast<ValidateResult>(this->OnContactValidateFP((JOLT_Body*)&inBody1, (JOLT_Body*)&inBody2, vec, (JOLT_CollideShapeResult*)(&inCollisionResult)));
+    }
 
-	virtual void			OnContactAdded(const Body &inBody1, const Body &inBody2, const ContactManifold &inManifold, ContactSettings &ioSettings) override
-	{
-		this->OnContactAddedFP((JOLT_Body*)&inBody1,(JOLT_Body*)&inBody2,(JOLT_ContactManifold*)&inManifold,(JOLT_ContactSettings*)&ioSettings);
-	}
+    virtual void OnContactAdded(const Body &inBody1, const Body &inBody2, const ContactManifold &inManifold, ContactSettings &ioSettings) override
+    {
+        if (OnContactAddedFP != nullptr) {
+            this->OnContactAddedFP((JOLT_Body*)&inBody1,(JOLT_Body*)&inBody2,(JOLT_ContactManifold*)&inManifold,(JOLT_ContactSettings*)&ioSettings);
+        }
+    }
 
-	virtual void			OnContactPersisted(const Body &inBody1, const Body &inBody2, const ContactManifold &inManifold, ContactSettings &ioSettings) override
-	{
-		this->OnContactPersistedFP((JOLT_Body*)&inBody1,(JOLT_Body*)&inBody2,(JOLT_ContactManifold*)&inManifold,(JOLT_ContactSettings*)&ioSettings);
-	}
+    virtual void OnContactPersisted(const Body &inBody1, const Body &inBody2, const ContactManifold &inManifold, ContactSettings &ioSettings) override
+    {
+        if (OnContactPersistedFP != nullptr) {
+            this->OnContactPersistedFP((JOLT_Body*)&inBody1,(JOLT_Body*)&inBody2,(JOLT_ContactManifold*)&inManifold,(JOLT_ContactSettings*)&ioSettings);
+        }
+    }
 
-	virtual void			OnContactRemoved(const SubShapeIDPair &inSubShapePair) override
-	{
-		this->OnContactRemovedFP((JOLT_SubShapeIDPair*)&inSubShapePair);
-	}
-	
-	void (*OnContactAddedFP)(const JOLT_Body *inBody1,const JOLT_Body *inBody2,const JOLT_ContactManifold *inManifold,JOLT_ContactSettings *ioSettings);
-	void SetOnContactAddedProc(void (*OnContactAddedFPParam)(const JOLT_Body *inBody1,const JOLT_Body *inBody2,const JOLT_ContactManifold *inManifold,JOLT_ContactSettings *ioSettings)){
+    virtual void OnContactRemoved(const SubShapeIDPair &inSubShapePair) override
+    {
+        if (OnContactRemovedFP != nullptr) {
+            this->OnContactRemovedFP((JOLT_SubShapeIDPair*)&inSubShapePair);
+        }
+    }
+    
+    void (*OnContactAddedFP)(const JOLT_Body *inBody1,const JOLT_Body *inBody2,const JOLT_ContactManifold *inManifold,JOLT_ContactSettings *ioSettings);
+    void SetOnContactAddedProc(void (*OnContactAddedFPParam)(const JOLT_Body *inBody1,const JOLT_Body *inBody2,const JOLT_ContactManifold *inManifold,JOLT_ContactSettings *ioSettings)){
         OnContactAddedFP = OnContactAddedFPParam;
     }
 
-	JOLT_ValidateResult (*OnContactValidateFP)(const JOLT_Body *inBody1,const JOLT_Body *inBody2,RVec3Arg inBaseOffset,JOLT_CollideShapeResult *inCollisionResult);
-	void SetOnContactValidateProc(JOLT_ValidateResult(*OnContactValidateParam)(const JOLT_Body *inBody1,const JOLT_Body *inBody2,RVec3Arg inBaseOffset,JOLT_CollideShapeResult *inCollisionResult)){
+    JOLT_ValidateResult (*OnContactValidateFP)(const JOLT_Body *inBody1,const JOLT_Body *inBody2, const JOLT_Real in_base_offset[3], const JOLT_CollideShapeResult *inCollisionResult);
+    void SetOnContactValidateProc(JOLT_ValidateResult(*OnContactValidateParam)(const JOLT_Body *inBody1,const JOLT_Body *inBody2, const JOLT_Real in_base_offset[3], const JOLT_CollideShapeResult *inCollisionResult)){
         OnContactValidateFP = OnContactValidateParam;
     }
 
-	void (*OnContactPersistedFP)(JOLT_Body *inBody1,JOLT_Body *inBody2,JOLT_ContactManifold* inManifold,JOLT_ContactSettings *ioSettings);
-	void SetOnContactValidateProc(void(*OnContactPersistedParam)(JOLT_Body *inBody1,JOLT_Body *inBody2,JOLT_ContactManifold* inManifold,JOLT_ContactSettings *ioSettings)){
+    void (*OnContactPersistedFP)(const JOLT_Body *inBody1, const JOLT_Body *inBody2, const JOLT_ContactManifold* inManifold, JOLT_ContactSettings *ioSettings);
+    void SetOnContactPersistProc(void(*OnContactPersistedParam)(const JOLT_Body *inBody1, const JOLT_Body *inBody2, const JOLT_ContactManifold* inManifold,JOLT_ContactSettings *ioSettings)){
         OnContactPersistedFP = OnContactPersistedParam;
     }
 
-	void (*OnContactRemovedFP)(JOLT_SubShapeIDPair* inSubShapePair);
-	void SetOnContactRemovedProc(void(*OnContactRemovedParam)(JOLT_SubShapeIDPair* inSubShapePair)){
+    void (*OnContactRemovedFP)(const JOLT_SubShapeIDPair* inSubShapePair);
+    void SetOnContactRemovedProc(void(*OnContactRemovedParam)(const JOLT_SubShapeIDPair* inSubShapePair)){
         OnContactRemovedFP = OnContactRemovedParam;
     }
 };
@@ -690,53 +745,6 @@ FN(toJpc)(JPH::BodyInterface *in) { assert(in); return reinterpret_cast<JOLT_Bod
 FN(toJph)(JOLT_BodyInterface *in) { assert(in); return reinterpret_cast<JPH::BodyInterface *>(in); }
 */
 
-static inline JPH::Vec3 loadVec3(const float in[3]) {
-    assert(in != nullptr);
-    return JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(in));
-}
-
-static inline JPH::Vec4 loadVec4(const float in[4]) {
-    assert(in != nullptr);
-    return JPH::Vec4::sLoadFloat4(reinterpret_cast<const JPH::Float4 *>(in));
-}
-
-static inline JPH::Mat44 loadMat44(const float in[16]) {
-    assert(in != nullptr);
-    return JPH::Mat44::sLoadFloat4x4(reinterpret_cast<const JPH::Float4 *>(in));
-}
-
-static inline JPH::RVec3 loadRVec3(const JOLT_Real in[3]) {
-    assert(in != nullptr);
-#if JOLT_DOUBLE_PRECISION == 0
-    return JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(in));
-#else
-    return JPH::DVec3(in[0], in[1], in[2]);
-#endif
-}
-
-static inline void storeRVec3(JOLT_Real out[3], JPH::RVec3Arg in) {
-    assert(out != nullptr);
-#if JOLT_DOUBLE_PRECISION == 0
-    in.StoreFloat3(reinterpret_cast<JPH::Float3 *>(out));
-#else
-    in.StoreDouble3(reinterpret_cast<JPH::Double3 *>(out));
-#endif
-}
-
-static inline void storeVec3(float out[3], JPH::Vec3Arg in) {
-    assert(out != nullptr);
-    in.StoreFloat3(reinterpret_cast<JPH::Float3 *>(out));
-}
-
-static inline void storeVec4(float out[4], JPH::Vec4Arg in) {
-    assert(out != nullptr);
-    in.StoreFloat4(reinterpret_cast<JPH::Float4 *>(out));
-}
-
-static inline void storeMat44(float out[16], JPH::Mat44Arg in) {
-    assert(out != nullptr);
-    in.StoreFloat4x4(reinterpret_cast<JPH::Float4 *>(out));
-}
 
 JOLT_Body* JOLT_BodyInterface_CreateBody(JOLT_BodyInterface *in_iface,JOLT_BodyCreationSettings *in_settings){
 	auto iface = reinterpret_cast<JPH::BodyInterface*>(in_iface);
@@ -1104,9 +1112,12 @@ void JOLT_SetContactListener(JOLT_PhysicsSystem *in_physics_system, JOLT_Contact
     }
 	*/
 
-	cl.SetOnContactAddedProc(in_listener->OnContactAdded);
+    cl.SetOnContactAddedProc(in_listener->OnContactAdded);
+    cl.SetOnContactValidateProc(in_listener->OnContactValidate);
+    cl.SetOnContactRemovedProc(in_listener->OnContactRemoved);
+    cl.SetOnContactPersistProc(in_listener->OnContactPersisted);
 
-    //toJph(in_physics_system)->SetContactListener(data->contact_listener);
+    toJph(in_physics_system)->SetContactListener(&cl);
 
     //data->contact_listener->c_listener = static_cast<ContactListener::CListener *>(in_listener);
 }
