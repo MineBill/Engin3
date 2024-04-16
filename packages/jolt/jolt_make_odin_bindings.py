@@ -1,33 +1,28 @@
 from cxxheaderparser.simple import parse_string
-import re
-import subprocess
-import os
-import platform
+from jolt_preprocess import process_header
+
 
 def typedef_remove_by_name(remove_name):
     indices = []
     i = 0
     for td in typedef_list:
-        if hasattr(td.type,"ptr_to"):
+        if hasattr(td.type, "ptr_to"):
             i += 1
             continue
-    #TODO(What to do with FUnction ptr and vtable)
-    #skip vtables but and function pointers for now
+    # TODO(What to do with FUnction ptr and vtable)
+    # skip vtables but and function pointers for now
         for tds in td.type.typename.segments:
-            if hasattr(tds,"name") == False:
+            if hasattr(tds, "name") is False:
                 continue
             if remove_name == tds.name:
                 indices.append(i)
-                
         i += 1
     for index in indices:
         typedef_list.pop(index)
-        
 
 def process_function_ptr(x):
     input_string = 'proc "c" ('
     i = 0
-    
     for p in x.parameters:
         input_string += (f"{p.name}:")
         if hasattr(p.type,"ptr_to"):
@@ -51,7 +46,7 @@ def process_function_ptr(x):
             input_string += (",")
         i = i+1
     input_string += (")")
-    #return type
+    # return type
     if hasattr(x.return_type,"ptr_to"):
         if hasattr(x.return_type.ptr_to,"ptr_to"):
             for s in x.return_type.ptr_to.ptr_to.typename.segments:
@@ -84,7 +79,7 @@ def process_function(x):
     if x.has_body == False:
         #print(x.name)
         for s in x.name.segments:
-            input_string += (f" {s.name}:: proc(")
+            input_string += (f"\t{s.name} :: proc(")
         i = 0
         for p in x.parameters:
             input_string += (f"{p.name}:")
@@ -117,14 +112,14 @@ def process_function(x):
             if hasattr(x.return_type.ptr_to,"ptr_to"):
                  for s in x.return_type.ptr_to.ptr_to.typename.segments:
                 #denotes a multipointer or pointer to a pointer
-                    input_string += (f"->[^]{s.name}")
+                    input_string += (f" -> [^]{s.name}")
             else:
                 for s in x.return_type.ptr_to.typename.segments:
                     name = s.name
                     if name == "void":
-                        input_string += ("->rawptr")
+                        input_string += (" -> rawptr")
                     else:
-                        input_string += (f"->^{name}")
+                        input_string += (f" -> ^{name}")
                     #input_string += (f"->^{s.name}")
         
         else:
@@ -133,11 +128,11 @@ def process_function(x):
                 if name == "void":
                     input_string += ("")
                 else:
-                    input_string += (f"->{s.name}")
+                    input_string += (f" -> {s.name}")
     input_string += ("---\n")
     return input_string
      
-def process_struct(x,parent,input_string):
+def process_struct(x,parent,input_string, indent):
     final_name = ""
     for s in x.class_decl.typename.segments:
         if hasattr(s,"id"):#is anonymous
@@ -149,19 +144,15 @@ def process_struct(x,parent,input_string):
                 #for sf in f.type.segments:
                 if hasattr(f.type,"typename") and hasattr(f.type.typename,"segments"):
                     for seg in f.type.typename.segments:
-                    #if hasattr(f.type.typename.segments,"id"):
-                   # if hasattr(f.type.typename.segments,"id"):
                         if hasattr(seg,"id") and seg.id == id:
-                            input_string += (f"{f.name} : struct")
+                            input_string += (f"{indent}{f.name}: struct {{\n")
                             final_name = f.name
-                            input_string += ("{\n")
                             id_found = True
             if id_found == False:
-                input_string += ("using _ : struct{\n")
+                input_string += ("{indent}using _ : struct{\n")
         else:
-            input_string += (f"{s.name} :: struct")
+            input_string += (f"{indent}{s.name} :: struct {{\n")
             final_name = s.name
-            input_string += ("{\n")
         for f in x.fields:
             #nested struct
             if hasattr(f.type,"typename") and hasattr(f.type.typename,"classkey") and f.type.typename.classkey != None:
@@ -171,11 +162,11 @@ def process_struct(x,parent,input_string):
                     class_id = ns.class_decl.typename.segments[0].id
                     if field_id == class_id:
                         new_string = ""
-                        new_string += process_struct(ns,x,new_string)
+                        new_string += process_struct(ns,x,new_string, indent + "\t")
                         input_string += new_string
             #pointers and function pointers
             elif hasattr(f.type,"ptr_to"):
-                input_string += (f" {f.name} : ")
+                input_string += (f"{indent}\t{f.name}: ")
                 if hasattr(f.type.ptr_to,"return_type") or hasattr(f.type,"parameters"):
                     #get the function signature of function pointer
                     #input_string += ("Function type,")
@@ -191,7 +182,7 @@ def process_struct(x,parent,input_string):
                 input_string += "\n"
             #array types          
             elif hasattr(f.type, 'array_of'):
-                input_string += (f" {f.name} : ")
+                input_string += (f"{indent}\t{f.name}: ")
                 if hasattr(f.type.array_of,'typename'):
                     size = f.type.size.tokens[0].value
                     for fs in f.type.array_of.typename.segments:
@@ -211,10 +202,10 @@ def process_struct(x,parent,input_string):
                         outer_size = f.type.array_of.size.tokens[0].value
                         input_string += (f"[{inner_size}][{outer_size}]{fs.name},")
                         input_string += (f"\n")
-                input_string += "\n"  
+                input_string += "\n"
             #basics
             else:
-                input_string += (f" {f.name} : ")
+                input_string += (f"{indent}\t{f.name}: ")
                 for fs in f.type.typename.segments:
                     input_string += (f"{fs.name},")
                 input_string += "\n"
@@ -222,7 +213,7 @@ def process_struct(x,parent,input_string):
     if parent == None:
         input_string+= ("}\n\n")
     else:
-        input_string += ("},\n")
+        input_string += (f"{indent}}},\n")
     
     typedef_remove_by_name(final_name)
     return input_string
@@ -260,22 +251,24 @@ def process_enum(x,typedef_list):
             return ""
         else:
             final_name = s.name
-            input_string += ("%s :: enum{\n" % final_name)
-        
-        
+            input_string += ("%s :: enum {\n" % final_name)
         typedef_remove_by_name(final_name)
     for v in x.values:
         if hasattr(v.value,"tokens") and len(v.value.tokens) > 0:
-            input_string += (f" {v.name} = {v.value.tokens[0].value},\n")
+            input_string += (f"\t{v.name} = {v.value.tokens[0].value},\n")
         else:
-            input_string += (" %s,\n" % v.name)
+            input_string += ("\t%s,\n" % v.name)
             
-    input_string += ("}\n") 
+    input_string += ("}\n\n") 
     return input_string
 
 
-# Call preprocess for jolt_bind.h
-subprocess.run(["python", "jolt_preprocess.py"])
+header_file_path = "jolt_bind.h"
+
+# Process the header file
+print(f"Processing '{header_file_path}'")
+process_header(header_file_path)
+
 # Read the content of the C++ file
 with open("jolt_bind_pp.h", 'r') as file:
     content = file.read()
@@ -285,29 +278,29 @@ parsed_data = parse_string(content)
 
 jolt_odin_output += ("package jolt\n")
 jolt_odin_output += ('import "core:c"\n')
-jolt_odin_output += ('import m "core:math/linalg/hlsl"\n')
+# jolt_odin_output += ('import m "core:math/linalg/hlsl"\n')
 
 jolt_odin_output += """
 when ODIN_OS == .Windows {
-    foreign import Jolt {
-        "system:Kernel32.lib",
-        "system:Gdi32.lib",
-        "build/jolt_bind.lib",
-    }
+\tforeign import Jolt {
+\t\t"system:Kernel32.lib",
+\t\t"system:Gdi32.lib",
+\t\t"build/jolt_bind.lib",
+\t}
 } else when ODIN_OS == .Linux {
-    @(extra_linker_flags="-lstdc++")
-    foreign import Jolt {
-        "build/jolt_bind.a",
-    }
+\t@(extra_linker_flags="-lstdc++")
+\tforeign import Jolt {
+\t\t"build/jolt_bind.a",
+\t}
 }else when ODIN_OS == .Darwin{
-    @(extra_linker_flags="-lstdc++")
-    foreign import Jolt {
-        "build/jolt_bind.a",
-    }
+\t@(extra_linker_flags="-lstdc++")
+\tforeign import Jolt {
+\t\t"build/jolt_bind.a",
+\t}
 }
 """
 
-jolt_odin_output += ('\n\n\n')
+jolt_odin_output += ('\n')
 
 enum_output = ""          
 typedef_list = parsed_data.namespace.typedefs
@@ -336,7 +329,7 @@ for td in typedef_list:
             input_string = input_string.replace('_', ' ').title().replace(' ', '')
             found = False
             if td_name.lower() in input_string.lower():
-                jolt_odin_output += ("%s :: enum %s{\n" % (td_name,td.type.typename.segments[0].name))
+                jolt_odin_output += ("%s :: enum %s {\n" % (td_name,td.type.typename.segments[0].name))
                 found = True
                 generated_typedef_enum_list.append(td_name)
             #input_string += ("%s :: enum{\n" % final_name)
@@ -344,15 +337,15 @@ for td in typedef_list:
                 continue
             for v in x.values:
                 if hasattr(v.value,"tokens") and len(v.value.tokens) > 0:
-                    jolt_odin_output += (f" {v.name} = {v.value.tokens[0].value},\n")
+                    jolt_odin_output += (f"\t{v.name} = {v.value.tokens[0].value},\n")
                 else:
-                    jolt_odin_output += (" %s,\n" % v.name)
+                    jolt_odin_output += ("\t%s,\n" % v.name)
             jolt_odin_output += ("}\n") 
     
 struct_output = ""
 for x in parsed_data.namespace.classes:
     if x.class_decl.typename.classkey == "struct":
-        struct_output = process_struct(x,None,struct_output)
+        struct_output = process_struct(x,None,struct_output, "")
 
 jolt_odin_output += struct_output
 
@@ -395,32 +388,31 @@ jolt_odin_output += "cMaxPhysicsBarriers : u32 = 8\n"
 
 jolt_odin_output += '@(default_calling_convention="c")\n'
 jolt_odin_output += '@(link_prefix="JOLT_")\n'
-jolt_odin_output += ("foreign Jolt{\n")
+jolt_odin_output += ("foreign Jolt {\n")
 
 function_output = ""
 for x in parsed_data.namespace.functions:
-    function_output += process_function(x) 
-    #print(function_output)  
-    
+    function_output += process_function(x)
+
 jolt_odin_output += function_output
 
 jolt_odin_output += "}"
-#print(jolt_odin_output)
+
 #strip JOLT prefixes off everything
 prev = jolt_odin_output
-#get double or singel precision for JOLT_Real
+
 for td in typedef_list:
     if td.name == "JOLT_Real":
         for s in td.type.typename.segments:
             single_or_double = s.name
+
 if single_or_double == "float":
     jolt_odin_output = jolt_odin_output.replace("JOLT_Real", "float")
     jolt_odin_output = jolt_odin_output.replace("float", "c.float")
-    
 else:
     jolt_odin_output = jolt_odin_output.replace("JOLT_Real", "double")
     jolt_odin_output = jolt_odin_output.replace("float", "c.double")
-    
+
 jolt_odin_output = jolt_odin_output.replace("JOLT_", "")
 prev = jolt_odin_output.replace('@(link_prefix="")\n','@(link_prefix="JOLT_")\n')
 jolt_odin_output = prev
@@ -431,23 +423,8 @@ jolt_odin_output = jolt_odin_output.replace("uint16_t", "c.uint16_t")
 jolt_odin_output = jolt_odin_output.replace("uint32_t", "c.uint32_t")
 jolt_odin_output = jolt_odin_output.replace("uint64_t", "c.uint64_t")
 
-jolt_odin_output = jolt_odin_output.replace("[3]c.float", "m.float3")
-jolt_odin_output = jolt_odin_output.replace("[4]c.float", "m.float4")
-jolt_odin_output = jolt_odin_output.replace("[16]c.float", "m.float4x4")
-
 # Write the modified content back to the file
+print("Writing bindings to 'jolt.odin'")
 file_path = "jolt.odin"
-with open(file_path, 'w') as file:
+with open(file_path, 'w', newline="\n") as file:
     file.write(jolt_odin_output)
-
- # Provide the path to your batch file
-os_name = platform.system()
-if os_name == 'Windows':
-    # Set up the environment variables
-    vs_path = r'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build'
-    os.environ['PATH'] = os.path.join(vs_path, 'vcvarsall.bat') + ' x64 && ' + os.environ['PATH']
-    batch_file_path = r'jolt_bindings.bat'
-    subprocess.run([batch_file_path], shell=True)
-elif os_name == 'Linux':
-    batch_file_path = r'./jolt_bindings.sh'
-    subprocess.run([batch_file_path], shell=True)

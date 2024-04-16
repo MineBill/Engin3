@@ -3,7 +3,32 @@ import "core:c"
 import jolt "../"
 import "core:runtime"
 import "core:fmt"
-import m "core:math/linalg/hlsl"
+
+float3 :: [3]f32
+float4 :: [4]f32
+
+physics_system: ^jolt.PhysicsSystem
+jta:            ^jolt.TempAllocator
+js:             ^jolt.JobSystem
+body_interface: ^jolt.BodyInterface
+
+sphere_id : jolt.BodyID
+
+BroadPhaseLayers :: enum c.uint8_t{
+    NonMoving = 0,
+    Moving = 1,
+    NumLayers = 2,
+}
+
+BroadPhaseLayers_NonMoving: jolt.ObjectLayer : 0
+BroadPhaseLayers_Moving:    jolt.ObjectLayer : 1
+BroadPhaseLayers_NumLayers: jolt.ObjectLayer : 2
+
+broad_phase_layer_map : map[jolt.ObjectLayer]BroadPhaseLayers
+
+in_broad_phase_layer_interface:        jolt.BroadPhaseLayerInterfaceVTable
+in_object_vs_broad_phase_layer_filter: jolt.ObjectVsBroadPhaseLayerFilterVTable
+in_object_layer_pair_filter:           jolt.ObjectLayerPairFilterVTable
 
 main :: proc(){
     init()
@@ -69,15 +94,15 @@ init :: proc(){
     // Note that for simple shapes (like boxes) you can also directly construct a BoxShape.
     // Create the shape
     // Add it to the world
-    a := m.float3{100,1,100}
+    a := float3{100,1,100}
     floor_shape_settings := jolt.BoxShapeSettings_Create(&a)
     fmt.println("box shape settings create")
     floor_shape := jolt.ShapeSettings_CreateShape((^jolt.ShapeSettings)(floor_shape_settings))
     fmt.println("floor shape create")
     bcs : jolt.BodyCreationSettings
 
-    in_p := m.float3{0,-1,0}
-    in_r := m.float4{0,0,0,1}
+    in_p := float3{0,-1,0}
+    in_r := float4{0,0,0,1}
     jolt.BodyCreationSettings_Set(&bcs,floor_shape,&in_p,&in_r,.MOTION_TYPE_STATIC,BroadPhaseLayers_Moving)
     floor := jolt.BodyInterface_CreateBody(body_interface,&bcs)
     fmt.println("create body floor")
@@ -88,16 +113,16 @@ init :: proc(){
     // Note that this uses the shorthand version of creating and adding a body to the world
     sphere_shape_settings := jolt.SphereShapeSettings_Create(0.5)
     sss : jolt.BodyCreationSettings
-    in_p = m.float3{0,2,0}
-    in_r = m.float4{0,0,0,1}
+    in_p = float3{0,2,0}
+    in_r = float4{0,0,0,1}
     jolt.BodyCreationSettings_Set(&sss,jolt.ShapeSettings_CreateShape((^jolt.ShapeSettings)(sphere_shape_settings)),&in_p,&in_r,.MOTION_TYPE_DYNAMIC,BroadPhaseLayers_Moving)
     sphere_id = jolt.BodyInterface_CreateAndAddBody(body_interface,&sss,.ACTIVATION_ACTIVATE)
     fmt.println(sss)
     // Now you can interact with the dynamic body, in this case we're going to give it a velocity.
     // (note that if we had used CreateBody then we could have set the velocity straight on the body before adding it to the physics system)
-    in_p = m.float3{0,-5,0}
+    in_p = float3{0,-5,0}
     jolt.BodyInterface_SetLinearVelocity(body_interface,sphere_id,&in_p)
-    linvel : m.float3
+    linvel : float3
     jolt.BodyInterface_GetLinearVelocity(body_interface,sphere_id,&linvel)
     fmt.println(linvel)
 
@@ -116,9 +141,9 @@ update :: proc(){
     fmt.printf("Update")
     step := 0
     for jolt.BodyInterface_IsActive(body_interface,sphere_id){
-        pos : m.float3
+        pos : float3
         jolt.BodyInterface_GetCenterOfMassPosition(body_interface,sphere_id,&pos)
-        linvel : m.float3
+        linvel : float3
         jolt.BodyInterface_GetLinearVelocity(body_interface,sphere_id,&linvel)
         fmt.printf("step %v : position : %v : linear velocity %v \n",step,pos,linvel)
 
@@ -187,26 +212,3 @@ namespace BroadPhaseLayers
     static constexpr uint NUM_LAYERS(2);
 };
 */
-
-physics_system: ^jolt.PhysicsSystem
-jta:            ^jolt.TempAllocator
-js:             ^jolt.JobSystem
-body_interface: ^jolt.BodyInterface
-
-sphere_id : jolt.BodyID
-
-BroadPhaseLayers :: enum c.uint8_t{
-    NonMoving = 0,
-    Moving = 1,
-    NumLayers = 2,
-}
-
-BroadPhaseLayers_NonMoving: jolt.ObjectLayer : 0
-BroadPhaseLayers_Moving:    jolt.ObjectLayer : 1
-BroadPhaseLayers_NumLayers: jolt.ObjectLayer : 2
-
-broad_phase_layer_map : map[jolt.ObjectLayer]BroadPhaseLayers
-
-in_broad_phase_layer_interface:        jolt.BroadPhaseLayerInterfaceVTable
-in_object_vs_broad_phase_layer_filter: jolt.ObjectVsBroadPhaseLayerFilterVTable
-in_object_layer_pair_filter:           jolt.ObjectLayerPairFilterVTable
