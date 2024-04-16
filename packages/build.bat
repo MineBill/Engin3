@@ -14,8 +14,10 @@ IF "%1"=="" (
         CALL :BuildImGui
     ) ELSE IF /I "%1"=="nuklear" (
         CALL :BuildNuklear
+    ) ELSE IF /I "%1"=="jolt" (
+        CALL :BuildJolt
     ) ELSE (
-        ECHO Invalid argument. Valid options are: tracy, imgui, nuklear
+        ECHO Invalid argument. Valid options are: tracy, imgui, nuklear, jolt
     )
 )
 
@@ -54,5 +56,18 @@ cl -c nuklear.c -Fonuklear -O2
 lib nuklear.obj
 del nuklear.obj
 move nuklear.lib nuklear_windows_amd64.lib
+POPD
+EXIT /B
+
+:BuildJolt
+REM jolt
+PUSHD jolt
+CALL vcvarsall x64
+
+CALL .venv\Scripts\activate.bat
+python -m pip install -r requirements.txt
+python jolt_make_odin_bindings.py
+
+call jolt_bindings.bat
 POPD
 EXIT /B
