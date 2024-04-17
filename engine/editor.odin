@@ -39,6 +39,7 @@ EditorIcon :: enum {
     PlayButton,
     PauseButton,
     StopButton,
+    StepFrameButton,
 }
 
 EditorCamera :: struct {
@@ -159,12 +160,12 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     // NOTE(minebill):  Since this is the editor, it's OK to not go through an asset manager and just
     //                  load any textures directly from a path, since we'll never run in a "cooked" mode.
     err: AssetImportError
-    e.content_browser.textures[.Generic], err    = import_texture_from_path("assets/textures/ui/file.png")
-    e.content_browser.textures[.Folder], err     = import_texture_from_path("assets/textures/ui/folder.png")
-    e.content_browser.textures[.FolderBack], err = import_texture_from_path("assets/textures/ui/folder_back.png")
-    e.content_browser.textures[.Scene], err      = import_texture_from_path("assets/textures/ui/world.png")
-    e.content_browser.textures[.Script], err     = import_texture_from_path("assets/editor/icons/lua.png")
-    e.content_browser.textures[.Material], err   = import_texture_from_path("assets/editor/icons/material.png")
+    e.content_browser.textures[.Generic], err    = import_texture_from_path("assets/editor/icons/GenericFile.png")
+    e.content_browser.textures[.Folder], err     = import_texture_from_path("assets/editor/icons/Folder.png")
+    e.content_browser.textures[.FolderBack], err = import_texture_from_path("assets/editor/icons/FolderBack.png")
+    e.content_browser.textures[.Scene], err      = import_texture_from_path("assets/editor/icons/Scene.png")
+    e.content_browser.textures[.Script], err     = import_texture_from_path("assets/editor/icons/Script.png")
+    e.content_browser.textures[.Material], err   = import_texture_from_path("assets/editor/icons/Material.png")
     e.content_browser.textures[.Model]           = e.content_browser.textures[.Unknown]
 
     images :: [?]string {
@@ -202,9 +203,10 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
         set_texture2d_data(e.preview_cubemap_texture, raw_image[:size], layer = i)
     }
 
-    e.icons[.PlayButton], err  = import_texture_from_path("assets/editor/icons/play_button.png")
-    e.icons[.PauseButton], err = import_texture_from_path("assets/editor/icons/pause_button.png")
-    e.icons[.StopButton], err  = import_texture_from_path("assets/editor/icons/stop_button.png")
+    e.icons[.PlayButton], err      = import_texture_from_path("assets/editor/icons/PlayButton.png")
+    e.icons[.PauseButton], err     = import_texture_from_path("assets/editor/icons/PauseButton.png")
+    e.icons[.StopButton], err      = import_texture_from_path("assets/editor/icons/StopButton.png")
+    e.icons[.StepFrameButton], err = import_texture_from_path("assets/editor/icons/StepFrame.png")
     log.debugf("Err: %v", err)
 
     ok: bool
