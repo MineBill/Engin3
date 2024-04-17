@@ -62,10 +62,13 @@ import_texture_from_path :: proc(path: string) -> (Texture2D, AssetImportError) 
         }
     }
 
+    // TODO(minebill): These need to be saved per-asset.
     spec := TextureSpecification {
         width = int(w),
         height = int(h),
         format = .RGBA8,
+        filter = .Linear,
+        anisotropy = 4,
     }
 
     BYTES_PER_CHANNEL :: 1

@@ -68,7 +68,6 @@ dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: ve
              angles.y * math.RAD_PER_DEG,
              angles.x * math.RAD_PER_DEG,
              angles.z * math.RAD_PER_DEG)
-    // rot := linalg.MATRIX3F32_IDENTITY
 
     dbg_draw_line(d, center + rot * (vec3{-1, -1, 1}   * half), center + rot * (vec3{1, -1, 1}   * half), thickness, color)
     dbg_draw_line(d, center + rot * (vec3{-1, 1,  1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color)
