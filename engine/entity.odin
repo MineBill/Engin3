@@ -465,7 +465,12 @@ delete_object :: proc(world: ^World, handle: EntityHandle) {
 
     remove_child(world, go.parent, handle)
 
-    for child in go.children {
+    children := make([dynamic]EntityHandle, len(go.children))
+    copy(children[:], go.children[:])
+    defer delete(children)
+
+    for child in children {
+        child_entity := get_object(world, child)
         delete_object(world, child)
     }
 

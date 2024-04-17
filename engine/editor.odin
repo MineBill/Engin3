@@ -481,6 +481,9 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         imgui.End()
     }
 
+    if e.state == .Play {
+        physics_update(PhysicsInstance, _delta)
+    }
     world_update(&e.engine.world, _delta, e.state == .Play)
 
     editor_env_panel(e)
@@ -768,6 +771,7 @@ editor_entidor :: proc(e: ^Editor) {
                 imgui.PushFont(e.fonts[.Light])
                 imgui.TextDisabled(fmt.ctprintf("UUID: %v", go.handle))
                 imgui.TextDisabled(fmt.ctprintf("Local ID: %v", go.local_id))
+                imgui.TextDisabled(fmt.ctprintf("Parent UUID: %v", go.parent))
                 imgui.PopFont()
 
                 undo_push(&e.undo, &go.flags, tag = "Change Flags")

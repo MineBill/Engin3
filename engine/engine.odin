@@ -67,6 +67,7 @@ Engine :: struct {
 
     scripting_engine: ScriptingEngine,
     renderer: Renderer,
+    physics: Physics,
 
     screen_size: vec2,
     width, height: i32,
@@ -88,6 +89,8 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     editor_init(&e.editor, e)
     context.logger = e.editor.logger
+
+    physics_init(&e.physics)
 
     e.scripting_engine = create_scripting_engine()
 
@@ -174,6 +177,8 @@ engine_draw :: proc(e: ^Engine) {
 
 engine_deinit :: proc(e: ^Engine) {
     destroy_world(&e.world)
+
+    physics_deinit(&e.physics)
 
     editor_deinit(&e.editor)
 
