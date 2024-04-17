@@ -142,12 +142,14 @@ compile_to_spirv_vulkan :: proc(source: []byte, shader_kind: ShaderKind, name: s
     ctx := context
     shaderc.compile_options_set_include_callbacks(options, include_resolve, include_result_release, &ctx)
     shaderc.compile_options_set_source_language(options, .glsl)
+    shaderc.compile_options_set_vulkan_rules_relaxed(options, true)
+    shaderc.compile_options_set_generate_debug_info(options)
 
     result := shaderc.compile_into_spv(
-        compiler, 
-        cstring(&source[0]), 
-        len(source), 
-        shader_kind_to_shaderc(shader_kind), 
+        compiler,
+        cstring(&source[0]),
+        len(source),
+        shader_kind_to_shaderc(shader_kind),
         cstr(name), "main", options)
 
     status := shaderc.result_get_compilation_status(result)
@@ -184,6 +186,7 @@ compile_to_spirv_opengl :: proc(source: []byte, shader_kind: ShaderKind, name: s
     shaderc.compile_options_set_source_language(options, .glsl)
     shaderc.compile_options_set_auto_bind_uniforms(options, true)
     shaderc.compile_options_set_vulkan_rules_relaxed(options, true)
+    shaderc.compile_options_set_generate_debug_info(options)
     shaderc.compile_options_set_optimization_level(options, .performance)
 
     ctx := context
@@ -230,11 +233,17 @@ compile_to_glsl :: proc(spirv_bytecode: []byte) -> (glsl_source: []byte, ok: boo
     options: spvc.CompilerOptions
     spvc.compiler_create_compiler_options(glsl_compiler, &options)
     spvc.compiler_options_set_uint(options, .GLSL_VERSION, 450)
-    spvc.compiler_options_set_bool(options, .GLSL_ENABLE_420PACK_EXTENSION, true)
     spvc.compiler_options_set_bool(options, .GLSL_ES, false)
     spvc.compiler_options_set_bool(options, .GLSL_ENABLE_ROW_MAJOR_LOAD_WORKAROUND, true)
     spvc.compiler_options_set_bool(options, .ENABLE_STORAGE_IMAGE_QUALIFIER_DEDUCTION, true)
     spvc.compiler_options_set_bool(options, .GLSL_SUPPORT_NONZERO_BASE_INSTANCE, true)
+
+    spvc.compiler_options_set_bool(options, .GLSL_VULKAN_SEMANTICS, false)
+    spvc.compiler_options_set_bool(options, .GLSL_SEPARATE_SHADER_OBJECTS, false)
+    spvc.compiler_options_set_bool(options, .FLATTEN_MULTIDIMENSIONAL_ARRAYS, false)
+    spvc.compiler_options_set_bool(options, .GLSL_ENABLE_420PACK_EXTENSION, true)
+    spvc.compiler_options_set_bool(options, .GLSL_EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER, false)
+    spvc.compiler_options_set_bool(options, .GLSL_EMIT_UNIFORM_BUFFER_AS_PLAIN_UNIFORMS, false)
 
     res = spvc.compiler_install_compiler_options(glsl_compiler, options)
     if res != .SUCCESS {
