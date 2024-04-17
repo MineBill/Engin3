@@ -1,16 +1,359 @@
 package engine
 import imgui "packages:odin-imgui"
+import "core:log"
+import "core:reflect"
+
+ACCENT_COLOR :: 0x3C3798FF
 
 EditorStyle :: struct {
     popup_padding: vec2,
     popup_color: Color,
+
+    button_styles:       [ButtonStyles]ButtonStyle,
+    image_button_styles: [ImageButtonStyles]ImageButtonStyle,
+    check_box_styles:    [CheckBoxStyles]CheckBoxStyle,
 }
 
-default_style :: proc() -> (style: EditorStyle) {
-    style.popup_color = COLOR_RED
-    style.popup_padding = vec2{4, 4}
+default_style :: proc() -> (editor_style: EditorStyle) {
+    editor_style.popup_color = COLOR_RED
+    editor_style.popup_padding = vec2{4, 4}
 
+    editor_style.button_styles[.Generic] = default_button_style()
+
+    setup_image_button_styles(&editor_style.image_button_styles)
+    setup_checkbox_styles(&editor_style.check_box_styles)
     return
+}
+
+setup_image_button_styles :: proc(styles: ^[ImageButtonStyles]ImageButtonStyle) {
+    styles[.Generic] = default_image_button_style()
+
+    // DISABLED STYLE
+    disabled := &styles[.Disabled]
+    disabled^ = default_image_button_style()
+
+    disabled.normal_color = COLOR_TRANSPARENT
+    disabled.hover_color = COLOR_TRANSPARENT
+    disabled.pressed_color = COLOR_TRANSPARENT
+    disabled.tint = Color{0.5, 0.5, 0.5, 1.0}
+    // disabled.tint = COLOR_TRANSPARENT
+}
+
+setup_checkbox_styles :: proc(styles: ^[CheckBoxStyles]CheckBoxStyle) {
+    styles[.Generic] = default_checkbox_style()
+
+    // DISABLED STYLE
+    disabled := &styles[.Disabled]
+    disabled^ = default_checkbox_style()
+
+    disabled.normal_color  = Color{0.2, 0.2, 0.2, 1.0}
+    disabled.hover_color   = Color{0.2, 0.2, 0.2, 1.0}
+    disabled.pressed_color = Color{0.2, 0.2, 0.2, 1.0}
+
+    // MENUBAR STYLE
+    menubar := &styles[.MenuBar]
+    menubar^ = default_checkbox_style()
+
+    menubar.padding = vec2{0, 0}
+}
+
+do_button :: proc(label: string, size := vec2{0, 0}, alignment := f32(0.0)) -> bool {
+    clabel := cstr(label)
+    style := EditorInstance.style.button_styles[.Generic]
+
+    imgui.PushStyleVarImVec2(.FramePadding, style.padding)
+    imgui.PushStyleVar(.FrameRounding, style.rounding)
+    imgui.PushStyleVar(.FrameBorderSize, 1 if style.border else 0)
+
+    imgui.PushStyleColorImVec4(.Button, cast(vec4) style.color)
+    imgui.PushStyleColorImVec4(.ButtonHovered, cast(vec4) style.hover_color)
+    imgui.PushStyleColorImVec4(.ButtonActive, cast(vec4) style.pressed_color)
+
+    imgui.PushStyleColorImVec4(.Text, cast(vec4) style.text_color)
+    imgui.PushStyleColorImVec4(.Border, cast(vec4) style.border_color)
+    imgui.PushStyleColorImVec4(.BorderShadow, cast(vec4) style.border_shadow_color)
+    defer {
+        imgui.PopStyleVar(3)
+        imgui.PopStyleColor(6)
+    }
+
+    s := imgui.CalcTextSize(clabel).x + style.padding.x * 2.0
+    available := imgui.GetContentRegionAvail().x
+    off := (available - s) * alignment
+    if off > 0.0 {
+        imgui.SetCursorPosX(imgui.GetCursorPosX() + off)
+    }
+
+    return imgui.Button(clabel, size)
+}
+
+do_image_button :: proc(id: cstring, texture: Texture2D, size: vec2, style := ImageButtonStyles.Generic, disabled := false) -> bool {
+    if disabled {
+        imgui.BeginDisabled()
+    }
+    style := EditorInstance.style.image_button_styles[style]
+
+    imgui.PushStyleVarImVec2(.FramePadding, style.padding)
+    imgui.PushStyleVar(.FrameRounding, style.rounding)
+    imgui.PushStyleVar(.FrameBorderSize, 1 if style.border else 0)
+
+    imgui.PushStyleColorImVec4(.Button, cast(vec4) style.normal_color)
+    imgui.PushStyleColorImVec4(.ButtonHovered, cast(vec4) style.hover_color)
+    imgui.PushStyleColorImVec4(.ButtonActive, cast(vec4) style.pressed_color)
+
+    imgui.PushStyleColorImVec4(.Border, cast(vec4) style.border_color)
+    imgui.PushStyleColorImVec4(.BorderShadow, cast(vec4) style.border_shadow_color)
+
+    defer {
+        imgui.PopStyleVar(3)
+        imgui.PopStyleColor(5)
+        if disabled {
+            imgui.EndDisabled()
+        }
+    }
+
+    return imgui.ImageButton(id, transmute(rawptr)u64(texture.handle), size, tint_col = cast(vec4) style.tint)
+}
+
+do_checkbox :: proc(label: string, value: ^bool, style := CheckBoxStyles.Generic) -> bool {
+    clabel := cstr(label)
+    style := EditorInstance.style.check_box_styles[style]
+
+    imgui.PushStyleVarImVec2(.FramePadding, style.padding)
+    imgui.PushStyleColorImVec4(.FrameBg, cast(vec4) style.normal_color)
+    imgui.PushStyleColorImVec4(.FrameBgActive, cast(vec4) style.pressed_color)
+    imgui.PushStyleColorImVec4(.FrameBgHovered, cast(vec4) style.hover_color)
+    defer {
+        imgui.PopStyleVar(1)
+        imgui.PopStyleColor(3)
+    }
+
+    return imgui.Checkbox(clabel, value)
+}
+
+draw_texture :: proc(texture: Texture2D, size: vec2, uv0 := vec2{0, 1}, uv1 := vec2{1, 0}) {
+    imgui.Image(transmute(rawptr)u64(texture.handle), size, uv0, uv1, vec4{1, 1, 1, 1})
+}
+
+CommonStyle :: struct {
+    padding: vec2,
+    rounding: f32,
+    border: bool,
+}
+
+default_common_style :: proc() -> CommonStyle {
+    return CommonStyle {
+        padding = vec2{2, 2},
+        rounding = 1.0,
+        border = false,
+    }
+}
+
+InteractiveStyle :: struct {
+    normal_color, hover_color, pressed_color: Color,
+}
+
+default_interactive_style :: proc() -> InteractiveStyle {
+    accent := color_hex(ACCENT_COLOR)
+    return {
+        normal_color = accent,
+        hover_color = color_lighten(accent, 0.1),
+        pressed_color = color_darken(accent, 0.1),
+    }
+}
+
+ButtonStyles :: enum {
+    Generic,
+    Disabled,
+}
+
+ButtonStyle :: struct {
+    using common:      CommonStyle,
+    using interactive: InteractiveStyle,
+
+    color: Color,
+    text_color: Color,
+    border_color: Color,
+    border_shadow_color: Color,
+}
+
+default_button_style :: proc() -> ButtonStyle {
+    style := imgui.GetStyle()
+    return {
+        common = default_common_style(),
+        interactive = default_interactive_style(),
+
+        padding = vec2{3, 3},
+        color = color_hex(ACCENT_COLOR),
+        text_color = cast(Color) style.Colors[imgui.Col.Text],
+        border_color = COLOR_WHITE,
+        border_shadow_color = COLOR_BLACK,
+        rounding = 2.0,
+    }
+}
+
+ImageButtonStyles :: enum {
+    Generic,
+    Disabled,
+}
+
+ImageButtonStyle :: struct {
+    using common:      CommonStyle,
+    using interactive: InteractiveStyle,
+
+    tint: Color,
+    border_color: Color,
+    border_shadow_color: Color,
+}
+
+default_image_button_style :: proc() -> ImageButtonStyle {
+    style := ImageButtonStyle {
+        common = default_common_style(),
+        interactive = default_interactive_style(),
+
+        tint = COLOR_WHITE,
+        border_color = COLOR_WHITE,
+        border_shadow_color = COLOR_BLACK,
+    }
+    style.padding = vec2{0, 0}
+    style.normal_color  = COLOR_TRANSPARENT
+    return style
+}
+
+CheckBoxStyles :: enum {
+    Generic,
+    Disabled,
+    MenuBar,
+}
+
+CheckBoxStyle :: struct {
+    using common:      CommonStyle,
+    using interactive: InteractiveStyle,
+}
+
+default_checkbox_style :: proc() -> CheckBoxStyle {
+    style := CheckBoxStyle {
+        common = default_common_style(),
+        interactive = default_interactive_style(),
+    }
+
+    style.padding = vec2{2, 2}
+    return style
+}
+
+PROPERTY_TABLE_FLAGS :: imgui.TableFlags_BordersInnerV | imgui.TableFlags_Resizable
+
+@(deferred_out=end_property)
+do_property :: proc(id: string, flags := PROPERTY_TABLE_FLAGS) -> bool {
+    return imgui.BeginTable(cstr(id), 2, flags)
+}
+
+end_property :: proc(opened: bool) {
+    if opened {
+        imgui.EndTable()
+    }
+}
+
+do_property_name :: proc(name: string) {
+    imgui.TableNextColumn()
+    imgui.TextUnformatted(cstr(name))
+}
+
+do_property_value :: proc(value: any, tag: reflect.Struct_Tag) -> (modified: bool) {
+    ti := reflect.type_info_base(type_info_of(value.id))
+
+    imgui.TableNextColumn()
+    imgui.SetNextItemWidth(imgui.GetContentRegionAvail().x)
+    switch {
+    case reflect.is_boolean(ti):
+        b := &value.(bool)
+        modified = do_checkbox("##checkbox", b)
+
+    case reflect.is_float(ti):
+        fallthrough
+    case reflect.is_integer(ti):
+        if min, max, ok := parse_range_tag(tag); ok {
+            if reflect.is_integer(ti) {
+                // We use the biggest integer type to cover all cases.
+                min, max := i128(min), i128(max)
+                modified = imgui.SliderScalar(
+                    "##slider_scalar",
+                    number_to_imgui_scalar(value),
+                    value.data,
+                    &min, &max)
+            } else {
+                modified = imgui.SliderScalar(
+                    "##slider_scalar",
+                    number_to_imgui_scalar(value),
+                    value.data,
+                    &min, &max)
+            }
+        } else {
+            modified = imgui.DragScalar(
+                "##drag_scalar",
+                number_to_imgui_scalar(value),
+                value.data)
+        }
+
+    case reflect.is_enum(ti):
+        modified = imgui_enum_combo_id("##enum_combo", value, ti)
+
+    case reflect.is_array(ti):
+        array := reflect.type_info_base(ti).variant.(reflect.Type_Info_Array)
+        switch ti.id {
+        case typeid_of(vec3):
+            imgui_vec3("##vec3", &value.(vec3))
+        case typeid_of(vec4):
+            modified = imgui.DragFloat4("##vec4", &value.(vec4))
+        case typeid_of(Color):
+            color := cast(^vec4)&value.(Color)
+            modified = imgui.ColorEdit4("##Color", color, {})
+        case:
+            // imgui_draw_array(field.name, value)
+        }
+    case reflect.is_slice(ti):
+        // modified = imgui_draw_slice(field.name, value)
+    case reflect.is_struct(ti):
+        for field in reflect.struct_fields_zipped(ti.id) {
+            if do_property(field.name) {
+                do_property_name(field.name)
+                value := reflect.struct_field_value(value, field)
+                do_property_value(value, field.tag)
+            }
+        }
+        // switch ti.id {
+        // case:
+        //     if imgui.TreeNodeEx(cstr(field.name), {.FramePadding}) {
+        //         modified = imgui_draw_struct(e, value)
+        //         imgui.TreePop()
+        //     }
+        // }
+    case reflect.is_pointer(ti):
+        // pointer := reflect.type_info_base(ti).variant.(runtime.Type_Info_Pointer)
+
+    case reflect.is_string(ti):
+        imgui.TextUnformatted(cstr(value.(string)))
+    }
+    return
+}
+
+TreeNodeStyles :: enum {
+    Generic,
+}
+
+TreeNodeStyle :: struct {
+
+}
+
+@(deferred_out=end_treenode)
+do_treenode :: proc(label: string, flags := imgui.TreeNodeFlags{}, style := TreeNodeStyles.Generic) -> bool {
+    return imgui.TreeNodeEx(cstr(label), flags)
+}
+
+end_treenode :: proc(opened: bool) {
+    if opened {
+        imgui.TreePop()
+    }
 }
 
 apply_style :: proc(style: EditorStyle) {
@@ -44,7 +387,7 @@ apply_style :: proc(style: EditorStyle) {
     style.TabRounding               = 0.0
     style.TabBorderSize             = 0.0
     style.TabMinWidthForCloseButton = 0.0
-    style.ColorButtonPosition       = .Right;
+    style.ColorButtonPosition       = .Left;
     style.ButtonTextAlign           = vec2{0.5, 0.5}
     style.SelectableTextAlign       = vec2{0.0, 0.0}
 
@@ -101,4 +444,61 @@ apply_style :: proc(style: EditorStyle) {
     style.Colors[imgui.Col.NavWindowingHighlight] = vec4{0.4980392158031464,  0.5137255191802979,  1.0,                 1.0}
     style.Colors[imgui.Col.NavWindowingDimBg]     = vec4{0.196078434586525,   0.1764705926179886,  0.5450980663299561,  0.501960813999176}
     style.Colors[imgui.Col.ModalWindowDimBg]      = vec4{0.196078434586525,   0.1764705926179886,  0.5450980663299561,  0.501960813999176}
+
+    // colors := &style.Colors
+    // colors[imgui.Col.Text]                   = vec4{1.00, 1.00, 1.00, 1.00};
+    // colors[imgui.Col.TextDisabled]           = vec4{0.27, 0.32, 0.45, 1.00};
+    // colors[imgui.Col.WindowBg]               = vec4{0.08, 0.08, 0.09, 1.00};
+    // colors[imgui.Col.ChildBg]                = vec4{0.08, 0.09, 0.10, 1.00};
+    // colors[imgui.Col.PopupBg]                = vec4{0.08, 0.09, 0.10, 1.00};
+    // colors[imgui.Col.Border]                 = vec4{0.16, 0.17, 0.19, 1.00};
+    // colors[imgui.Col.BorderShadow]           = vec4{0.08, 0.09, 0.10, 1.00};
+    // colors[imgui.Col.FrameBg]                = vec4{0.11, 0.12, 0.13, 1.00};
+    // colors[imgui.Col.FrameBgHovered]         = vec4{0.16, 0.17, 0.19, 1.00};
+    // colors[imgui.Col.FrameBgActive]          = vec4{0.60, 0.46, 0.22, 1.00};
+    // colors[imgui.Col.TitleBg]                = vec4{0.06, 0.06, 0.07, 1.00};
+    // colors[imgui.Col.TitleBgActive]          = vec4{0.05, 0.05, 0.06, 1.00};
+    // colors[imgui.Col.TitleBgCollapsed]       = vec4{0.08, 0.09, 0.10, 1.00};
+    // colors[imgui.Col.MenuBarBg]              = vec4{0.11, 0.11, 0.12, 1.00};
+    // colors[imgui.Col.ScrollbarBg]            = vec4{0.05, 0.05, 0.07, 1.00};
+    // colors[imgui.Col.ScrollbarGrab]          = vec4{0.12, 0.13, 0.15, 1.00};
+    // colors[imgui.Col.ScrollbarGrabHovered]   = vec4{0.16, 0.17, 0.19, 1.00};
+    // colors[imgui.Col.ScrollbarGrabActive]    = vec4{0.12, 0.13, 0.15, 1.00};
+    // colors[imgui.Col.CheckMark]              = vec4{1.00, 0.82, 0.50, 1.00};
+    // colors[imgui.Col.SliderGrab]             = vec4{1.00, 0.82, 0.50, 1.00};
+    // colors[imgui.Col.SliderGrabActive]       = vec4{1.00, 0.83, 0.54, 1.00};
+    // colors[imgui.Col.Button]                 = vec4{0.15, 0.17, 0.19, 1.00};
+    // colors[imgui.Col.ButtonHovered]          = vec4{0.55, 0.41, 0.18, 1.00};
+    // colors[imgui.Col.ButtonActive]           = vec4{0.60, 0.46, 0.22, 1.00};
+    // colors[imgui.Col.Header]                 = vec4{0.15, 0.17, 0.19, 1.00};
+    // colors[imgui.Col.HeaderHovered]          = vec4{0.55, 0.41, 0.18, 1.00};
+    // colors[imgui.Col.HeaderActive]           = vec4{0.60, 0.46, 0.22, 1.00};
+    // colors[imgui.Col.Separator]              = vec4{0.16, 0.18, 0.25, 1.00};
+    // colors[imgui.Col.SeparatorHovered]       = vec4{0.16, 0.18, 0.25, 1.00};
+    // colors[imgui.Col.SeparatorActive]        = vec4{0.16, 0.18, 0.25, 1.00};
+    // colors[imgui.Col.ResizeGrip]             = vec4{0.12, 0.13, 0.15, 1.00};
+    // colors[imgui.Col.ResizeGripHovered]      = vec4{0.55, 0.41, 0.18, 1.00};
+    // colors[imgui.Col.ResizeGripActive]       = vec4{0.60, 0.46, 0.22, 1.00};
+    // colors[imgui.Col.Tab]                    = vec4{0.05, 0.05, 0.07, 1.00};
+    // colors[imgui.Col.TabHovered]             = vec4{0.12, 0.13, 0.15, 1.00};
+    // colors[imgui.Col.TabActive]              = vec4{0.10, 0.11, 0.12, 1.00};
+    // colors[imgui.Col.TabUnfocused]           = vec4{0.05, 0.05, 0.07, 1.00};
+    // colors[imgui.Col.TabUnfocusedActive]     = vec4{0.08, 0.09, 0.10, 1.00};
+    // colors[imgui.Col.DockingPreview]         = vec4{0.26, 0.59, 0.98, 0.70};
+    // colors[imgui.Col.DockingEmptyBg]         = vec4{0.20, 0.20, 0.20, 1.00};
+    // colors[imgui.Col.PlotLines]              = vec4{0.52, 0.60, 0.70, 1.00};
+    // colors[imgui.Col.PlotLinesHovered]       = vec4{0.04, 0.98, 0.98, 1.00};
+    // colors[imgui.Col.PlotHistogram]          = vec4{1.00, 0.29, 0.60, 1.00};
+    // colors[imgui.Col.PlotHistogramHovered]   = vec4{1.00, 0.47, 0.70, 1.00};
+    // colors[imgui.Col.TableHeaderBg]          = vec4{0.05, 0.05, 0.07, 1.00};
+    // colors[imgui.Col.TableBorderStrong]      = vec4{0.05, 0.05, 0.07, 1.00};
+    // colors[imgui.Col.TableBorderLight]       = vec4{0.00, 0.00, 0.00, 1.00};
+    // colors[imgui.Col.TableRowBg]             = vec4{0.12, 0.13, 0.15, 1.00};
+    // colors[imgui.Col.TableRowBgAlt]          = vec4{0.10, 0.11, 0.12, 1.00};
+    // colors[imgui.Col.TextSelectedBg]         = vec4{0.24, 0.22, 0.60, 1.00};
+    // colors[imgui.Col.DragDropTarget]         = vec4{0.50, 0.51, 1.00, 1.00};
+    // colors[imgui.Col.NavHighlight]           = vec4{0.50, 0.51, 1.00, 1.00};
+    // colors[imgui.Col.NavWindowingHighlight]  = vec4{0.50, 0.51, 1.00, 1.00};
+    // colors[imgui.Col.NavWindowingDimBg]      = vec4{0.20, 0.18, 0.55, 0.50};
+    // colors[imgui.Col.ModalWindowDimBg]       = vec4{0.20, 0.18, 0.55, 0.50};
 }

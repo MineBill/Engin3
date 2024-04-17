@@ -62,12 +62,98 @@ COLOR_PLUM      :: Color{0.56, 0.27, 0.52, 1}
 COLOR_TURQUOISE :: Color{0.25, 0.88, 0.82, 1}
 COLOR_ROSE      :: Color{1, 0.3, 0.5, 1}
 
+COLOR_TRANSPARENT :: Color{0, 0, 0, 0}
+
 color_hex :: proc(hex: int) -> Color {
     r: f32 = f32(hex >> 24) / 255
     g: f32 = f32((hex  >> 16) & 0x00FF) / 255
     b: f32 = f32((hex  >> 8) & 0x0000FF) / 255
     a: f32 = f32(hex & 0x000000FF) / 255
     return {r, g, b, a}
+}
+
+color_lighten :: proc(color: Color, amount_percent: f32) -> Color {
+    hsl := rgb_to_hsl(color)
+    hsl.l += amount_percent
+    return hsl_to_rgb(hsl)
+}
+
+color_darken :: proc(color: Color, amount_percent: f32) -> Color {
+    hsl := rgb_to_hsl(color)
+    hsl.l -= amount_percent
+    return hsl_to_rgb(hsl)
+}
+
+HSL :: struct {
+    h, s, l, a: f32,
+}
+
+rgb_to_hsl :: proc(color: Color) -> (hsl: HSL) {
+    color := color
+    hsl.a = color.a
+    max := max(color.r, color.g, color.b)
+    min := min(color.r, color.g, color.b)
+
+    hsl.l = (min + max) / 2.0
+
+    if max == min {
+        return hsl
+    }
+
+    d := max - min
+    
+    hsl.s = (hsl.l > 0.5) ? d / (2.0 - max - min) : d / (max + min);
+
+    if color.r > color.g && color.r > color.b {
+        hsl.h = (color.g - color.b) / d + (color.g < color.b ? 6.0 : 0.0);
+    }
+    else if color.g > color.b {
+        hsl.h = (color.b - color.r) / d + 2.0;
+    }
+    else {
+        hsl.h = (color.r - color.g) / d + 4.0;
+    }
+
+    hsl.h /= 6.0;
+
+    return
+}
+
+hsl_to_rgb :: proc(hsl: HSL) -> (color: Color) {
+    color.a = hsl.a
+    if hsl.s == 0 {
+        return Color {hsl.l, hsl.l, hsl.l, hsl.a}
+    } else {
+        q := hsl.l < 0.5 ? hsl.l * (1 + hsl.s) : hsl.l + hsl.s - hsl.l * hsl.s
+        p := 2 * hsl.l - q
+        color.r = hue_to_rgb(p, q, hsl.h + 1./3.)
+        color.g = hue_to_rgb(p, q, hsl.h)
+        color.b = hue_to_rgb(p, q, hsl.h - 1./3.)
+        color.a = hsl.a
+    }
+    return
+}
+
+hue_to_rgb :: proc(p, q, t: f32) -> f32 {
+    t := t
+
+    if t < 0 {
+        t += 1
+    }
+    if t > 1 {
+        t -= 1.
+    }
+
+    if (t < 1./6.) {
+        return p + (q - p) * 6. * t;
+    }
+    if (t < 1./2.) {
+        return q;
+    }
+    if t < 2./3. {
+        return p + (q - p) * (2./3. - t) * 6.;
+    }
+    return p;
 }
 
 vec2i :: [2]i32
