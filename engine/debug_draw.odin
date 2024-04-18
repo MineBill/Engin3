@@ -2,6 +2,7 @@ package engine
 import gl "vendor:OpenGL"
 import "core:math"
 import "core:math/linalg"
+import "core:sync"
 
 MAX_LINES :: 10_000
 
@@ -14,6 +15,7 @@ LinePoint :: struct {
 LINE_VERTEX_SIZE :: size_of(vec3) + size_of(f32)
 
 DebugDrawContext :: struct {
+    mutex: sync.Mutex,
     vao, vbo: u32,
     shader: Shader,
 
@@ -53,8 +55,10 @@ dbg_deinit :: proc(d: DebugDrawContext) {
 }
 
 dbg_draw_line :: proc(d: ^DebugDrawContext, s, e: vec3, thickness: f32 = 1.0, color := COLOR_RED) {
-    append(&d.lines, LinePoint{s, thickness, color})
-    append(&d.lines, LinePoint{e, thickness, color})
+    if sync.mutex_guard(&d.mutex) {
+        append(&d.lines, LinePoint{s, thickness, color})
+        append(&d.lines, LinePoint{e, thickness, color})
+    }
 }
 
 dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: vec3, thickness: f32 = 1.0, color := COLOR_BLUE) {
@@ -130,14 +134,16 @@ dbg_draw_sphere :: proc(d: ^DebugDrawContext, position: vec3, radius: f32, thick
 }
 
 dbg_render :: proc(d: ^DebugDrawContext) {
-    if len(d.lines) == 0 do return
-    gl.NamedBufferSubData(d.vbo, 0, len(d.lines) * size_of(LinePoint), raw_data(d.lines))
+    line_count := len(d.lines)
+    if line_count == 0 do return
+    assert(line_count % 2 == 0)
 
     gl.UseProgram(d.shader.program)
     gl.BindVertexArray(d.vao)
     gl.LineWidth(2)
-    // gl.DrawArrays(gl.LINES, 0, i32(len(d.lines) ))
-    draw_arrays(gl.LINES, 0, len(d.lines))
+
+    gl.NamedBufferSubData(d.vbo, 0, line_count * size_of(LinePoint), raw_data(d.lines))
+    draw_arrays(gl.LINES, 0, line_count)
 
     clear(&d.lines)
 }
