@@ -19,5 +19,6 @@ Once installed, execute `task run` at the project root and everything should be 
 Task is used to run a meta program when needed and to compile needed libraries for first-time use.
 
 ### Screenshots
-![Editor Screenshot](screenshots/editor.png)
-![PBR Balls](screenshots/pbr.png)
+![Screenshot_7](https://github.com/MineBill/Engin3/assets/30367251/33772937-d243-48c0-9ba7-8039c686b8ea)
+
+![Screenshot_8](https://github.com/MineBill/Engin3/assets/30367251/72fee72a-f554-4b79-b082-738f9e692d03)
