@@ -71,6 +71,17 @@ when USE_EDITOR {
 
     AssetRegistry :: map[AssetHandle]AssetMetadata
 
+    registry_set_metadata :: proc(registry: ^AssetRegistry, handle: AssetHandle, metadata: AssetMetadata) {
+        registry[handle] = metadata
+
+        if !metadata.is_virtual {
+            s: SerializeContext
+            serialize_init(&s)
+            serialize_asset_registry(registry, &s)
+            serialize_dump_to_file(&s, project_get_asset_registry_location(EditorInstance.active_project))
+        }
+    }
+
     AssetManager :: EditorAssetManager
 
     EditorAssetManager :: struct {
@@ -199,10 +210,13 @@ when USE_EDITOR {
             }
             return
         }
+        log.debugf("Relative path to project: '%v'", relative_path_to_project)
 
+        log.debugf("Copying file '%v' to location '%v'", absolute_file_path, new_file_path)
         fs.copy_file(absolute_file_path, new_file_path)
 
         ext := filepath.ext(file_name)
+        log.debugf("File ext: '%v'", ext)
 
         type: AssetType = .Invalid
         if ext in SUPPORTED_ASSETS {
@@ -214,7 +228,7 @@ when USE_EDITOR {
             path = relative_path_to_project,
         }
 
-        manager.registry[handle] = metadata
+        registry_set_metadata(&manager.registry, handle, metadata)
     }
 
     // Writes an asset handle.
@@ -262,10 +276,11 @@ when USE_EDITOR {
                 asset := constructor()
                 handle := AssetHandle(generate_uuid())
 
-                manager.registry[handle] = AssetMetadata {
+                metadata := AssetMetadata {
                     type = type,
                     path = strings.clone(string(path)),
                 }
+                registry_set_metadata(&manager.registry, handle, metadata)
 
                 save_asset(manager, handle)
             }
@@ -375,11 +390,12 @@ when USE_EDITOR {
         type := RAW_TYPE_TO_ASSET_TYPE[T]
 
         handle = AssetHandle(generate_uuid())
-        manager.registry[handle] = AssetMetadata {
+        metadata := AssetMetadata {
             type = type,
             is_virtual = true,
             path = strings.clone(tag),
         }
+        registry_set_metadata(&manager.registry, handle, metadata)
 
         manager.loaded_assets[handle] = asset
 

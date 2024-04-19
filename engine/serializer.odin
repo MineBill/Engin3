@@ -11,6 +11,7 @@ import c "core:c/libc"
 import intr "base:intrinsics"
 import "core:io"
 import "core:strconv"
+import "packages:back"
 
 SerializationMode :: enum {
     Serialize,
@@ -67,6 +68,14 @@ serialize_init_file :: proc(s: ^SerializeContext, file_name: string) {
 
     if luaL.loadfile(L, strings.clone_to_cstring(file_name, context.temp_allocator)) != lua.OK {
         log.error("Error reading bytecode")
+        trace, err := back.lines(back.trace())
+        if err != nil {
+            log.warn("START BACK TRACE")
+            for line in trace {
+                log.warnf("%v - %v", line.symbol, line.location)
+            }
+            log.warn("END BACK TRACE")
+        }
         return
     }
 
@@ -740,6 +749,8 @@ end
 
 return tableToLuaStringWithTableName
 `
+
+serialize_dump_to_file :: serialize_dump
 
 // Converts the config into a string and writes it to the file located at `output`.
 serialize_dump :: proc(s: ^SerializeContext, output: string) {

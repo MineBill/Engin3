@@ -6,27 +6,31 @@ import "core:reflect"
 ACCENT_COLOR :: 0x3C3798FF
 
 EditorStyle :: struct {
-    popup_padding: vec2,
-    popup_color: Color,
-
     button_styles:       [ButtonStyles]ButtonStyle,
     image_button_styles: [ImageButtonStyles]ImageButtonStyle,
     check_box_styles:    [CheckBoxStyles]CheckBoxStyle,
+    popup_styles:        [PopupStyles]PopupStyle,
 }
 
 default_style :: proc() -> (editor_style: EditorStyle) {
-    editor_style.popup_color = COLOR_RED
-    editor_style.popup_padding = vec2{4, 4}
-
-    editor_style.button_styles[.Generic] = default_button_style()
-
+    setup_button_styles(&editor_style.button_styles)
     setup_image_button_styles(&editor_style.image_button_styles)
     setup_checkbox_styles(&editor_style.check_box_styles)
+    setup_popup_styles(&editor_style.popup_styles)
     return
+}
+
+setup_button_styles :: proc(styles: ^[ButtonStyles]ButtonStyle) {
+    styles[.Generic] = default_button_style()
 }
 
 setup_image_button_styles :: proc(styles: ^[ImageButtonStyles]ImageButtonStyle) {
     styles[.Generic] = default_image_button_style()
+
+    // GENERIC ROUNDED
+    generic_rounded := &styles[.GenericRounded]
+    generic_rounded^ = default_image_button_style()
+    generic_rounded.rounding = 5.0
 
     // DISABLED STYLE
     disabled := &styles[.Disabled]
@@ -37,6 +41,15 @@ setup_image_button_styles :: proc(styles: ^[ImageButtonStyles]ImageButtonStyle) 
     disabled.pressed_color = COLOR_TRANSPARENT
     disabled.tint = Color{0.5, 0.5, 0.5, 1.0}
     // disabled.tint = COLOR_TRANSPARENT
+
+    // ASSET REFERENCE
+    ar := &styles[.AssetReference]
+    ar^ = default_image_button_style()
+    ar.rounding = 5.0
+    // ar.border_color = cast(Color) imgui.GetStyleColorVec4(.FrameBg)^
+    ar.border_color = COLOR_TRANSPARENT
+    ar.border_shadow_color = COLOR_BLACK
+    ar.border = true
 }
 
 setup_checkbox_styles :: proc(styles: ^[CheckBoxStyles]CheckBoxStyle) {
@@ -55,6 +68,10 @@ setup_checkbox_styles :: proc(styles: ^[CheckBoxStyles]CheckBoxStyle) {
     menubar^ = default_checkbox_style()
 
     menubar.padding = vec2{0, 0}
+}
+
+setup_popup_styles :: proc(styles: ^[PopupStyles]PopupStyle) {
+    styles[.Generic] = default_popup_style()
 }
 
 do_button :: proc(label: string, size := vec2{0, 0}, alignment := f32(0.0)) -> bool {
@@ -131,6 +148,34 @@ do_checkbox :: proc(label: string, value: ^bool, style := CheckBoxStyles.Generic
     return imgui.Checkbox(clabel, value)
 }
 
+@(deferred_out=end_popup)
+do_context_menu_item :: proc(flags := imgui.PopupFlags(0), style := PopupStyles.Generic) -> bool {
+    with_popup_style(style)
+    return imgui.BeginPopupContextItem()
+}
+
+@(deferred_out=end_popup)
+begin_popup :: proc(label: string, flags := imgui.WindowFlags{}, style := PopupStyles.Generic) -> bool {
+    with_popup_style(style)
+    return imgui.BeginPopup(cstr(label), flags)
+}
+
+end_popup :: proc(opened: bool) {
+    if opened {
+        imgui.EndPopup()
+    }
+}
+
+@(deferred_out=end_popup_style)
+with_popup_style :: proc(style := PopupStyles.Generic) {
+    style := EditorInstance.style.popup_styles[style]
+    imgui.PushStyleVarImVec2(.WindowPadding, style.padding)
+}
+
+end_popup_style :: proc() {
+    imgui.PopStyleVar(1)
+}
+
 draw_texture :: proc(texture: Texture2D, size: vec2, uv0 := vec2{0, 1}, uv1 := vec2{1, 0}) {
     imgui.Image(transmute(rawptr)u64(texture.handle), size, uv0, uv1, vec4{1, 1, 1, 1})
 }
@@ -160,6 +205,22 @@ default_interactive_style :: proc() -> InteractiveStyle {
         hover_color = color_lighten(accent, 0.1),
         pressed_color = color_darken(accent, 0.1),
     }
+}
+
+PopupStyles :: enum {
+    Generic,
+}
+
+PopupStyle :: struct {
+    using common: CommonStyle,
+}
+
+default_popup_style :: proc() -> (style: PopupStyle) {
+    style = PopupStyle {
+        common = default_common_style(),
+    }
+    style.padding = vec2{5, 5}
+    return
 }
 
 ButtonStyles :: enum {
@@ -194,7 +255,9 @@ default_button_style :: proc() -> ButtonStyle {
 
 ImageButtonStyles :: enum {
     Generic,
+    GenericRounded,
     Disabled,
+    AssetReference,
 }
 
 ImageButtonStyle :: struct {
@@ -241,10 +304,14 @@ default_checkbox_style :: proc() -> CheckBoxStyle {
     return style
 }
 
-PROPERTY_TABLE_FLAGS :: imgui.TableFlags_BordersInnerV | imgui.TableFlags_Resizable
+PROPERTY_TABLE_FLAGS :: imgui.TableFlags_BordersInnerV |
+    imgui.TableFlags_Resizable |
+    imgui.TableFlags_NoSavedSettings |
+    imgui.TableFlags_SizingStretchSame
 
 @(deferred_out=end_property)
 do_property :: proc(id: string, flags := PROPERTY_TABLE_FLAGS) -> bool {
+    imgui.PushStyleVarImVec2(.CellPadding, vec2{1, 1})
     return imgui.BeginTable(cstr(id), 2, flags)
 }
 
@@ -252,19 +319,62 @@ end_property :: proc(opened: bool) {
     if opened {
         imgui.EndTable()
     }
+    imgui.PopStyleVar(1)
 }
 
 do_property_name :: proc(name: string) {
+    cname := cstr(name)
     imgui.TableNextColumn()
-    imgui.TextUnformatted(cstr(name))
+    // size := imgui.CalcTextSize(cname)
+    // imgui.SetNextItemWidth(size.x)
+    imgui.TextUnformatted(cname)
 }
 
 do_property_value :: proc(value: any, tag: reflect.Struct_Tag) -> (modified: bool) {
-    ti := reflect.type_info_base(type_info_of(value.id))
+    ti := (type_info_of(value.id))
+    imgui.PushIDPtr(value.data)
+    defer imgui.PopID()
 
     imgui.TableNextColumn()
     imgui.SetNextItemWidth(imgui.GetContentRegionAvail().x)
+
+    // if named, ok := ti.variant.(reflect.Type_Info_Named); ok {
+    //     return
+    // }
+
     switch {
+    case ti.id == typeid_of(AssetHandle):
+        handle := &value.(AssetHandle)
+
+        if do_image_button("##asset_handle", EditorInstance.icons[.AssetReferene], vec2{48, 48}, .AssetReference) {}
+
+        if imgui.IsItemHovered() && imgui.IsMouseDoubleClicked(.Left) {
+            // Ask the content browser to navigate to this asset
+        }
+
+        if imgui.BeginDragDropTarget() {
+
+            if type_name, ok := reflect.struct_tag_lookup(tag, "asset"); ok {
+                type, _ := reflect.enum_from_name(AssetType, type_name)
+
+                if payload := imgui.GetDragDropPayload(); payload != nil {
+                    new_handle := cast(^AssetHandle) payload.Data
+
+                    new_type := get_asset_type(&EngineInstance.asset_manager, new_handle^)
+                    if new_type == type {
+                        if p := imgui.AcceptDragDropPayload("CONTENT_ITEM_ASSET"); p != nil {
+                            handle^ = new_handle^
+                        }
+                    }
+                }
+            }
+            imgui.EndDragDropTarget()
+        }
+
+        if asset := get_asset_metadata(&EngineInstance.asset_manager, handle^); asset.type != .Invalid {
+            imgui.TextUnformatted(cstr(asset.path))
+        }
+
     case reflect.is_boolean(ti):
         b := &value.(bool)
         modified = do_checkbox("##checkbox", b)
@@ -280,19 +390,19 @@ do_property_value :: proc(value: any, tag: reflect.Struct_Tag) -> (modified: boo
                     "##slider_scalar",
                     number_to_imgui_scalar(value),
                     value.data,
-                    &min, &max)
+                    &min, &max, flags = {.AlwaysClamp})
             } else {
                 modified = imgui.SliderScalar(
                     "##slider_scalar",
                     number_to_imgui_scalar(value),
                     value.data,
-                    &min, &max)
+                    &min, &max, flags = {.AlwaysClamp})
             }
         } else {
             modified = imgui.DragScalar(
                 "##drag_scalar",
                 number_to_imgui_scalar(value),
-                value.data)
+                value.data, 0.01, flags = {.AlwaysClamp})
         }
 
     case reflect.is_enum(ti):
@@ -300,9 +410,9 @@ do_property_value :: proc(value: any, tag: reflect.Struct_Tag) -> (modified: boo
 
     case reflect.is_array(ti):
         array := reflect.type_info_base(ti).variant.(reflect.Type_Info_Array)
-        switch ti.id {
+        switch value.id {
         case typeid_of(vec3):
-            imgui_vec3("##vec3", &value.(vec3))
+            modified = imgui.DragFloat3("##vec3", &value.(vec3))
         case typeid_of(vec4):
             modified = imgui.DragFloat4("##vec4", &value.(vec4))
         case typeid_of(Color):
@@ -356,6 +466,14 @@ end_treenode :: proc(opened: bool) {
     }
 }
 
+color_to_abgr :: proc(color: Color) -> u32 {
+    r := u8(color.r * 255)
+    g := u8(color.g * 255)
+    b := u8(color.b * 255)
+    a := u8(color.a * 255)
+    return (u32(a) << 24) | (u32(b) << 16) | (u32(g) << 8) | u32(r)
+}
+
 apply_style :: proc(style: EditorStyle) {
     // Fork of Future Dark style from ImThemes
     style := imgui.GetStyle()
@@ -363,28 +481,28 @@ apply_style :: proc(style: EditorStyle) {
     style.Alpha                     = 1.0
     style.DisabledAlpha             = 1.0
     style.WindowPadding             = vec2{12.0, 12.0}
-    style.WindowRounding            = 2.0
+    style.WindowRounding            = 3.0
     style.WindowBorderSize          = 1.0
     style.WindowMinSize             = vec2{20.0, 20.0}
     style.WindowTitleAlign          = vec2{0.5, 0.5}
     style.WindowMenuButtonPosition  = .None;
-    style.ChildRounding             = 0.0
+    style.ChildRounding             = 3.0
     style.ChildBorderSize           = 1.0
-    style.PopupRounding             = 0.0
+    style.PopupRounding             = 3.0
     style.PopupBorderSize           = 1.0
     style.FramePadding              = vec2{2.0, 1.0}
-    style.FrameRounding             = 0.0
+    style.FrameRounding             = 3.0
     style.FrameBorderSize           = 0.0
     style.ItemSpacing               = vec2{6.0, 3.0}
     style.ItemInnerSpacing          = vec2{6.0, 3.0}
     style.CellPadding               = vec2{12.0, 6.0}
-    style.IndentSpacing             = 20.0
+    style.IndentSpacing             = 0.0
     style.ColumnsMinSpacing         = 6.0
     style.ScrollbarSize             = 12.0
-    style.ScrollbarRounding         = 0.0
+    style.ScrollbarRounding         = 3.0
     style.GrabMinSize               = 12.0
-    style.GrabRounding              = 0.0
-    style.TabRounding               = 0.0
+    style.GrabRounding              = 3.0
+    style.TabRounding               = 3.0
     style.TabBorderSize             = 0.0
     style.TabMinWidthForCloseButton = 0.0
     style.ColorButtonPosition       = .Left;

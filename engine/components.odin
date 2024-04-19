@@ -813,12 +813,92 @@ serialize_script_component :: proc(this: rawptr, serialize: bool, s: ^SerializeC
     }
 }
 
-@(component="Core/Physics")
+@(component = {
+    Category = "Core/Physics",
+    Conficts = { SphereColliderComponent },
+})
+BoxColliderComponent :: struct {
+    using base: Component,
+
+    half_extent: vec3,
+}
+
+@(constructor = BoxColliderComponent)
+make_box_collider :: proc() -> rawptr {
+    box := new(BoxColliderComponent)
+    box.base = default_component_constructor()
+    box.debug_draw = box_collider_debug_draw
+
+    box.half_extent = VEC3_ONE * 0.5
+
+    return box
+}
+
+box_collider_debug_draw :: proc(this: rawptr, d: ^DebugDrawContext) {
+    this := cast(^BoxColliderComponent) this
+    entity := get_object(this.world, this.owner)
+
+    size := this.half_extent * 2 * entity.transform.local_scale
+    dbg_draw_cube(d, entity.transform.position, entity.transform.local_rotation, size)
+}
+
+@(serializer = BoxColliderComponent)
+serialize_box_collider :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
+    this := cast(^BoxColliderComponent) this
+    if serialize {
+        serialize_do_field(s, "HalfExtent", this.half_extent)
+    } else {
+        if he, ok := serialize_get_field(s, "HalfExtent", vec3); ok {
+            this.half_extent = he
+        }
+    }
+}
+
+@(component = {
+    Category = "Core/Physics",
+    Conficts = { BoxColliderComponent },
+})
+SphereColliderComponent :: struct {
+    using base: Component,
+
+    radius: f32,
+}
+
+@(constructor = SphereColliderComponent)
+make_sphere_collider :: proc() -> rawptr {
+    sphere := new(SphereColliderComponent)
+    sphere.base = default_component_constructor()
+    sphere.debug_draw = sphere_collider_debug_draw
+
+    sphere.radius = 0.5
+    return sphere
+}
+
+sphere_collider_debug_draw :: proc(this: rawptr, d: ^DebugDrawContext) {
+    this := cast(^SphereColliderComponent) this
+    entity := get_object(this.world, this.owner)
+
+    dbg_draw_sphere(d, entity.transform.position, entity.transform.local_rotation, this.radius)
+}
+
+@(serializer = SphereColliderComponent)
+serialize_sphere_collider :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
+    this := cast(^SphereColliderComponent) this
+    if serialize {
+        serialize_do_field(s, "Radius", this.radius)
+    } else {
+        if radius, ok := serialize_get_field(s, "Radius", f32); ok {
+            this.radius = radius
+        }
+    }
+}
+
+@(component = {
+    Category = "Core/Physics",
+})
 RigidBodyComponent :: struct {
     using base: Component,
 
-    shape: ShapeType,
-    half_extent: vec3,
     linear_damping: f32,
     angular_damping: f32,
 
@@ -828,14 +908,12 @@ RigidBodyComponent :: struct {
 @(constructor=RigidBodyComponent)
 make_rigid_body :: proc() -> rawptr {
     body := new(RigidBodyComponent)
-    body.base = default_component_constructor()
-    body.init = rigid_body_init
-    body.update = rigid_body_update
-    body.destroy = rigid_body_destroy
-    body.copy = rigid_body_copy
-    body.debug_draw = rigid_body_debug_draw
+    body.base       = default_component_constructor()
+    body.init       = rigid_body_init
+    body.update     = rigid_body_update
+    body.destroy    = rigid_body_destroy
+    body.copy       = rigid_body_copy
 
-    body.half_extent = vec3{1, 1, 1} * 0.5
     body.angular_damping = 0.5
     body.linear_damping = 0.5
 
@@ -850,20 +928,27 @@ rigid_body_init :: proc(this: rawptr) {
     physics := PhysicsInstance
 
     sphere_shape: ^jolt.Shape
-    switch this.shape {
-    case .Sphere:
-        sphere_shape_settings := jolt.SphereShapeSettings_Create(0.5)
-        sphere_shape = jolt.ShapeSettings_CreateShape(cast(^jolt.ShapeSettings) sphere_shape_settings)
-    case .Box:
-        extent := this.half_extent * entity.transform.local_scale
+
+    switch {
+    case has_component(this.world, this.owner, BoxColliderComponent):
+        box_collider := get_component(this.world, this.owner, BoxColliderComponent)
+
+        extent := box_collider.half_extent * entity.transform.local_scale
         sphere_shape_settings := jolt.BoxShapeSettings_Create(&extent)
         sphere_shape = jolt.ShapeSettings_CreateShape(cast(^jolt.ShapeSettings) sphere_shape_settings)
+    case has_component(this.world, this.owner, SphereColliderComponent):
+        sphere_collider := get_component(this.world, this.owner, SphereColliderComponent)
+
+        sphere_shape_settings := jolt.SphereShapeSettings_Create(sphere_collider.radius)
+        sphere_shape = jolt.ShapeSettings_CreateShape(cast(^jolt.ShapeSettings) sphere_shape_settings)
+    }
+    if sphere_shape == nil {
+        return
     }
 
     euler_angles := entity.transform.local_rotation
     quat := linalg.quaternion_from_euler_angles(euler_angles.x, euler_angles.y, euler_angles.z, .XYZ)
     quat_to_vec4 := transmute(vec4)quat
-    // sphere_rotation := vec4{0, 0, 0, 1}
     sphere_body_settings: jolt.BodyCreationSettings
     jolt.BodyCreationSettings_Set(&sphere_body_settings, sphere_shape, &entity.transform.local_position, &quat_to_vec4, .MOTION_TYPE_DYNAMIC, jolt.ObjectLayer(ObjectLayers.Moving))
     sphere := jolt.BodyInterface_CreateBody(physics.body_interface, &sphere_body_settings)
@@ -877,13 +962,15 @@ rigid_body_init :: proc(this: rawptr) {
 
     sphere.motion_properties.linear_damping = this.linear_damping
     sphere.motion_properties.angular_damping = this.angular_damping
-
-    // velocity := vec3{0, -5, 0}
-    // jolt.BodyInterface_SetLinearVelocity(physics.body_interface, sphere.id, &velocity)
 }
 
 rigid_body_update :: proc(this: rawptr, delta: f64) {
     this := cast(^RigidBodyComponent) this
+    if this.body_id == 0 {
+        // This is not a valid rigid body.
+        return
+    }
+
     physics := PhysicsInstance
 
     position: vec3
@@ -907,6 +994,9 @@ rigid_body_update :: proc(this: rawptr, delta: f64) {
 rigid_body_destroy :: proc(this: rawptr) {
     this := cast(^RigidBodyComponent) this
     defer free(this)
+    if this.body_id == 0 {
+        return
+    }
 
     log.debug("Destroying RigidBodyComponent")
     jolt.BodyInterface_RemoveBody(PhysicsInstance.body_interface, this.body_id)
@@ -918,42 +1008,22 @@ rigid_body_copy :: proc(this: rawptr) -> rawptr {
 
     copy := cast(^RigidBodyComponent) make_rigid_body()
 
-    copy.shape = this.shape
-
     return copy
-}
-
-rigid_body_debug_draw :: proc(this: rawptr, d: ^DebugDrawContext) {
-    this := cast(^RigidBodyComponent) this
-    en := get_object(this.world, this.owner)
-    if en == nil do return
-
-    switch this.shape {
-    case .Box:
-        dbg_draw_cube(d, en.transform.position, en.transform.local_rotation, this.half_extent * 2 * en.transform.local_scale)
-    case .Sphere:
-        dbg_draw_sphere(d, en.transform.position, 0.5)
-    }
 }
 
 @(serializer=RigidBodyComponent)
 rigid_body_serialize :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^RigidBodyComponent) this
     if serialize {
-        serialize_do_field(s, "ShapeType", this.shape)
         serialize_do_field(s, "LinearDamping", this.linear_damping)
-        serialize_do_field(s, "HalfExtent", this.half_extent)
+        serialize_do_field(s, "AngularDamping", this.angular_damping)
     } else {
-        if shape, ok := serialize_get_field(s, "ShapeType", ShapeType); ok {
-            this.shape = shape
-        }
-
         if ld, ok := serialize_get_field(s, "LinearDamping", f32); ok {
             this.linear_damping = ld
         }
 
-        if half_extent, ok := serialize_get_field(s, "HalfExtent", vec3); ok {
-            this.half_extent = half_extent
+        if ad, ok := serialize_get_field(s, "AngularDamping", f32); ok {
+            this.angular_damping = ad
         }
     }
 }

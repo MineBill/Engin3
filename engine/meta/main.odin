@@ -24,6 +24,35 @@ Proc :: struct {
     attrs: [dynamic]Attribute,
 }
 
+MetaState :: struct {
+    sb: strings.Builder,
+
+    structs: [dynamic]Struct,
+    procs: [dynamic]Proc,
+}
+
+do_component_requirements :: proc(m: ^MetaState) {
+    using strings
+    write_string(&m.sb, "\nCOMPONENT_REQUIREMENTS : map[typeid][]typeid = {\n")
+
+    for s, i in m.structs do if has_attr_name(s, "component") {
+        #partial switch v in get_attr_value(s, "component") {
+        case map[string]AttributeValue:
+            if "Requires" in v {
+                required_components := v["Requires"].(map[string]AttributeValue)
+
+                fmt.sbprintf(&m.sb, "\ttypeid_of(%v) = {{ ", s.name)
+                for name, _ in required_components {
+                    fmt.sbprintf(&m.sb, "typeid_of(%v), ", name)
+                }
+                write_string(&m.sb, "},\n")
+            }
+        }
+    }
+
+    write_string(&m.sb, "}\n")
+}
+
 main :: proc() {
     context.logger = log.create_console_logger()
     package_path := os.args[1]
@@ -31,60 +60,58 @@ main :: proc() {
     pkg, ok := parser.parse_package_from_path(package_path)
     assert(ok)
 
-    structs: [dynamic]Struct
-    procs: [dynamic]Proc
+    m := MetaState {}
     for name, &file in pkg.files {
-        extract_structs_and_procs(file, &structs, &procs)
+        extract_structs_and_procs(file, &m.structs, &m.procs)
     }
 
-    slice.sort_by_cmp(structs[:], proc(i, j: Struct) -> slice.Ordering {
+    slice.sort_by_cmp(m.structs[:], proc(i, j: Struct) -> slice.Ordering {
         if i.name == j.name do return .Equal
         if i.name < j.name do return .Less
         if i.name > j.name do return .Greater
         unreachable()
     })
 
-    slice.sort_by_cmp(procs[:], proc(i, j: Proc) -> slice.Ordering {
+    slice.sort_by_cmp(m.procs[:], proc(i, j: Proc) -> slice.Ordering {
         if i.name == j.name do return .Equal
         if i.name < j.name do return .Less
         if i.name > j.name do return .Greater
         unreachable()
     })
 
-    sb: strings.Builder
-    strings.builder_init(&sb)
+    strings.builder_init(&m.sb)
 
-    strings.write_string(&sb, "package engine\n")
-    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
-    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
-    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "package engine\n")
+    strings.write_string(&m.sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&m.sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&m.sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&m.sb, "\n")
 
-    strings.write_string(&sb, "COMPONENT_INDICES : map[typeid]int = {\n")
+    strings.write_string(&m.sb, "COMPONENT_INDICES : map[typeid]int = {\n")
 
-    for s, i in structs do if has_attr_name(s, "component") {
-        strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", s.name, i))
+    for s, i in m.structs do if has_attr_name(s, "component") {
+        strings.write_string(&m.sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", s.name, i))
     }
 
-    strings.write_string(&sb, "}\n\n")
+    strings.write_string(&m.sb, "}\n\n")
 
-    strings.write_string(&sb, "COMPONENTS : []typeid = {\n")
+    strings.write_string(&m.sb, "COMPONENTS : []typeid = {\n")
 
-    for s, i in structs do if has_attr_name(s, "component") {
-        strings.write_string(&sb, fmt.tprintf("\t%v = typeid_of(%v),\n", i, s.name))
+    for s, i in m.structs do if has_attr_name(s, "component") {
+        strings.write_string(&m.sb, fmt.tprintf("\t%v = typeid_of(%v),\n", i, s.name))
     }
 
-    strings.write_string(&sb, "}\n\n")
+    strings.write_string(&m.sb, "}\n\n")
 
     // Generate a map that contains "constructors" for all components. These "constructors"
     // are responsible for wiring up the init/update/destroy procs.
-    strings.write_string(&sb, "// i know 💀\n")
-    strings.write_string(&sb, "COMPONENT_CONSTRUCTORS : []Constructor = {\n")
+    strings.write_string(&m.sb, "// i know 💀\n")
+    strings.write_string(&m.sb, "COMPONENT_CONSTRUCTORS : []Constructor = {\n")
 
-    for s, i in structs do if has_attr_name(s, "component") {
+    for s, i in m.structs do if has_attr_name(s, "component") {
         // Find the ctor for the struct
         ctor: Maybe(string)
-        for p in procs {
+        for p in m.procs {
             if has_attr_name(p, "constructor") {
                 if get_attr_value(p, "constructor").(string) == s.name {
                     ctor = p.name
@@ -93,53 +120,65 @@ main :: proc() {
         }
 
         if name, ok := ctor.(string); ok {
-            strings.write_string(&sb, fmt.tprintf("\t{{%v,  typeid_of(%v)}},\n", name, s.name))
+            strings.write_string(&m.sb, fmt.tprintf("\t{{%v,  typeid_of(%v)}},\n", name, s.name))
         }
     }
 
-    strings.write_string(&sb, "}\n\n")
+    strings.write_string(&m.sb, "}\n\n")
 
-    strings.write_string(&sb, "COMPONENT_CATEGORIES : []Category = {\n")
+    strings.write_string(&m.sb, "COMPONENT_CATEGORIES : []Category = {\n")
 
-    structs_with_category := make([dynamic]Struct)
+    StructWithCategory :: struct {
+        s: Struct,
+        category: string,
+    }
+    structs_with_category := make([dynamic]StructWithCategory)
 
-    for s, i in structs do if has_attr_name(s, "component") {
-        if value, ok := get_attr_value(s, "component").(string); ok {
-            append(&structs_with_category, s)
+    for s, i in m.structs do if has_attr_name(s, "component") {
+        switch v in get_attr_value(s, "component") {
+        case string:
+            append(&structs_with_category, StructWithCategory {s, v})
+        case map[string]AttributeValue:
+            if "Category" in v {
+                if category, ok := v["Category"].(string); ok {
+                    append(&structs_with_category, StructWithCategory {s, category})
+                } else {
+                    log.errorf("Category value of component attribute must be a string, got: %v", category)
+                }
+            }
+        case [dynamic]AttributeValue:
         }
     }
 
-    slice.sort_by_cmp(structs_with_category[:], proc(i, j: Struct) -> slice.Ordering {
-        lhs := get_attr_value(i, "component").(string)
-        rhs := get_attr_value(j, "component").(string)
+    slice.sort_by_cmp(structs_with_category[:], proc(i, j: StructWithCategory) -> slice.Ordering {
+        lhs := i.category
+        rhs := j.category
         return slice.Ordering(strings.compare(lhs, rhs))
     })
 
     // NOTE(minebill): Sort this? 
     for s, i in structs_with_category {
-        value := get_attr_value(s, "component").(string)
-
-        strings.write_string(&sb, fmt.tprintf("\t{{\"%v\", typeid_of(%v)}},\n", value, s.name))
+        strings.write_string(&m.sb, fmt.tprintf("\t{{\"%v\", typeid_of(%v)}},\n", s.category, s.s.name))
     }
 
-    strings.write_string(&sb, "}\n\n")
+    strings.write_string(&m.sb, "}\n\n")
 
-    strings.write_string(&sb, "COMPONENT_NAMES : map[typeid]string = {\n")
+    strings.write_string(&m.sb, "COMPONENT_NAMES : map[typeid]string = {\n")
 
-    for s, i in structs do if has_attr_name(s, "component") {
-        strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = \"%v\",\n", s.name, s.name))
+    for s, i in m.structs do if has_attr_name(s, "component") {
+        strings.write_string(&m.sb, fmt.tprintf("\ttypeid_of(%v) = \"%v\",\n", s.name, s.name))
     }
 
-    strings.write_string(&sb, "}\n\n")
+    strings.write_string(&m.sb, "}\n\n")
 
-    strings.write_string(&sb, "COMPONENT_SERIALIZERS : map[typeid]ComponentSerializer = {\n")
+    strings.write_string(&m.sb, "COMPONENT_SERIALIZERS : map[typeid]ComponentSerializer = {\n")
 
-    for p, i in procs do if has_attr_name(p, "serializer") {
+    for p, i in m.procs do if has_attr_name(p, "serializer") {
         component := get_attr_value(p, "serializer").(string)
         assert(len(component) != 0)
         context.user_ptr = &component
 
-         if slice.any_of_proc(structs[:], proc(s: Struct) -> bool {
+         if slice.any_of_proc(m.structs[:], proc(s: Struct) -> bool {
             component := cast(^string)context.user_ptr
             if has_attr_name(s, "component") {
                 if s.name == component^ {
@@ -148,13 +187,15 @@ main :: proc() {
             }
             return false
         }) {
-            strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", component, p.name))
+            strings.write_string(&m.sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", component, p.name))
          }
     }
 
-    strings.write_string(&sb, "}\n")
+    strings.write_string(&m.sb, "}\n")
 
-    strings.write_string(&sb, `
+    do_component_requirements(&m)
+
+    strings.write_string(&m.sb, `
 Category :: struct {
     name: string,
     id:   typeid,
@@ -217,25 +258,25 @@ get_component_typeid_from_name :: proc(name: string) -> (id: typeid, ok: bool) {
 }
 `)
 
-    src := strings.to_string(sb)
+    src := strings.to_string(m.sb)
     os.write_entire_file("engine/entity_generated.odin", transmute([]byte)src)
 
     // ASSET STUFF GENERATION
 
-    strings.builder_reset(&sb)
+    strings.builder_reset(&m.sb)
     
-    strings.write_string(&sb, "package engine\n")
-    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
-    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
-    strings.write_string(&sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "package engine\n")
+    strings.write_string(&m.sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&m.sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&m.sb, "// === AUTO GENERATED - DO NOT MODIFY ===\n")
+    strings.write_string(&m.sb, "\n")
 
-    strings.write_string(&sb, "ASSET_CONSTRUCTORS : map[typeid]proc() -> ^Asset = {\n")
+    strings.write_string(&m.sb, "ASSET_CONSTRUCTORS : map[typeid]proc() -> ^Asset = {\n")
 
-    for s, i in structs do if has_attr_name(s, "asset") {
+    for s, i in m.structs do if has_attr_name(s, "asset") {
         // Find the ctor for the struct
         ctor: Maybe(string)
-        for p in procs {
+        for p in m.procs {
             if has_attr_name(p, "constructor") {
                 if get_attr_value(p, "constructor").(string) == s.name {
                     ctor = p.name
@@ -244,50 +285,50 @@ get_component_typeid_from_name :: proc(name: string) -> (id: typeid, ok: bool) {
         }
 
         if name, ok := ctor.(string); ok {
-            strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", s.name, name))
+            strings.write_string(&m.sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", s.name, name))
         }
     }
 
-    strings.write_string(&sb, "}\n\n")
+    strings.write_string(&m.sb, "}\n\n")
 
-    strings.write_string(&sb, "ASSET_LOADERS : map[AssetType]AssetLoader = {\n")
-    for p in procs do if has_attr_name(p, "loader") {
+    strings.write_string(&m.sb, "ASSET_LOADERS : map[AssetType]AssetLoader = {\n")
+    for p in m.procs do if has_attr_name(p, "loader") {
         asset := get_attr_value(p, "loader").(string)
 
-        strings.write_string(&sb, fmt.tprintf("\t.%v = %v,\n", asset, p.name))
+        strings.write_string(&m.sb, fmt.tprintf("\t.%v = %v,\n", asset, p.name))
     }
-    strings.write_string(&sb, "}\n")
+    strings.write_string(&m.sb, "}\n")
 
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "\n")
 
-    strings.write_string(&sb, "ASSET_IMPORTERS : map[AssetType]AssetImporter = {\n")
-    for p in procs do if has_attr_name(p, "importer") {
+    strings.write_string(&m.sb, "ASSET_IMPORTERS : map[AssetType]AssetImporter = {\n")
+    for p in m.procs do if has_attr_name(p, "importer") {
         asset := get_attr_value(p, "importer").(string)
 
-        strings.write_string(&sb, fmt.tprintf("\t.%v = %v,\n", asset, p.name))
+        strings.write_string(&m.sb, fmt.tprintf("\t.%v = %v,\n", asset, p.name))
     }
-    strings.write_string(&sb, "}\n")
+    strings.write_string(&m.sb, "}\n")
 
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "\n")
 
-    fmt.sbprintf(&sb, "RAW_TYPE_TO_ASSET_TYPE := map[typeid]AssetType {{\n")
-    for s in structs do if has_attr_name(s, "asset") {
-        fmt.sbprintf(&sb, "\ttypeid_of(%v) = .%v,\n", s.name, s.name)
+    fmt.sbprintf(&m.sb, "RAW_TYPE_TO_ASSET_TYPE := map[typeid]AssetType {{\n")
+    for s in m.structs do if has_attr_name(s, "asset") {
+        fmt.sbprintf(&m.sb, "\ttypeid_of(%v) = .%v,\n", s.name, s.name)
     }
-    fmt.sbprintf(&sb, "}}\n")
+    fmt.sbprintf(&m.sb, "}}\n")
 
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "\n")
 
-    fmt.sbprintf(&sb, "ASSET_TYPE_TO_TYPEID := map[AssetType]typeid {{\n")
-    for s in structs do if has_attr_name(s, "asset") {
-        fmt.sbprintf(&sb, "\t.%v = typeid_of(%v),\n", s.name, s.name)
+    fmt.sbprintf(&m.sb, "ASSET_TYPE_TO_TYPEID := map[AssetType]typeid {{\n")
+    for s in m.structs do if has_attr_name(s, "asset") {
+        fmt.sbprintf(&m.sb, "\t.%v = typeid_of(%v),\n", s.name, s.name)
     }
-    fmt.sbprintf(&sb, "}}\n")
+    fmt.sbprintf(&m.sb, "}}\n")
 
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "\n")
 
-    fmt.sbprintf(&sb, "SUPPORTED_ASSETS := map[string]AssetType {{\n")
-    for s in structs do if has_attr_name(s, "asset") {
+    fmt.sbprintf(&m.sb, "SUPPORTED_ASSETS := map[string]AssetType {{\n")
+    for s in m.structs do if has_attr_name(s, "asset") {
         if attributes, ok := get_attr_value(s, "asset").(map[string]AttributeValue); ok {
             if "ImportFormats" in attributes {
                 formats := attributes["ImportFormats"].(string)
@@ -295,23 +336,23 @@ get_component_typeid_from_name :: proc(name: string) -> (id: typeid, ok: bool) {
                     format := strings.trim_space(format)
                     format = strings.trim(format, "\"")
 
-                    fmt.sbprintf(&sb, "\t\"%v\" = .%v,\n", format, s.name)
+                    fmt.sbprintf(&m.sb, "\t\"%v\" = .%v,\n", format, s.name)
                 }
             }
         }
     }
-    fmt.sbprintf(&sb, "}}\n")
+    fmt.sbprintf(&m.sb, "}}\n")
 
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "\n")
 
-    strings.write_string(&sb, "ASSET_SERIALIZERS : map[typeid]AssetSerializer = {\n")
+    strings.write_string(&m.sb, "ASSET_SERIALIZERS : map[typeid]AssetSerializer = {\n")
 
-    for p, i in procs do if has_attr_name(p, "serializer") {
+    for p, i in m.procs do if has_attr_name(p, "serializer") {
         component := get_attr_value(p, "serializer").(string)
         assert(len(component) != 0)
         context.user_ptr = &component
 
-         if slice.any_of_proc(structs[:], proc(s: Struct) -> bool {
+         if slice.any_of_proc(m.structs[:], proc(s: Struct) -> bool {
             component := cast(^string)context.user_ptr
             if has_attr_name(s, "asset") {
                 if s.name == component^ {
@@ -320,22 +361,22 @@ get_component_typeid_from_name :: proc(name: string) -> (id: typeid, ok: bool) {
             }
             return false
         }) {
-            strings.write_string(&sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", component, p.name))
+            strings.write_string(&m.sb, fmt.tprintf("\ttypeid_of(%v) = %v,\n", component, p.name))
          }
     }
 
-    strings.write_string(&sb, "}\n")
+    strings.write_string(&m.sb, "}\n")
 
-    strings.write_string(&sb, "\n")
+    strings.write_string(&m.sb, "\n")
 
-    fmt.sbprintf(&sb, "AssetType :: enum {{\n")
-        fmt.sbprintf(&sb, "\t%v,\n\n", "Invalid")
-    for s in structs do if has_attr_name(s, "asset") {
-        fmt.sbprintf(&sb, "\t%v,\n", s.name)
+    fmt.sbprintf(&m.sb, "AssetType :: enum {{\n")
+        fmt.sbprintf(&m.sb, "\t%v,\n\n", "Invalid")
+    for s in m.structs do if has_attr_name(s, "asset") {
+        fmt.sbprintf(&m.sb, "\t%v,\n", s.name)
     }
-    fmt.sbprintf(&sb, "}}\n")
+    fmt.sbprintf(&m.sb, "}}\n")
 
-    src = strings.to_string(sb)
+    src = strings.to_string(m.sb)
     os.write_entire_file("engine/assets_generated.odin", transmute([]byte)src)
 }
 

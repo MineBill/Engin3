@@ -13,6 +13,6 @@ layout(location = 0) out vec4 o_Position;
 layout(location = 1) out vec4 o_Normal;
 
 void main() {
-    o_Position = u_ViewData.view * vec4(In.frag_pos, 1.0);
-    o_Normal = u_ViewData.view * vec4(normalize(In.normal), 1.0);
+    o_Position = vec4(In.frag_pos, 1.0);
+    o_Normal = vec4(normalize(In.normal), 1.0);
 }

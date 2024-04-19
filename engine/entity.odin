@@ -278,6 +278,11 @@ World :: struct {
 
     ambient_color: Color,
 
+    ssao_data: struct {
+        radius: f32,
+        bias: f32,
+    },
+
     using editor_data: WorldEditorData,
 }
 
@@ -517,6 +522,11 @@ serialize_world :: proc(world: World, file: string) {
         serialize_begin_table(&s, "Environment")
         {
             serialize_do_field(&s, "AmbientColor", world.ambient_color)
+
+            serialize_begin_table(&s, "SSAO")
+            serialize_do_field(&s, "Radius", world.ssao_data.radius)
+            serialize_do_field(&s, "Bias", world.ssao_data.bias)
+            serialize_end_table(&s)
         }
         serialize_end_table(&s)
 
@@ -565,6 +575,16 @@ deserialize_world :: proc(world: ^World, file: string) -> bool {
         if serialize_begin_table(&s, "Environment") {
             if color, ok := serialize_get_field(&s, "AmbientColor", Color); ok {
                 world.ambient_color = color
+            }
+
+            if serialize_begin_table(&s, "SSAO") {
+                if radius, ok := serialize_get_field(&s, "Radius", f32); ok {
+                    world.ssao_data.radius = radius
+                }
+                if bias, ok := serialize_get_field(&s, "Bias", f32); ok {
+                    world.ssao_data.bias = bias
+                }
+                serialize_end_table(&s)
             }
             serialize_end_table(&s)
         }

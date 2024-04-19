@@ -89,18 +89,35 @@ physics_init :: proc(physics: ^Physics) {
         physics.object_vs_broadphase_layer_filter,
         physics.object_layer_pair_filter)
 
+    // CAN BE CALLED FROM A DIFFERENT THREAD
     physics.contact_listener.OnContactAdded = proc "c" (body1, body2: jolt.Body, manifold: jolt.ContactManifold, settings: ^jolt.ContactSettings) {
         context = EngineInstance.ctx
 
         log.infof("COLLISION DETECTED %v - %v", body1.id, body2.id)
     }
 
+    // CAN BE CALLED FROM A DIFFERENT THREAD
     physics.contact_listener.OnContactRemoved = proc "c" (sub_shape_pair: jolt.SubShapeIDPair) {
         context = EngineInstance.ctx
 
         first := sub_shape_pair.first.body_id
         second := sub_shape_pair.second.body_id
         log.infof("COLLISION FINISHED %v - %v", first, second)
+    }
+
+    // CAN BE CALLED FROM A DIFFERENT THREAD
+    physics.contact_listener.OnContactPersisted = proc "c" (in_body1: jolt.Body, in_body2: jolt.Body, in_manifold: jolt.ContactManifold, io_settings: ^jolt.ContactSettings) {
+        context = EngineInstance.ctx
+
+        position1 := vec3{}
+        jolt.ContactManifold_GetWorldSpaceContactPointOn1(in_manifold, 0, &position1)
+
+        position2 := vec3{}
+        jolt.ContactManifold_GetWorldSpaceContactPointOn2(in_manifold, 0, &position2)
+
+        dbg_draw_line(g_dbg_context, position1, position1 + in_manifold.normal.xyz * 1)
+        dbg_draw_line(g_dbg_context, position2, position2 + in_manifold.normal.xyz * 1, color = COLOR_PEACH)
+        // dbg_draw_cube(g_dbg_context, position1, vec3{}, vec3{0.2, 0.2, 0.2})
     }
 
     physics.contact_listener.OnContactValidate = proc "c" (in_body1,in_body2: jolt.Body,in_base_offset:vec3,in_collision_result: jolt.CollideShapeResult) -> jolt.ValidateResult {
