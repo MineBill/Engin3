@@ -16,6 +16,7 @@ struct VertexOutput {
     vec3 tangent_light_dir;
     vec3 tangent_view_pos;
     vec3 tangent_frag_pos;
+    mat3 TBN;
 
     vec4 pos_light_space[4];
 };
@@ -27,6 +28,9 @@ layout(binding = 3) uniform sampler2D s_SSAO;
 layout(location = 0) out vec4 o_Color;
 layout(location = 1) out vec4 o_BrightColor;
 
+layout(push_constant) uniform PushConstants {
+    int num_point_lights;
+} push_constants;
 #ifdef EDITOR
 layout(location = 2) out int o_ID;
 #endif

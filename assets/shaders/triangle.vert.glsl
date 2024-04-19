@@ -18,6 +18,7 @@ struct VertexOutput {
     vec3 tangent_light_dir;
     vec3 tangent_view_pos;
     vec3 tangent_frag_pos;
+    mat3 TBN;
 
     vec4 pos_light_space[4];
 };
@@ -43,6 +44,7 @@ void main() {
     T = normalize(T - dot(T, N) * N);
     vec3 B = cross(N, T);
     mat3 tbn = transpose(mat3(T, B, N));
+    Out.TBN = tbn;
 
     gl_Position = u_ViewData.projection * u_ViewData.view * u_PerObjectData.model * vec4(a_Position, 1.0);
     Out.frag_pos = vec3(u_PerObjectData.model * vec4(a_Position, 1.0));

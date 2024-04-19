@@ -3,16 +3,8 @@
 #include "common.glsl"
 
 struct VertexOutput {
-    vec3 frag_color;
-    vec2 frag_uv;
     vec3 frag_pos;
     vec3 normal;
-
-    vec3 tangent_light_dir;
-    vec3 tangent_view_pos;
-    vec3 tangent_frag_pos;
-
-    vec4 pos_light_space[4];
 };
 
 layout(location = 0) in VertexOutput In;

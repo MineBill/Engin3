@@ -96,12 +96,13 @@ WorldRenderer :: struct {
 
     depth_pass_per_object_data: UniformBuffer(DepthPassPerObjectData),
 
-    depth_frame_buffer:    FrameBuffer,
-    world_frame_buffer:    FrameBuffer,
-    resolved_frame_buffer: FrameBuffer,
-    final_frame_buffer:    FrameBuffer,
-    g_buffer:              FrameBuffer,
-    ssao_frame_buffer:     FrameBuffer,
+    depth_frame_buffer:     FrameBuffer,
+    world_frame_buffer:     FrameBuffer,
+    resolved_frame_buffer:  FrameBuffer,
+    final_frame_buffer:     FrameBuffer,
+    g_buffer:               FrameBuffer,
+    ssao_frame_buffer:      FrameBuffer,
+    ssao_blur_frame_buffer: FrameBuffer,
 
     bloom_vertical_fb:    FrameBuffer,
     bloom_horizontal_fb:    FrameBuffer,
@@ -133,6 +134,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
 
     spec.attachments = attachment_list(.RED_FLOAT)
     renderer.ssao_frame_buffer = create_framebuffer(spec)
+    renderer.ssao_blur_frame_buffer = create_framebuffer(spec)
 
     spec.attachments             = attachment_list(.RGBA16F)
     renderer.bloom_vertical_fb   = create_framebuffer(spec)
@@ -199,7 +201,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     assert(ok)
 
     renderer.shaders["geometry"], ok = shader_load_from_file(
-        "assets/shaders/triangle.vert.glsl",
+        "assets/shaders/geometry_pass.vert.glsl",
         "assets/shaders/geometry_pass.frag.glsl",
     )
     assert(ok)
@@ -210,13 +212,19 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     )
     assert(ok)
 
+    renderer.shaders["ssao_blur"], ok = shader_load_from_file(
+        "assets/shaders/screen.vert.glsl",
+        "assets/shaders/postprocess/ssao_blur.frag.glsl",
+    )
+    assert(ok)
+
     device := rand.create(u64(intrinsics.read_cycle_counter()))
 
     for i in 0..<len(renderer.ssao_data.kernel) {
         sample := vec3{
             rand.float32(&device) * 2.0 - 1.0,
             rand.float32(&device) * 2.0 - 1.0,
-            rand.float32(&device),
+            rand.float32(&device) * 2.0 - 1.0,
         }
 
         sample = linalg.normalize(sample)
@@ -395,6 +403,12 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         if noise != nil do gl.BindTextureUnit(2, noise.handle)
 
         draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
+
+        gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.ssao_blur_frame_buffer.handle)
+        gl.UseProgram(world_renderer.shaders["ssao_blur"].program)
+        gl.BindTextureUnit(0, get_color_attachment(world_renderer.ssao_frame_buffer))
+
+        draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
     }
 
     gl.BindFramebuffer(gl.FRAMEBUFFER, world_fb.handle)
@@ -433,7 +447,7 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         gl.UseProgram(pbr_shader.program)
         // gl.BindTextureUnit(2, get_depth_attachment(world_renderer.depth_frame_buffer))
         gl.BindTextureUnit(2, world_renderer.shadow_map.handle)
-        gl.BindTextureUnit(3, get_color_attachment(world_renderer.ssao_frame_buffer, 0))
+        gl.BindTextureUnit(3, get_color_attachment(world_renderer.ssao_blur_frame_buffer, 0))
 
         for mr in mesh_components {
             mesh := get_asset(asset_manager, mr.mesh, Mesh)
@@ -719,6 +733,7 @@ world_renderer_resize :: proc(world_renderer: ^WorldRenderer, width, height: int
     resize_framebuffer(&world_renderer.resolved_frame_buffer, width, height)
     resize_framebuffer(&world_renderer.g_buffer, width, height)
     resize_framebuffer(&world_renderer.ssao_frame_buffer, width, height)
+    resize_framebuffer(&world_renderer.ssao_blur_frame_buffer, width, height)
 
     resize_framebuffer(&world_renderer.bloom_vertical_fb, width, height)
     resize_framebuffer(&world_renderer.bloom_horizontal_fb, width, height)
@@ -826,6 +841,8 @@ render_material_preview :: proc(packet: RenderPacket, target: ^FrameBuffer, mate
     view_data.view = packet.camera.view
     uniform_buffer_set_data(view_data, offset_of(view_data.data.view), size_of(view_data.view))
 
+    white_texture := get_asset(&EngineInstance.asset_manager, RendererInstance.white_texture, Texture2D)
+    gl.BindTextureUnit(3, white_texture.handle)
     {
         gl.UseProgram(renderer.shaders["pbr"].program)
         gl.BindVertexArray(mesh.vertex_array)
@@ -855,8 +872,7 @@ render_material_preview :: proc(packet: RenderPacket, target: ^FrameBuffer, mate
     gl.BindTextureUnit(0, get_color_attachment(resolve_target))
     gl.UseProgram(renderer.shaders["screen"].program)
 
-        gl.Disable(gl.DEPTH_TEST)
+    gl.Disable(gl.DEPTH_TEST)
     draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
-
-        gl.Enable(gl.DEPTH_TEST)
+    gl.Enable(gl.DEPTH_TEST)
 }
