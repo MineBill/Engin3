@@ -1,8 +1,10 @@
 ## Engin3
 This is a very simple project that aims to help me learn how graphics work and how to develop a simple game engine.
 Currently the editor and the "game" are in the same package, because i don't care about separating them yet. 
-The editor is not meant as a "generic" project editor and is instead tied with the "game" project. In the future, once i figure more stuff out,
-this might change.
+
+~The editor is not meant as a "generic" project editor and is instead tied with the "game" project. In the future, once i figure more stuff out,
+this might change.~ UPDATE: Welp, i've figured some stuff out and this has changed. The editor now works on "projects" but lacks the ability to create new ones for now, so you have
+to manually set it up.
 
 ### Building and Running
 First, you need to [install](https://odin-lang.org/docs/install/) Odin and make sure the `odin` executable is in your PATH.
