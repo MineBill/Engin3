@@ -185,6 +185,7 @@ compile_to_spirv_opengl :: proc(source: []byte, shader_kind: ShaderKind, name: s
     shaderc.compile_options_set_target_env(options, .opengl, .opengl_4_5)
     shaderc.compile_options_set_source_language(options, .glsl)
     shaderc.compile_options_set_auto_bind_uniforms(options, true)
+    shaderc.compile_options_set_auto_map_locations(options, true)
     shaderc.compile_options_set_vulkan_rules_relaxed(options, true)
     shaderc.compile_options_set_generate_debug_info(options)
     shaderc.compile_options_set_optimization_level(options, .performance)
