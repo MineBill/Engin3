@@ -54,14 +54,14 @@ dbg_deinit :: proc(d: DebugDrawContext) {
     delete(d.lines)
 }
 
-dbg_draw_line :: proc(d: ^DebugDrawContext, s, e: vec3, thickness: f32 = 1.0, color := COLOR_RED) {
+dbg_draw_line :: proc(d: ^DebugDrawContext, s, e: vec3, thickness: f32 = 1.0, color := COLOR_GREEN) {
     if sync.mutex_guard(&d.mutex) {
         append(&d.lines, LinePoint{s, thickness, color})
         append(&d.lines, LinePoint{e, thickness, color})
     }
 }
 
-dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: vec3, thickness: f32 = 1.0, color := COLOR_BLUE) {
+dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: vec3, thickness: f32 = 1.0, color := COLOR_GREEN) {
     half := size / 2
 
     AXIS_X :: vec3{1, 0, 0}
@@ -92,10 +92,22 @@ dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: ve
     dbg_draw_line(d, center + rot * (vec3{1, -1,  1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color)
 }
 
-dbg_draw_sphere :: proc(d: ^DebugDrawContext, position: vec3, radius: f32, thickness: f32 = 1.0, color := COLOR_GREEN) {
-    SEGMENTS :: 16  // Number of segments per circle
+dbg_draw_sphere :: proc(
+    d: ^DebugDrawContext,
+    #no_broadcast center: vec3,
+    #no_broadcast euler_rotation: vec3 = {},
+    radius: f32 = 1.0,
+    thickness: f32 = 1.0,
+    color := COLOR_GREEN) {
+
+    SEGMENTS :: 10  // Number of segments per circle
     LATITUDE_SEGMENTS :: SEGMENTS
     LONGITUDE_SEGMENTS :: SEGMENTS
+
+    rot := linalg.matrix3_from_euler_angles_yxz(
+             euler_rotation.y * math.RAD_PER_DEG,
+             euler_rotation.x * math.RAD_PER_DEG,
+             euler_rotation.z * math.RAD_PER_DEG)
 
     // Draw latitude lines
     for lat in 0..<LATITUDE_SEGMENTS {
@@ -125,10 +137,10 @@ dbg_draw_sphere :: proc(d: ^DebugDrawContext, position: vec3, radius: f32, thick
             y3 := math.sin(lon0) * r1
 
             // Draw the quad formed by these four points
-            dbg_draw_line(d, position + vec3{x0, y0, z0}, position + vec3{x1, y1, z0}, thickness, color)
-            dbg_draw_line(d, position + vec3{x1, y1, z0}, position + vec3{x2, y2, z1}, thickness, color)
-            dbg_draw_line(d, position + vec3{x2, y2, z1}, position + vec3{x3, y3, z1}, thickness, color)
-            dbg_draw_line(d, position + vec3{x3, y3, z1}, position + vec3{x0, y0, z0}, thickness, color)
+            dbg_draw_line(d, center + rot * vec3{x0, y0, z0}, center + rot * vec3{x1, y1, z0}, thickness, color)
+            dbg_draw_line(d, center + rot * vec3{x1, y1, z0}, center + rot * vec3{x2, y2, z1}, thickness, color)
+            dbg_draw_line(d, center + rot * vec3{x2, y2, z1}, center + rot * vec3{x3, y3, z1}, thickness, color)
+            dbg_draw_line(d, center + rot * vec3{x3, y3, z1}, center + rot * vec3{x0, y0, z0}, thickness, color)
         }
     }
 }

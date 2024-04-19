@@ -388,6 +388,8 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
     // [SSAO]
     {
         uniform_buffer_rebind(&world_renderer.ssao_data)
+        world_renderer.ssao_data.params.x = world_renderer.world.ssao_data.radius
+        world_renderer.ssao_data.params.y = world_renderer.world.ssao_data.bias
         uniform_buffer_set_data(
             &world_renderer.ssao_data,
             offset_of(world_renderer.ssao_data.data.params),
