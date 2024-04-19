@@ -1267,6 +1267,8 @@ JOLT_NarrowPhaseQuery_CastRay(const JOLT_NarrowPhaseQuery *in_query,
                              const void *in_object_layer_filter, // Can be NULL (no filter)
                              const void *in_body_filter); // Can be NULL (no filter)
 
+
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_Shape
@@ -1800,3 +1802,8 @@ JOLT_CharacterVirtual_GetLinearVelocity(const JOLT_CharacterVirtual *in_characte
  void
 JOLT_CharacterVirtual_SetLinearVelocity(JOLT_CharacterVirtual *in_character, const float in_linear_velocity[3]);
 
+void
+JOLT_ContactManifold_GetWorldSpaceContactPointOn1(const JOLT_ContactManifold *in_manifold, uint32_t in_index, JOLT_Real out_position[3]);
+
+void
+JOLT_ContactManifold_GetWorldSpaceContactPointOn2(const JOLT_ContactManifold *in_manifold, uint32_t in_index, JOLT_Real out_position[3]);

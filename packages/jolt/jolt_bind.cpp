@@ -338,6 +338,10 @@ FN(toJpc)(const JPH::ContactManifold *in) {
     assert(in); return reinterpret_cast<const JOLT_ContactManifold *>(in);
 }
 
+FN(toJph)(const JOLT_ContactManifold *in) {
+    assert(in); return reinterpret_cast<const JPH::ContactManifold *>(in);
+}
+
 FN(toJpc)(const JPH::CollideShapeResult *in) {
     assert(in); return reinterpret_cast<const JOLT_CollideShapeResult *>(in);
 }
@@ -3134,4 +3138,16 @@ JOLT_CharacterVirtual_GetLinearVelocity(const JOLT_CharacterVirtual *in_characte
 JOLT_CharacterVirtual_SetLinearVelocity(JOLT_CharacterVirtual *in_character, const float in_linear_velocity[3])
 {
     toJph(in_character)->SetLinearVelocity(loadVec3(in_linear_velocity));
+}
+
+void
+JOLT_ContactManifold_GetWorldSpaceContactPointOn1(const JOLT_ContactManifold *in_manifold, uint32_t in_index, JOLT_Real out_position[3])
+{
+    storeVec3(out_position, toJph(in_manifold)->GetWorldSpaceContactPointOn1(in_index));
+}
+
+void
+JOLT_ContactManifold_GetWorldSpaceContactPointOn2(const JOLT_ContactManifold *in_manifold, uint32_t in_index, JOLT_Real out_position[3])
+{
+    storeVec3(out_position, toJph(in_manifold)->GetWorldSpaceContactPointOn2(in_index));
 }
