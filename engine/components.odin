@@ -748,10 +748,7 @@ when USE_EDITOR {
                 }
                 imgui.TreePop()
             }
-        } else {
-            modified |= component_default_editor_ui(this, editor, s)
         }
-
         return
     }
 }
@@ -899,6 +896,7 @@ serialize_sphere_collider :: proc(this: rawptr, serialize: bool, s: ^SerializeCo
 RigidBodyComponent :: struct {
     using base: Component,
 
+    body_type: BodyType,
     linear_damping: f32,
     angular_damping: f32,
 
@@ -950,7 +948,14 @@ rigid_body_init :: proc(this: rawptr) {
     quat := linalg.quaternion_from_euler_angles(euler_angles.x, euler_angles.y, euler_angles.z, .XYZ)
     quat_to_vec4 := transmute(vec4)quat
     sphere_body_settings: jolt.BodyCreationSettings
-    jolt.BodyCreationSettings_Set(&sphere_body_settings, sphere_shape, &entity.transform.local_position, &quat_to_vec4, .MOTION_TYPE_DYNAMIC, jolt.ObjectLayer(ObjectLayers.Moving))
+
+    jolt.BodyCreationSettings_Set(
+        &sphere_body_settings,
+        sphere_shape,
+        &entity.transform.local_position,
+        &quat_to_vec4,
+        body_type_to_jolt(this.body_type),
+        jolt.ObjectLayer(ObjectLayers.Moving))
     sphere := jolt.BodyInterface_CreateBody(physics.body_interface, &sphere_body_settings)
     this.body_id = sphere.id
 
@@ -960,14 +965,15 @@ rigid_body_init :: proc(this: rawptr) {
 
     jolt.BodyInterface_AddBody(physics.body_interface, sphere.id, .ACTIVATION_ACTIVATE)
 
-    sphere.motion_properties.linear_damping = this.linear_damping
-    sphere.motion_properties.angular_damping = this.angular_damping
+    if sphere.motion_properties != nil {
+        sphere.motion_properties.linear_damping = this.linear_damping
+        sphere.motion_properties.angular_damping = this.angular_damping
+    }
 }
 
 rigid_body_update :: proc(this: rawptr, delta: f64) {
     this := cast(^RigidBodyComponent) this
-    if this.body_id == 0 {
-        // This is not a valid rigid body.
+    if jolt.BodyID_IsInvalid(this.body_id) || this.body_id == 0 {
         return
     }
 
@@ -978,7 +984,7 @@ rigid_body_update :: proc(this: rawptr, delta: f64) {
 
     r: vec4
     jolt.BodyInterface_GetRotation(physics.body_interface, this.body_id, &r)
-    
+
     rotation := transmute(quaternion128)r
 
     entity := get_object(this.world, this.owner)
@@ -994,11 +1000,10 @@ rigid_body_update :: proc(this: rawptr, delta: f64) {
 rigid_body_destroy :: proc(this: rawptr) {
     this := cast(^RigidBodyComponent) this
     defer free(this)
-    if this.body_id == 0 {
+    if jolt.BodyID_IsInvalid(this.body_id) || this.body_id == 0 {
         return
     }
 
-    log.debug("Destroying RigidBodyComponent")
     jolt.BodyInterface_RemoveBody(PhysicsInstance.body_interface, this.body_id)
     jolt.BodyInterface_DestroyBody(PhysicsInstance.body_interface, this.body_id)
 }
@@ -1014,10 +1019,16 @@ rigid_body_copy :: proc(this: rawptr) -> rawptr {
 @(serializer=RigidBodyComponent)
 rigid_body_serialize :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
     this := cast(^RigidBodyComponent) this
-    if serialize {
+    switch s.mode {
+    case .Serialize:
+        serialize_do_field(s, "BodyType", this.body_type)
         serialize_do_field(s, "LinearDamping", this.linear_damping)
         serialize_do_field(s, "AngularDamping", this.angular_damping)
-    } else {
+    case .Deserialize:
+        if body_type, ok := serialize_get_field(s, "BodyType", BodyType); ok {
+            this.body_type = body_type
+        }
+
         if ld, ok := serialize_get_field(s, "LinearDamping", f32); ok {
             this.linear_damping = ld
         }
