@@ -42,6 +42,7 @@ EditorIcon :: enum {
     StepFrameButton,
     ThreeDots,
     AssetReferene,
+    CogWheel,
 }
 
 EditorCamera :: struct {
@@ -223,6 +224,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.icons[.StepFrameButton], err = import_texture_from_path("assets/editor/icons/StepFrame.png")
     e.icons[.ThreeDots], err       = import_texture_from_path("assets/editor/icons/ThreeDots.png")
     e.icons[.AssetReferene], err   = import_texture_from_path("assets/editor/icons/AssetReference.png")
+    e.icons[.CogWheel], err        = import_texture_from_path("assets/editor/icons/CogWheel.png")
     if err != nil {
         log.errorf("Error while loading editor icons: %v", err)
     }
@@ -310,6 +312,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             e.shaders_watcher.triggered = false
         }
     }
+
 
     for event in g_event_ctx.events {
         #partial switch ev in event {
@@ -1521,14 +1524,16 @@ return NewScript
                         }
                         imgui.Separator()
 
-                        imgui.PushStyleColorImVec4(.Text, cast(vec4)COLOR_ROSE)
+                        imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_ROSE)
                         if imgui.MenuItem("Delete") {
+                            delete_asset(&EngineInstance.asset_manager, item.asset)
+                            cb_refresh(&e.content_browser)
                         }
                         imgui.PopStyleColor()
                     }
 
                     imgui.PushFont(e.fonts[.Light])
-                    imgui.PushStyleColorImVec4(.Text, cast(vec4)COLOR_TURQUOISE)
+                    imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_TURQUOISE)
 
                     if item.renaming {
                         imgui.PushStyleColorImVec4(.FrameBg, cast(vec4) COLOR_PLUM)
@@ -1627,7 +1632,8 @@ editor_log_window :: proc(e: ^Editor) {
                 }
 
                 imgui.PushItemWidth(width)
-                imgui.InputText("##", start, len(entry.text), {.ReadOnly})
+                // imgui.InputText("##", start, len(entry.text), {.ReadOnly})
+                imgui.TextUnformatted(cstr(entry.text))
                 imgui.PopStyleColor()
                 imgui.PopStyleVar(2)
                 imgui.PopID()
@@ -1992,7 +1998,7 @@ draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
 
     imgui.SameLine(width - line_height * 0.75)
     imgui.PushIDPtr(component)
-    if imgui.Button("+", vec2{line_height, line_height}) {
+    if do_image_button("+", e.icons[.CogWheel], vec2{line_height, line_height}) {
         imgui.OpenPopup("ComponentSettings", {})
     }
 
