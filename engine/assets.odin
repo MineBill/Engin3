@@ -88,12 +88,29 @@ when USE_EDITOR {
         using base: AssetManagerBase,
 
         registry: AssetRegistry,
+        assets_watcher: fs.Watcher,
     }
 
     AssetSerializer :: #type proc(this: ^Asset, s: ^SerializeContext)
 
     asset_manager_init :: proc(manager: ^EditorAssetManager) {
         manager.registry = make(AssetRegistry)
+
+        fs.watcher_init_with_callback(
+            &manager.assets_watcher,
+            project_get_assets_folder(EditorInstance.active_project),
+            manager,
+            proc(data: rawptr, file: string) {
+                context.logger = EditorInstance.logger
+                manager := cast(^EditorAssetManager) data
+                temp := context.temp_allocator
+
+                assets_folder_name := filepath.base(project_get_assets_folder(EditorInstance.active_project, temp))
+                path := filepath.join({assets_folder_name, file}, temp)
+                log.debugf("Attemping to re-import asset '%v'", path)
+                handle := get_asset_handle_from_path(manager, path)
+                reimport_asset(manager, handle)
+            })
 
         s: SerializeContext
         serialize_init_file(&s, project_get_asset_registry_location(EditorInstance.active_project))
@@ -155,6 +172,7 @@ when USE_EDITOR {
                         log.errorf("Asset importer reported that the source asset is in a wrong format: %s", x.message)
                     case ScriptCompilationError:
                         log.errorf("Script compilation error: %v", x)
+                        editor_push_notification(EditorInstance, fmt.tprintf("Script compilation failed. Reason: '%v'. Check the console for more info.", x), .Error)
                     case GenericMessageError:
                         log.errorf("Asset import error: %s", error)
                     }
@@ -176,6 +194,37 @@ when USE_EDITOR {
     get_asset :: proc {
         get_asset_from_asset_type,
         get_asset_from_raw_type,
+    }
+
+    // Re-Imports a loaded asset from file. If the file is not loaded then this acts the same as `import_asset`.
+    reimport_asset :: proc(manager: ^EditorAssetManager, handle: AssetHandle) {
+        if !is_asset_handle_valid(manager, handle) {
+            log.errorf("Asked to reimport invalid asset handle '%v'", handle)
+            return
+        }
+
+        metadata := manager.registry[handle]
+
+        asset, error := import_asset(handle, metadata, metadata.type)
+        if error != nil {
+            if error != nil {
+                switch x in error {
+                case AssetNotFoundError:
+                    log.errorf("Asset at path '%v' could not be found. Make sure it exists.", x.path)
+                case InvalidAssetFormatError:
+                    log.errorf("Asset importer reported that the source asset is in a wrong format: %s", x.message)
+                case ScriptCompilationError:
+                    log.errorf("Script compilation error: %v", x)
+                    editor_push_notification(EditorInstance, fmt.tprintf("Script compilation failed. Reason: '%v'. Check the console for more info.", x), .Error)
+                case GenericMessageError:
+                    log.errorf("Asset import error: %s", error)
+                }
+            }
+            log.errorf("Could not import asset handle '%v'", handle)
+            return
+        }
+
+        manager.loaded_assets[handle] = asset
     }
 
     // Imports an already registered asset into memory and makes it available for retrieval using `get_asset`.
@@ -448,6 +497,8 @@ when USE_EDITOR {
         serialize_end_table(s)
     }
 
+    // Returns the asset handle of the asset located at `path`.
+    // `path` is relative to the __PROJECT__ root, __NOT__ the assets directory.
     get_asset_handle_from_path :: proc(manager: ^EditorAssetManager, path: string) -> AssetHandle {
         for k, v in manager.registry {
             if v.path == path {

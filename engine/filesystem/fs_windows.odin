@@ -26,6 +26,8 @@ open_file_explorer :: proc(dir: string) {
     )
 }
 
+WatchCallback :: #type proc(data: rawptr, file: string)
+
 Watcher :: struct {
     handle:     windows.HANDLE,
 
@@ -33,6 +35,9 @@ Watcher :: struct {
 
     triggered:  bool,
     changed_file: string,
+
+    user_data: rawptr,
+    callback: WatchCallback,
 }
 
 watcher_init :: proc(watcher: ^Watcher, directory: string) {
@@ -45,8 +50,24 @@ watcher_init :: proc(watcher: ^Watcher, directory: string) {
     thread.run_with_data(watcher, watcher_thread_proc)
 }
 
+watcher_init_with_callback :: proc(watcher: ^Watcher, directory: string, data: rawptr, callback: WatchCallback) {
+    watcher.handle = windows.FindFirstChangeNotificationW(
+        windows.utf8_to_wstring(directory),
+        true,
+        windows.FILE_NOTIFY_CHANGE_LAST_WRITE,
+    )
+    watcher.callback = callback
+    watcher.user_data = data
+
+    thread.run_with_data(watcher, watcher_thread_proc)
+}
+
 watcher_deinit :: proc(watcher: ^Watcher) {
     windows.FindCloseChangeNotification(watcher.handle)
+}
+
+watcher_guard :: proc(watcher: ^Watcher) {
+
 }
 
 @(private = "file")
@@ -82,6 +103,10 @@ watcher_thread_proc :: proc(data: rawptr) {
             delete(watcher.changed_file)
             watcher.triggered = true
             watcher.changed_file = strings.clone(name)
+            if watcher.callback != nil {
+                watcher.callback(watcher.user_data, watcher.changed_file)
+                watcher.triggered = false
+            }
             sync.mutex_unlock(&watcher.mutex)
 
             windows.FindNextChangeNotification(watcher.handle)
