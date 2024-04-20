@@ -80,6 +80,7 @@ Editor :: struct {
     is_asset_window_focused: bool,
     was_asset_window_focused: bool,
     viewport_position: vec2,
+    window_size: vec2,
 
     log_entries: [dynamic]LogEntry,
     logger: log.Logger,
@@ -123,6 +124,9 @@ Editor :: struct {
 
     asset_manager_sorted_keys: []AssetHandle,
     is_detached: bool,
+
+    notifications: [dynamic]Notification,
+    notification_mutex: sync.Mutex,
 }
 
 editor_open_project :: proc(e: ^Editor) {
@@ -310,6 +314,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     for event in g_event_ctx.events {
         #partial switch ev in event {
         case WindowResizedEvent:
+            e.window_size = ev.size
             gl.Viewport(0, 0, i32(ev.size.x), i32(ev.size.y))
         case MouseButtonEvent:
             if ev.button == .right {
@@ -552,6 +557,8 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
     editor_asset_manager(e)
     editor_undo_redo_window(e)
+
+    editor_render_notifications(e)
 
     reset_draw_stats()
 
@@ -2686,7 +2693,7 @@ asset_window_render :: proc(window: ^AssetWindow) {
 
 pbr_material_asset_window :: proc(window: ^AssetWindow, material: ^PbrMaterial) {
     editor := EditorInstance
-    {
+    block: {
         imgui.BeginChild("material_properties", vec2{250, 0}, {.Border, .ResizeX}, {})
 
         imgui.PushStyleVarImVec2(.FramePadding, {4, 4})
@@ -2903,5 +2910,85 @@ texture2d_asset_window :: proc(window: ^AssetWindow, texture: ^Texture2D) {
         if delta := get_mouse_wheel_delta(); delta != 0.0 {
             camera.position.z += delta * 2
         }
+    }
+}
+
+NotificationType :: enum {
+    Info,
+    Warning,
+    Error,
+}
+
+Notification :: struct {
+    _opened: bool,
+
+    type: NotificationType,
+    message: string,
+}
+
+// Notifications are always visible as top-most even when the editor is not focused/visible. This allows the
+// user to get notification while editing a shader/script and they make a mistake.
+editor_push_notification :: proc(e: ^Editor, message: string, type := NotificationType.Info, always_visible := false) {
+    notification := Notification {
+        type = type,
+        message = strings.clone(message),
+        _opened = true,
+    }
+
+    if sync.guard(&e.notification_mutex) {
+        append(&e.notifications, notification)
+    }
+}
+
+editor_render_notifications :: proc(e: ^Editor) {
+    SIZE :: vec2{300, 125}
+    PADDING :: vec2{10, 10}
+
+    items_to_remove := make([dynamic]int, context.temp_allocator)
+
+    offset := f32(0)
+    for &notification, i in e.notifications {
+        imgui.PushIDInt(i32(i))
+        defer imgui.PopID()
+
+        video_mode := glfw.GetVideoMode(glfw.GetPrimaryMonitor())
+
+        pos := vec2{cast(f32) video_mode.width, cast(f32) video_mode.height} - SIZE - PADDING
+        pos.y = pos.y - (SIZE.y + PADDING.y) * f32(i)
+        imgui.SetNextWindowPos(pos)
+        imgui.SetNextWindowSize(SIZE)
+
+        class: imgui.WindowClass
+        class.ViewportFlagsOverrideSet = {.NoTaskBarIcon, .TopMost, .NoAutoMerge}
+
+        imgui.SetNextWindowClass(&class)
+
+        title: cstring
+        switch notification.type {
+        case .Info:
+            imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_WHITE)
+            title = fmt.ctprintf("Info##%v", i)
+        case .Warning:
+            imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_YELLOW)
+            title = fmt.ctprintf("Warning##%v", i)
+        case .Error:
+            imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_ROSE)
+            title = fmt.ctprintf("Error##%v", i)
+        }
+        if imgui.Begin(title, &notification._opened, {.NoSavedSettings, .NoCollapse, .NoMove, .NoResize, .NoDocking}) {
+            imgui.TextWrapped(cstr(notification.message))
+        }
+        imgui.PopStyleColor()
+
+        imgui.End()
+
+        if !notification._opened {
+            append(&items_to_remove, i)
+        }
+    }
+
+    for i in items_to_remove {
+        delete(e.notifications[i].message)
+        ordered_remove(&e.notifications, i)
     }
 }
