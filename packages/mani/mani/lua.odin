@@ -90,13 +90,13 @@ to_value :: proc "contextless"(L: ^lua.State, #any_int stack_pos: int, val: ^$T)
         when intr.type_is_pointer(type_of(val^)) { 
             if fdata != nil {
                 val^ = fdata
-            } else {
+            } else if ldata != nil {
                 val^ = ldata^
             }
         } else {
             if fdata != nil {
                 val^ = fdata^
-            } else {
+            } else if ldata != nil {
                 val^ = ldata^^
             }
         }

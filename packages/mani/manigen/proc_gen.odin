@@ -124,6 +124,12 @@ generate_proc_lua_wrapper :: proc(config: ^GeneratorConfig, exports: FileExports
         write_string(sb, param.name)
         write_string(sb, ": ")
         write_string(sb, param.type)
+
+        if param.default_value != "" {
+            write_string(sb, " = ")
+            write_string(sb, param.default_value)
+        }
+
         write_string(sb, "\n    ")
     }
 

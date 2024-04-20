@@ -63,8 +63,9 @@ NodeExport :: struct {
 }
 
 Field :: struct {
-    name: string,
-    type: string,
+    name:          string,
+    type:          string,
+    default_value: string,
 }
 
 StructExport :: struct {
@@ -554,10 +555,16 @@ parse_proc :: proc(root: ^ast.File, value_decl: ^ast.Value_Decl, proc_lit: ^ast.
                 }
             }
 
+            default_value_str: string = ""
+            if param.default_value != nil {
+                default_value_str = root.src[param.default_value.pos.offset:param.default_value.end.offset]
+            }
+
             for name in param.names {
                 append_soa(&result.params, Field{
-                    name = name.derived.(^ast.Ident).name, 
+                    name = name.derived.(^ast.Ident).name,
                     type = paramType,
+                    default_value = default_value_str,
                 })
             }
         }
