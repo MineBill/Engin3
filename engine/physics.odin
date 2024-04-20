@@ -126,24 +126,24 @@ physics_init :: proc(physics: ^Physics) {
 
     jolt.SetContactListener(physics.physics_system, &physics.contact_listener)
 
-    // TODO: Remove this, only for testing if jolt bindings work.
-
     body_interface := jolt.GetBodyInterface(physics.physics_system)
     physics.body_interface = body_interface
 
-    floor_size := vec3{100, 1, 100}
-    floor_shape_settings := jolt.BoxShapeSettings_Create(&floor_size)
+    when false {
+        // TODO: Remove this, only for testing if jolt bindings work.
+        floor_size := vec3{100, 1, 100}
+        floor_shape_settings := jolt.BoxShapeSettings_Create(&floor_size)
 
-    floor_shape := jolt.ShapeSettings_CreateShape(cast(^jolt.ShapeSettings) floor_shape_settings)
+        floor_shape := jolt.ShapeSettings_CreateShape(cast(^jolt.ShapeSettings) floor_shape_settings)
 
-    position := vec3{0, -1, 0}
-    rotation := vec4{0, 0, 0, 1}
-    body_settings: jolt.BodyCreationSettings
-    jolt.BodyCreationSettings_Set(&body_settings, floor_shape, &position, &rotation, .MOTION_TYPE_STATIC, jolt.ObjectLayer(ObjectLayers.NonMoving))
+        position := vec3{0, -1, 0}
+        rotation := vec4{0, 0, 0, 1}
+        body_settings: jolt.BodyCreationSettings
+        jolt.BodyCreationSettings_Set(&body_settings, floor_shape, &position, &rotation, .MOTION_TYPE_STATIC, jolt.ObjectLayer(ObjectLayers.NonMoving))
 
-    floor := jolt.BodyInterface_CreateBody(body_interface, &body_settings)
-    jolt.BodyInterface_AddBody(body_interface, floor.id, .ACTIVATION_DONT_ACTIVATE)
-
+        floor := jolt.BodyInterface_CreateBody(body_interface, &body_settings)
+        jolt.BodyInterface_AddBody(body_interface, floor.id, .ACTIVATION_DONT_ACTIVATE)
+    }
     jolt.PhysicsSystem_OptimizeBroadPhase(physics.physics_system)
 }
 
@@ -162,20 +162,55 @@ physics_deinit :: proc(physics: ^Physics) {
 
 }
 
-ShapeType :: enum {
-    Box,
-    Sphere,
+BodyType :: enum {
+    Static,
+    Dynamic,
+    Kinematic,
 }
 
-SphereShape :: struct {
-    radius: f32,
+body_type_to_jolt :: proc(type: BodyType) -> jolt.MotionType {
+    switch type {
+    case .Static:
+        return .MOTION_TYPE_STATIC
+    case .Dynamic:
+        return .MOTION_TYPE_DYNAMIC
+    case .Kinematic:
+        return .MOTION_TYPE_KINEMATIC
+    }
+    unreachable()
 }
 
-BoxShape :: struct {
-    size: vec3,
+@(LuaExport = {
+    Type = {Full, Light},
+    Fields = {
+        position = "position",
+        normal = "normal",
+    },
+})
+RayCastHit :: struct {
+    position: vec3,
+    normal: vec3,
 }
 
-Shape :: union {
-    SphereShape,
-    BoxShape,
+physics_raycast :: proc(physics: ^Physics, from: vec3, direction: vec3) -> (hit: RayCastHit, ok: bool) {
+    query := jolt.PhysicsSystem_GetNarrowPhaseQuery(physics.physics_system)
+
+    rraycast := jolt.RRayCast {
+        origin = from.xyzz,
+        direction = direction.xyzz,
+    }
+
+    filter: jolt.BodyFilterVTable
+
+    result: jolt.RayCastResult
+    ok = jolt.NarrowPhaseQuery_CastRay(query, rraycast, &result, nil, nil, nil)
+
+    body_lock_interface := jolt.PhysicsSystem_GetBodyLockInterface(physics.physics_system)
+    body := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &result.body_id)
+    // body.user_data
+
+    hit.position = from + result.fraction * direction
+    // jolt.Body_GetWorldSpaceSurfaceNormal(body^, result.sub_shape_id, &hit.position, &hit.normal)
+
+    return
 }

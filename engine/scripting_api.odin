@@ -207,3 +207,19 @@ api_is_key_just_pressed :: proc(key: Key) -> bool {
 api_get_mouse_delta :: proc() -> vec2 {
     return get_mouse_delta()
 }
+
+@(LuaExport = {
+    Module = "Debug",
+    Name = "DrawLine",
+})
+api_debug_draw_line :: proc(from: vec3, to: vec3 = vec3{0, 10, 0}) {
+    dbg_draw_line(&EngineInstance.dbg_draw, from, to, color = COLOR_MINT)
+}
+
+@(LuaExport = {
+    Module = "Physics",
+    Name = "RayCast",
+})
+api_physics_raycast :: proc(origin: vec3, direction: vec3) -> (hit: RayCastHit, ok: bool) {
+    return physics_raycast(PhysicsInstance, origin, direction)
+}

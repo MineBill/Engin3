@@ -156,6 +156,7 @@ compile_to_spirv_vulkan :: proc(source: []byte, shader_kind: ShaderKind, name: s
     if status != .success {
         errors := shaderc.result_get_num_errors(result)
         warnings := shaderc.result_get_num_warnings(result)
+        editor_push_notification(EditorInstance, "Shader compilation failed. Check the console for more info.", .Error)
         log.errorf("Error compiling shader to Vulkan SPIR-V: %v", status)
         log.errorf("\t%v errors, %v warnings", errors, warnings)
         log.errorf("\tError from SPIR-V compiler:\n%v", shaderc.result_get_error_message(result))

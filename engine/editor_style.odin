@@ -412,9 +412,9 @@ do_property_value :: proc(value: any, tag: reflect.Struct_Tag) -> (modified: boo
         array := reflect.type_info_base(ti).variant.(reflect.Type_Info_Array)
         switch value.id {
         case typeid_of(vec3):
-            modified = imgui.DragFloat3("##vec3", &value.(vec3))
+            modified = imgui.DragFloat3("##vec3", &value.(vec3), 0.01)
         case typeid_of(vec4):
-            modified = imgui.DragFloat4("##vec4", &value.(vec4))
+            modified = imgui.DragFloat4("##vec4", &value.(vec4), 0.01)
         case typeid_of(Color):
             color := cast(^vec4)&value.(Color)
             modified = imgui.ColorEdit4("##Color", color, {})

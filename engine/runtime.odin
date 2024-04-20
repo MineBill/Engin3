@@ -327,7 +327,13 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
             uniform_buffer_set_data(
                 light_data,
                 offset_of(light_data.data.point_lights),
-                size_of(light_data.point_lights[0]) * num_point_lights)
+                size_of(light_data.data.point_lights[0]) * num_point_lights)
+        }
+
+        // NOTE:    This will return -1 even though it is a valid location to the uniform.
+        //          Is it because we use push_constants and the shader compiler does some funky stuff?
+        if loc := gl.GetUniformLocation(world_renderer.shaders["pbr"].program, "push_constants"); true {
+            gl.ProgramUniform1i(world_renderer.shaders["pbr"].program, loc, cast(i32) num_point_lights)
         }
     }
 
