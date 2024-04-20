@@ -10,3 +10,5 @@ cache/
 **/*.so
 **/*.o
 **/*.obj
+lua*.dll
+scratch/
