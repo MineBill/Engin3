@@ -26,6 +26,9 @@ extern "C" {
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
+#include "Jolt/Physics/Collision/CastResult.h"
+#include "Jolt/Physics/Collision/RayCast.h"
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
@@ -1230,11 +1233,13 @@ JOLT_PhysicsSystem_GetNarrowPhaseQuery(const JOLT_PhysicsSystem *in_physics_syst
 {
     return toJpc(&toJph(in_physics_system)->GetNarrowPhaseQuery());
 }
+
  const JOLT_NarrowPhaseQuery *
 JOLT_PhysicsSystem_GetNarrowPhaseQueryNoLock(const JOLT_PhysicsSystem *in_physics_system)
 {
     return toJpc(&toJph(in_physics_system)->GetNarrowPhaseQueryNoLock());
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_BodyLockInterface
@@ -1248,6 +1253,7 @@ JOLT_BodyLockInterface_LockRead(const JOLT_BodyLockInterface *in_lock_interface,
     assert(out_lock != nullptr);
     ::new (out_lock) JPH::BodyLockRead(*toJph(in_lock_interface), toJph(in_body_id));
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_BodyLockInterface_UnlockRead(const JOLT_BodyLockInterface *in_lock_interface,
@@ -1257,6 +1263,7 @@ JOLT_BodyLockInterface_UnlockRead(const JOLT_BodyLockInterface *in_lock_interfac
     assert(in_lock_interface != nullptr && in_lock_interface == io_lock->lock_interface);
     toJph(io_lock)->~BodyLockRead();
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_BodyLockInterface_LockWrite(const JOLT_BodyLockInterface *in_lock_interface,
@@ -1266,6 +1273,7 @@ JOLT_BodyLockInterface_LockWrite(const JOLT_BodyLockInterface *in_lock_interface
     assert(out_lock != nullptr);
     ::new (out_lock) JPH::BodyLockWrite(*toJph(in_lock_interface), toJph(in_body_id));
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_BodyLockInterface_UnlockWrite(const JOLT_BodyLockInterface *in_lock_interface,
@@ -1274,6 +1282,16 @@ JOLT_BodyLockInterface_UnlockWrite(const JOLT_BodyLockInterface *in_lock_interfa
     assert(io_lock != nullptr);
     assert(in_lock_interface != nullptr && in_lock_interface == io_lock->lock_interface);
     toJph(io_lock)->~BodyLockWrite();
+}
+
+JOLT_Body* JOLT_BodyLockInterface_TryGetBody(const JOLT_BodyLockInterface* in_lock_interface, const JOLT_BodyID *in_id)
+{
+    assert(in_lock_interface != nullptr);
+    auto body = toJph(in_lock_interface)->TryGetBody(toJph(*in_id));
+    if (body == nullptr) {
+        return nullptr;
+    }
+    return toJpc(body);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1296,16 +1314,26 @@ JOLT_NarrowPhaseQuery_CastRay(const JOLT_NarrowPhaseQuery *in_query,
     const JPH::BodyFilter body_filter{};
 
     auto query = reinterpret_cast<const JPH::NarrowPhaseQuery *>(in_query);
-    return query->CastRay(
+
+    ClosestHitCollisionCollector<CastRayCollector> collector;
+    RayCastSettings ray_settings;
+
+    query->CastRay(
         *reinterpret_cast<const JPH::RRayCast *>(in_ray),
-        *reinterpret_cast<JPH::RayCastResult *>(io_hit),
-        in_broad_phase_layer_filter ?
-            *static_cast<const JPH::BroadPhaseLayerFilter *>(in_broad_phase_layer_filter) :
-            broad_phase_layer_filter,
-        in_object_layer_filter ?
-            *static_cast<const JPH::ObjectLayerFilter *>(in_object_layer_filter) : object_layer_filter,
-        in_body_filter ?
-            *static_cast<const JPH::BodyFilter *>(in_body_filter) : body_filter);
+        ray_settings,
+        collector,
+        in_broad_phase_layer_filter ? *static_cast<const JPH::BroadPhaseLayerFilter *>(in_broad_phase_layer_filter) : broad_phase_layer_filter,
+        in_object_layer_filter ? *static_cast<const JPH::ObjectLayerFilter *>(in_object_layer_filter) : object_layer_filter,
+        in_body_filter ? *static_cast<const JPH::BodyFilter *>(in_body_filter) : body_filter);
+
+    if (collector.HadHit())
+    {
+        io_hit->fraction = collector.mHit.mFraction;
+        io_hit->body_id = collector.mHit.mBodyID.GetIndexAndSequenceNumber();
+        io_hit->sub_shape_id = collector.mHit.mSubShapeID2.GetValue();
+    }
+
+    return collector.HadHit();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1318,18 +1346,21 @@ JOLT_ShapeSettings_AddRef(JOLT_ShapeSettings *in_settings)
 {
     toJph(in_settings)->AddRef();
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_ShapeSettings_Release(JOLT_ShapeSettings *in_settings)
 {
     toJph(in_settings)->Release();
 }
+
 //--------------------------------------------------------------------------------------------------
  uint32_t
 JOLT_ShapeSettings_GetRefCount(const JOLT_ShapeSettings *in_settings)
 {
     return toJph(in_settings)->GetRefCount();
 }
+
 //--------------------------------------------------------------------------------------------------
  JOLT_Shape *
 JOLT_ShapeSettings_CreateShape(const JOLT_ShapeSettings *in_settings)
@@ -1340,18 +1371,21 @@ JOLT_ShapeSettings_CreateShape(const JOLT_ShapeSettings *in_settings)
     shape->AddRef();
     return toJpc(shape);
 }
+
 //--------------------------------------------------------------------------------------------------
- uint64_t
+uint64_t
 JOLT_ShapeSettings_GetUserData(const JOLT_ShapeSettings *in_settings)
 {
     return toJph(in_settings)->mUserData;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_ShapeSettings_SetUserData(JOLT_ShapeSettings *in_settings, uint64_t in_user_data)
 {
     toJph(in_settings)->mUserData = in_user_data;
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_ConvexShapeSettings (-> JOLT_ShapeSettings)
@@ -1363,6 +1397,7 @@ JOLT_ConvexShapeSettings_GetMaterial(const JOLT_ConvexShapeSettings *in_settings
     // TODO: Increment ref count?
     return toJpc(toJph(in_settings)->mMaterial.GetPtr());
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_ConvexShapeSettings_SetMaterial(JOLT_ConvexShapeSettings *in_settings,
@@ -1370,18 +1405,21 @@ JOLT_ConvexShapeSettings_SetMaterial(JOLT_ConvexShapeSettings *in_settings,
 {
     toJph(in_settings)->mMaterial = toJph(in_material);
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_ConvexShapeSettings_GetDensity(const JOLT_ConvexShapeSettings *in_settings)
 {
     return toJph(in_settings)->mDensity;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_ConvexShapeSettings_SetDensity(JOLT_ConvexShapeSettings *in_settings, float in_density)
 {
     toJph(in_settings)->SetDensity(in_density);
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_BoxShapeSettings (-> JOLT_ConvexShapeSettings -> JOLT_ShapeSettings)
@@ -1394,30 +1432,35 @@ JOLT_BoxShapeSettings_Create(const float in_half_extent[3])
     settings->AddRef();
     return toJpc(settings);
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_BoxShapeSettings_GetHalfExtent(const JOLT_BoxShapeSettings *in_settings, float out_half_extent[3])
 {
     storeVec3(out_half_extent, toJph(in_settings)->mHalfExtent);
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_BoxShapeSettings_SetHalfExtent(JOLT_BoxShapeSettings *in_settings, const float in_half_extent[3])
 {
     toJph(in_settings)->mHalfExtent = loadVec3(in_half_extent);
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_BoxShapeSettings_GetConvexRadius(const JOLT_BoxShapeSettings *in_settings)
 {
     return toJph(in_settings)->mConvexRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_BoxShapeSettings_SetConvexRadius(JOLT_BoxShapeSettings *in_settings, float in_convex_radius)
 {
     toJph(in_settings)->mConvexRadius = in_convex_radius;
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_SphereShapeSettings (-> JOLT_ConvexShapeSettings -> JOLT_ShapeSettings)
@@ -1430,18 +1473,21 @@ JOLT_SphereShapeSettings_Create(float in_radius)
     settings->AddRef();
     return toJpc(settings);
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_SphereShapeSettings_GetRadius(const JOLT_SphereShapeSettings *in_settings)
 {
     return toJph(in_settings)->mRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_SphereShapeSettings_SetRadius(JOLT_SphereShapeSettings *in_settings, float in_radius)
 {
     toJph(in_settings)->mRadius = in_radius;
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_TriangleShapeSettings (-> JOLT_ConvexShapeSettings -> JOLT_ShapeSettings)
@@ -1454,6 +1500,7 @@ JOLT_TriangleShapeSettings_Create(const float in_v1[3], const float in_v2[3], co
     settings->AddRef();
     return toJpc(settings);
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_TriangleShapeSettings_SetVertices(JOLT_TriangleShapeSettings *in_settings,
@@ -1466,6 +1513,7 @@ JOLT_TriangleShapeSettings_SetVertices(JOLT_TriangleShapeSettings *in_settings,
     settings->mV2 = loadVec3(in_v2);
     settings->mV3 = loadVec3(in_v3);
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_TriangleShapeSettings_GetVertices(const JOLT_TriangleShapeSettings *in_settings,
@@ -1478,12 +1526,14 @@ JOLT_TriangleShapeSettings_GetVertices(const JOLT_TriangleShapeSettings *in_sett
     storeVec3(out_v2, settings->mV2);
     storeVec3(out_v3, settings->mV3);
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_TriangleShapeSettings_GetConvexRadius(const JOLT_TriangleShapeSettings *in_settings)
 {
     return toJph(in_settings)->mConvexRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_TriangleShapeSettings_SetConvexRadius(JOLT_TriangleShapeSettings *in_settings, float in_convex_radius)
@@ -1502,12 +1552,14 @@ JOLT_CapsuleShapeSettings_Create(float in_half_height_of_cylinder, float in_radi
     settings->AddRef();
     return toJpc(settings);
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_CapsuleShapeSettings_GetHalfHeight(const JOLT_CapsuleShapeSettings *in_settings)
 {
     return toJph(in_settings)->mHalfHeightOfCylinder;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_CapsuleShapeSettings_SetHalfHeight(JOLT_CapsuleShapeSettings *in_settings,
@@ -1515,18 +1567,21 @@ JOLT_CapsuleShapeSettings_SetHalfHeight(JOLT_CapsuleShapeSettings *in_settings,
 {
     toJph(in_settings)->mHalfHeightOfCylinder = in_half_height_of_cylinder;
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_CapsuleShapeSettings_GetRadius(const JOLT_CapsuleShapeSettings *in_settings)
 {
     return toJph(in_settings)->mRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_CapsuleShapeSettings_SetRadius(JOLT_CapsuleShapeSettings *in_settings, float in_radius)
 {
     toJph(in_settings)->mRadius = in_radius;
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_TaperedCapsuleShapeSettings (-> JOLT_ConvexShapeSettings -> JOLT_ShapeSettings)
@@ -1539,12 +1594,14 @@ JOLT_TaperedCapsuleShapeSettings_Create(float in_half_height, float in_top_radiu
     settings->AddRef();
     return toJpc(settings);
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_TaperedCapsuleShapeSettings_GetHalfHeight(const JOLT_TaperedCapsuleShapeSettings *in_settings)
 {
     return toJph(in_settings)->mHalfHeightOfTaperedCylinder;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_TaperedCapsuleShapeSettings_SetHalfHeight(JOLT_TaperedCapsuleShapeSettings *in_settings,
@@ -1552,24 +1609,28 @@ JOLT_TaperedCapsuleShapeSettings_SetHalfHeight(JOLT_TaperedCapsuleShapeSettings 
 {
     toJph(in_settings)->mHalfHeightOfTaperedCylinder = in_half_height;
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_TaperedCapsuleShapeSettings_GetTopRadius(const JOLT_TaperedCapsuleShapeSettings *in_settings)
 {
     return toJph(in_settings)->mTopRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_TaperedCapsuleShapeSettings_SetTopRadius(JOLT_TaperedCapsuleShapeSettings *in_settings, float in_top_radius)
 {
     toJph(in_settings)->mTopRadius = in_top_radius;
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_TaperedCapsuleShapeSettings_GetBottomRadius(const JOLT_TaperedCapsuleShapeSettings *in_settings)
 {
     return toJph(in_settings)->mBottomRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_TaperedCapsuleShapeSettings_SetBottomRadius(JOLT_TaperedCapsuleShapeSettings *in_settings,
@@ -1577,6 +1638,7 @@ JOLT_TaperedCapsuleShapeSettings_SetBottomRadius(JOLT_TaperedCapsuleShapeSetting
 {
     toJph(in_settings)->mBottomRadius = in_bottom_radius;
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_CylinderShapeSettings (-> JOLT_ConvexShapeSettings -> JOLT_ShapeSettings)
@@ -1589,42 +1651,49 @@ JOLT_CylinderShapeSettings_Create(float in_half_height, float in_radius)
     settings->AddRef();
     return toJpc(settings);
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_CylinderShapeSettings_GetConvexRadius(const JOLT_CylinderShapeSettings *in_settings)
 {
     return toJph(in_settings)->mConvexRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_CylinderShapeSettings_SetConvexRadius(JOLT_CylinderShapeSettings *in_settings, float in_convex_radius)
 {
     toJph(in_settings)->mConvexRadius = in_convex_radius;
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_CylinderShapeSettings_GetHalfHeight(const JOLT_CylinderShapeSettings *in_settings)
 {
     return toJph(in_settings)->mHalfHeight;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_CylinderShapeSettings_SetHalfHeight(JOLT_CylinderShapeSettings *in_settings, float in_half_height)
 {
     toJph(in_settings)->mHalfHeight = in_half_height;
 }
+
 //--------------------------------------------------------------------------------------------------
  float
 JOLT_CylinderShapeSettings_GetRadius(const JOLT_CylinderShapeSettings *in_settings)
 {
     return toJph(in_settings)->mRadius;
 }
+
 //--------------------------------------------------------------------------------------------------
  void
 JOLT_CylinderShapeSettings_SetRadius(JOLT_CylinderShapeSettings *in_settings, float in_radius)
 {
     toJph(in_settings)->mRadius = in_radius;
 }
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_ConvexHullShapeSettings (-> JOLT_ConvexShapeSettings -> JOLT_ShapeSettings)

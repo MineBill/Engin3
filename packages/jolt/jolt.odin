@@ -635,6 +635,7 @@ foreign Jolt {
 	BodyLockInterface_UnlockRead :: proc(in_lock_interface: ^BodyLockInterface,io_lock: ^BodyLockRead)---
 	BodyLockInterface_LockWrite :: proc(in_lock_interface: ^BodyLockInterface,in_body_id:BodyID,out_lock: ^BodyLockWrite)---
 	BodyLockInterface_UnlockWrite :: proc(in_lock_interface: ^BodyLockInterface,io_lock: ^BodyLockWrite)---
+	BodyLockInterface_TryGetBody :: proc(in_lock_interface: ^BodyLockInterface,in_id: ^BodyID) -> ^Body---
 	NarrowPhaseQuery_CastRay :: proc(in_query: ^NarrowPhaseQuery,#by_ptr in_ray: RRayCast,io_hit: ^RayCastResult,in_broad_phase_layer_filter:rawptr,in_object_layer_filter:rawptr,in_body_filter:rawptr) -> bool---
 	Shape_AddRef :: proc(in_shape: ^Shape)---
 	Shape_Release :: proc(in_shape: ^Shape)---

@@ -1254,6 +1254,10 @@ JOLT_BodyLockInterface_LockWrite(const JOLT_BodyLockInterface *in_lock_interface
 JOLT_BodyLockInterface_UnlockWrite(const JOLT_BodyLockInterface *in_lock_interface,
                                   JOLT_BodyLockWrite *io_lock);
 
+JOLT_Body* JOLT_BodyLockInterface_TryGetBody(
+        const JOLT_BodyLockInterface* in_lock_interface, 
+        const JOLT_BodyID *in_id);
+
 //--------------------------------------------------------------------------------------------------
 //
 // JOLT_NarrowPhaseQuery
