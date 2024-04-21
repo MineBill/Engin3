@@ -9,6 +9,7 @@ EditorStyle :: struct {
     image_button_styles: [ImageButtonStyles]ImageButtonStyle,
     check_box_styles:    [CheckBoxStyles]CheckBoxStyle,
     popup_styles:        [PopupStyles]PopupStyle,
+    window_styles:       [WindowStyles]WindowStyle,
 }
 
 default_style :: proc() -> (editor_style: EditorStyle) {
@@ -16,6 +17,7 @@ default_style :: proc() -> (editor_style: EditorStyle) {
     setup_image_button_styles(&editor_style.image_button_styles)
     setup_checkbox_styles(&editor_style.check_box_styles)
     setup_popup_styles(&editor_style.popup_styles)
+    setup_window_styles(&editor_style.window_styles)
     return
 }
 
@@ -71,6 +73,10 @@ setup_checkbox_styles :: proc(styles: ^[CheckBoxStyles]CheckBoxStyle) {
 
 setup_popup_styles :: proc(styles: ^[PopupStyles]PopupStyle) {
     styles[.Generic] = default_popup_style()
+}
+
+setup_window_styles :: proc(styles: ^[WindowStyles]WindowStyle) {
+    styles[.Generic] = default_window_style()
 }
 
 do_button :: proc(label: string, size := vec2{0, 0}, alignment := f32(0.0)) -> bool {
@@ -179,6 +185,34 @@ draw_texture :: proc(texture: Texture2D, size: vec2, uv0 := vec2{0, 1}, uv1 := v
     imgui.Image(transmute(rawptr)u64(texture.handle), size, uv0, uv1, vec4{1, 1, 1, 1})
 }
 
+@(deferred_none=end_window)
+do_window :: proc(
+    title: string,
+    opened: ^bool = nil,
+    flags := imgui.WindowFlags{},
+    style := WindowStyles.Generic,
+    style_override: Maybe(WindowStyle) = nil,
+) -> bool {
+    style := EditorInstance.style.window_styles[style]
+
+    imgui.PushStyleVarImVec2(.WindowPadding, style.padding)
+    imgui.PushStyleVar(.WindowRounding, style.rounding)
+    imgui.PushStyleVar(.WindowBorderSize, 1.0 if style.border else 0.0)
+    defer {
+        imgui.PopStyleVar(3)
+    }
+
+    return imgui.Begin(cstr(title), opened, flags)
+}
+
+end_window :: proc() {
+    imgui.End()
+}
+
+// ======
+// STYLES
+// ======
+
 CommonStyle :: struct {
     padding: vec2,
     rounding: f32,
@@ -193,6 +227,10 @@ default_common_style :: proc() -> CommonStyle {
     }
 }
 
+// =================
+// Interactive Style
+// =================
+
 InteractiveStyle :: struct {
     normal_color, hover_color, pressed_color: Color,
 }
@@ -205,6 +243,10 @@ default_interactive_style :: proc() -> InteractiveStyle {
         pressed_color = color_darken(accent, 0.1),
     }
 }
+
+// ===========
+// Popup Style
+// ===========
 
 PopupStyles :: enum {
     Generic,
@@ -221,6 +263,10 @@ default_popup_style :: proc() -> (style: PopupStyle) {
     style.padding = vec2{5, 5}
     return
 }
+
+// ============
+// Button Style
+// ============
 
 ButtonStyles :: enum {
     Generic,
@@ -252,6 +298,10 @@ default_button_style :: proc() -> ButtonStyle {
     }
 }
 
+// ==================
+// Image Button Style
+// ==================
+
 ImageButtonStyles :: enum {
     Generic,
     GenericRounded,
@@ -282,6 +332,10 @@ default_image_button_style :: proc() -> ImageButtonStyle {
     return style
 }
 
+// ==============
+// Checkbox Style
+// ==============
+
 CheckBoxStyles :: enum {
     Generic,
     Disabled,
@@ -302,6 +356,52 @@ default_checkbox_style :: proc() -> CheckBoxStyle {
     style.padding = vec2{2, 2}
     return style
 }
+
+// ==========
+// Tree Style
+// ==========
+
+TreeNodeStyles :: enum {
+    Generic,
+}
+
+TreeNodeStyle :: struct {
+
+}
+
+@(deferred_out=end_treenode)
+do_treenode :: proc(label: string, flags := imgui.TreeNodeFlags{}, style := TreeNodeStyles.Generic) -> bool {
+    return imgui.TreeNodeEx(cstr(label), flags)
+}
+
+end_treenode :: proc(opened: bool) {
+    if opened {
+        imgui.TreePop()
+    }
+}
+
+// ============
+// Window Style
+// ============
+
+WindowStyles :: enum {
+    Generic,
+}
+
+WindowStyle :: struct {
+    using common: CommonStyle,
+}
+
+default_window_style :: proc() -> (style: WindowStyle) {
+    style.common = default_common_style()
+    style.border = true
+    style.rounding = 3.0
+    return
+}
+
+// ========================
+// Property drawing helpers
+// ========================
 
 PROPERTY_TABLE_FLAGS :: imgui.TableFlags_BordersInnerV |
     imgui.TableFlags_Resizable |
@@ -329,7 +429,7 @@ do_property_name :: proc(name: string) {
     imgui.TextUnformatted(cname)
 }
 
-do_property_value :: proc(value: any, tag: reflect.Struct_Tag) -> (modified: bool) {
+do_property_value :: proc(value: any, tag: reflect.Struct_Tag = "") -> (modified: bool) {
     ti := (type_info_of(value.id))
     imgui.PushIDPtr(value.data)
     defer imgui.PopID()
@@ -446,25 +546,6 @@ do_property_value :: proc(value: any, tag: reflect.Struct_Tag) -> (modified: boo
     return
 }
 
-TreeNodeStyles :: enum {
-    Generic,
-}
-
-TreeNodeStyle :: struct {
-
-}
-
-@(deferred_out=end_treenode)
-do_treenode :: proc(label: string, flags := imgui.TreeNodeFlags{}, style := TreeNodeStyles.Generic) -> bool {
-    return imgui.TreeNodeEx(cstr(label), flags)
-}
-
-end_treenode :: proc(opened: bool) {
-    if opened {
-        imgui.TreePop()
-    }
-}
-
 color_to_abgr :: proc(color: Color) -> u32 {
     r := u8(color.r * 255)
     g := u8(color.g * 255)
@@ -476,7 +557,7 @@ color_to_abgr :: proc(color: Color) -> u32 {
 apply_style :: proc(style: EditorStyle) {
     // Fork of Future Dark style from ImThemes
     style := imgui.GetStyle()
-    
+
     style.Alpha                     = 1.0
     style.DisabledAlpha             = 1.0
     style.WindowPadding             = vec2{12.0, 12.0}
@@ -561,61 +642,4 @@ apply_style :: proc(style: EditorStyle) {
     style.Colors[imgui.Col.NavWindowingHighlight] = vec4{0.4980392158031464,  0.5137255191802979,  1.0,                 1.0}
     style.Colors[imgui.Col.NavWindowingDimBg]     = vec4{0.196078434586525,   0.1764705926179886,  0.5450980663299561,  0.501960813999176}
     style.Colors[imgui.Col.ModalWindowDimBg]      = vec4{0.196078434586525,   0.1764705926179886,  0.5450980663299561,  0.501960813999176}
-
-    // colors := &style.Colors
-    // colors[imgui.Col.Text]                   = vec4{1.00, 1.00, 1.00, 1.00};
-    // colors[imgui.Col.TextDisabled]           = vec4{0.27, 0.32, 0.45, 1.00};
-    // colors[imgui.Col.WindowBg]               = vec4{0.08, 0.08, 0.09, 1.00};
-    // colors[imgui.Col.ChildBg]                = vec4{0.08, 0.09, 0.10, 1.00};
-    // colors[imgui.Col.PopupBg]                = vec4{0.08, 0.09, 0.10, 1.00};
-    // colors[imgui.Col.Border]                 = vec4{0.16, 0.17, 0.19, 1.00};
-    // colors[imgui.Col.BorderShadow]           = vec4{0.08, 0.09, 0.10, 1.00};
-    // colors[imgui.Col.FrameBg]                = vec4{0.11, 0.12, 0.13, 1.00};
-    // colors[imgui.Col.FrameBgHovered]         = vec4{0.16, 0.17, 0.19, 1.00};
-    // colors[imgui.Col.FrameBgActive]          = vec4{0.60, 0.46, 0.22, 1.00};
-    // colors[imgui.Col.TitleBg]                = vec4{0.06, 0.06, 0.07, 1.00};
-    // colors[imgui.Col.TitleBgActive]          = vec4{0.05, 0.05, 0.06, 1.00};
-    // colors[imgui.Col.TitleBgCollapsed]       = vec4{0.08, 0.09, 0.10, 1.00};
-    // colors[imgui.Col.MenuBarBg]              = vec4{0.11, 0.11, 0.12, 1.00};
-    // colors[imgui.Col.ScrollbarBg]            = vec4{0.05, 0.05, 0.07, 1.00};
-    // colors[imgui.Col.ScrollbarGrab]          = vec4{0.12, 0.13, 0.15, 1.00};
-    // colors[imgui.Col.ScrollbarGrabHovered]   = vec4{0.16, 0.17, 0.19, 1.00};
-    // colors[imgui.Col.ScrollbarGrabActive]    = vec4{0.12, 0.13, 0.15, 1.00};
-    // colors[imgui.Col.CheckMark]              = vec4{1.00, 0.82, 0.50, 1.00};
-    // colors[imgui.Col.SliderGrab]             = vec4{1.00, 0.82, 0.50, 1.00};
-    // colors[imgui.Col.SliderGrabActive]       = vec4{1.00, 0.83, 0.54, 1.00};
-    // colors[imgui.Col.Button]                 = vec4{0.15, 0.17, 0.19, 1.00};
-    // colors[imgui.Col.ButtonHovered]          = vec4{0.55, 0.41, 0.18, 1.00};
-    // colors[imgui.Col.ButtonActive]           = vec4{0.60, 0.46, 0.22, 1.00};
-    // colors[imgui.Col.Header]                 = vec4{0.15, 0.17, 0.19, 1.00};
-    // colors[imgui.Col.HeaderHovered]          = vec4{0.55, 0.41, 0.18, 1.00};
-    // colors[imgui.Col.HeaderActive]           = vec4{0.60, 0.46, 0.22, 1.00};
-    // colors[imgui.Col.Separator]              = vec4{0.16, 0.18, 0.25, 1.00};
-    // colors[imgui.Col.SeparatorHovered]       = vec4{0.16, 0.18, 0.25, 1.00};
-    // colors[imgui.Col.SeparatorActive]        = vec4{0.16, 0.18, 0.25, 1.00};
-    // colors[imgui.Col.ResizeGrip]             = vec4{0.12, 0.13, 0.15, 1.00};
-    // colors[imgui.Col.ResizeGripHovered]      = vec4{0.55, 0.41, 0.18, 1.00};
-    // colors[imgui.Col.ResizeGripActive]       = vec4{0.60, 0.46, 0.22, 1.00};
-    // colors[imgui.Col.Tab]                    = vec4{0.05, 0.05, 0.07, 1.00};
-    // colors[imgui.Col.TabHovered]             = vec4{0.12, 0.13, 0.15, 1.00};
-    // colors[imgui.Col.TabActive]              = vec4{0.10, 0.11, 0.12, 1.00};
-    // colors[imgui.Col.TabUnfocused]           = vec4{0.05, 0.05, 0.07, 1.00};
-    // colors[imgui.Col.TabUnfocusedActive]     = vec4{0.08, 0.09, 0.10, 1.00};
-    // colors[imgui.Col.DockingPreview]         = vec4{0.26, 0.59, 0.98, 0.70};
-    // colors[imgui.Col.DockingEmptyBg]         = vec4{0.20, 0.20, 0.20, 1.00};
-    // colors[imgui.Col.PlotLines]              = vec4{0.52, 0.60, 0.70, 1.00};
-    // colors[imgui.Col.PlotLinesHovered]       = vec4{0.04, 0.98, 0.98, 1.00};
-    // colors[imgui.Col.PlotHistogram]          = vec4{1.00, 0.29, 0.60, 1.00};
-    // colors[imgui.Col.PlotHistogramHovered]   = vec4{1.00, 0.47, 0.70, 1.00};
-    // colors[imgui.Col.TableHeaderBg]          = vec4{0.05, 0.05, 0.07, 1.00};
-    // colors[imgui.Col.TableBorderStrong]      = vec4{0.05, 0.05, 0.07, 1.00};
-    // colors[imgui.Col.TableBorderLight]       = vec4{0.00, 0.00, 0.00, 1.00};
-    // colors[imgui.Col.TableRowBg]             = vec4{0.12, 0.13, 0.15, 1.00};
-    // colors[imgui.Col.TableRowBgAlt]          = vec4{0.10, 0.11, 0.12, 1.00};
-    // colors[imgui.Col.TextSelectedBg]         = vec4{0.24, 0.22, 0.60, 1.00};
-    // colors[imgui.Col.DragDropTarget]         = vec4{0.50, 0.51, 1.00, 1.00};
-    // colors[imgui.Col.NavHighlight]           = vec4{0.50, 0.51, 1.00, 1.00};
-    // colors[imgui.Col.NavWindowingHighlight]  = vec4{0.50, 0.51, 1.00, 1.00};
-    // colors[imgui.Col.NavWindowingDimBg]      = vec4{0.20, 0.18, 0.55, 0.50};
-    // colors[imgui.Col.ModalWindowDimBg]       = vec4{0.20, 0.18, 0.55, 0.50};
 }

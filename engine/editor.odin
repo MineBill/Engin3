@@ -460,7 +460,6 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     }
 
     @(static) show_depth_buffer := false
-    @(static) show_gbuffer := false
     if imgui.BeginMainMenuBar() {
 
         if imgui.BeginMenu("Scene") {
@@ -505,7 +504,6 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         }
 
         do_checkbox("Show Depth Buffer", &show_depth_buffer, .MenuBar)
-        do_checkbox("Show G-Buffer", &show_gbuffer, .MenuBar)
     }
     imgui.EndMainMenuBar()
 
@@ -515,35 +513,21 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
     imgui.DockSpaceOverViewport(imgui.GetMainViewport(), {.PassthruCentralNode})
 
-    if show_depth_buffer && imgui.Begin("Shadow Map", &show_depth_buffer, {}) {
-        @(static) active_image := i32(0)
-        if imgui.SliderInt("ShadowMap Layer", &active_image, 0, 3) {
-            destroy_texture_view(e.shadow_map_texture_view)
-            e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map, u32(active_image))
+    if show_depth_buffer {
+        if do_window("Shadow Map", &show_depth_buffer) {
+            @(static) active_image := i32(0)
+            if imgui.SliderInt("ShadowMap Layer", &active_image, 0, 3) {
+                destroy_texture_view(e.shadow_map_texture_view)
+                e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map, u32(active_image))
+            }
+
+            size := imgui.GetContentRegionAvail()
+
+            uv0 := vec2{0, 1}
+            uv1 := vec2{1, 0}
+            imgui.Image(transmute(rawptr)u64(e.shadow_map_texture_view.handle), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
         }
-
-        size := imgui.GetContentRegionAvail()
-
-        uv0 := vec2{0, 1}
-        uv1 := vec2{1, 0}
-        imgui.Image(transmute(rawptr)u64(e.shadow_map_texture_view.handle), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
-        imgui.End()
     }
-
-    if show_gbuffer && imgui.Begin("Show G-Buffer", &show_gbuffer) {
-        fb := e.renderer.g_buffer
-
-        @(static) index := i32(0)
-        imgui.SliderInt("Attachment", &index, 0, cast(i32) small_array.len(fb.color_attachments) - 1)
-        texture := get_color_attachment(fb, int(index))
-        size := imgui.GetContentRegionAvail()
-
-        uv0 := vec2{0, 1}
-        uv1 := vec2{1, 0}
-        imgui.Image(transmute(rawptr)u64(texture), size, uv0, uv1, vec4{1, 1, 1, 1})
-        imgui.End()
-    }
-
 
     editor_random_testing_window(e)
 
@@ -737,13 +721,20 @@ editor_random_testing_window :: proc(e: ^Editor) {
 
 editor_env_panel :: proc(e: ^Editor) {
     using imgui
-    if Begin("Environment", nil, {}) {
-        @(static) clear_color: vec3
-        if ColorEdit3("Clear Color", &clear_color, {}) {
-            gl.ClearColor(expand_values(clear_color), 1.0)
-        }
 
-        ColorEdit4("Ambent Color", cast(^vec4)&e.engine.world.ambient_color, {})
+    imgui.PushStyleVar(.IndentSpacing, 20)
+    if do_window("Scene") {
+        @(static) clear_color: vec3
+        if do_property("clear_color") {
+            do_property_name("Clear Color")
+            if do_property_value(clear_color) {
+                gl.ClearColor(expand_values(clear_color), 1.0)
+            }
+
+            do_property_name("Ambient Color")
+            do_property_value(e.engine.world.ambient_color)
+
+        }
 
         if CollapsingHeader("Post Processing") {
             Indent()
@@ -753,7 +744,7 @@ editor_env_panel :: proc(e: ^Editor) {
             }
         }
     }
-    End()
+    imgui.PopStyleVar()
 }
 
 ViewportImage :: enum {
@@ -766,7 +757,7 @@ ViewportImage :: enum {
 editor_viewport :: proc(e: ^Editor) {
     @(static) viewport_image: ViewportImage = .Normal
     imgui.PushStyleVarImVec2(.WindowPadding, vec2{0, 0})
-    if imgui.Begin("Viewport", nil, {.MenuBar}) {
+    if do_window("Viewport", nil, {.MenuBar}) {
         e.is_viewport_focused = imgui.IsWindowHovered({})
         if imgui.BeginMenuBar() {
             if imgui_enum_combo_id("MSAA Level", g_msaa_level, type_info_of(MSAA_Level)) {
@@ -849,7 +840,7 @@ editor_viewport :: proc(e: ^Editor) {
             imgui.SetNextWindowBgAlpha(0.35)
             imgui.PushStyleVarImVec2(.WindowPadding, vec2{10, 10})
             imgui.PushFont(e.fonts[.Light])
-            if imgui.Begin("Render Stats", flags = flags) {
+            if do_window("Render Stats", flags = flags) {
                 imgui.TextUnformatted(fmt.ctprintf("MSAA Level: %v", g_msaa_level))
                 imgui.TextUnformatted(fmt.ctprintf("Viewport Size: %v", e.viewport_size))
                 imgui.TextUnformatted(fmt.ctprintf("Viewport Position: %v", e.viewport_position))
@@ -864,7 +855,6 @@ editor_viewport :: proc(e: ^Editor) {
                 if show_camera_stats {
                     imgui.TextUnformatted(fmt.ctprintf("Editor Camera: %#v", e.camera))
                 }
-                imgui.End()
             }
             imgui.PopFont()
             imgui.PopStyleVar()
@@ -875,12 +865,11 @@ editor_viewport :: proc(e: ^Editor) {
         }
 
     }
-    imgui.End()
     imgui.PopStyleVar()
 }
 
 editor_entidor :: proc(e: ^Editor) {
-    window: if imgui.Begin("Properties") {
+    window: if do_window("Properties") {
         // selected_handle, ok := e.selected_entity.(Handle)
         if len(e.entity_selection) == 0 {
             imgui.TextUnformatted("No entity selected")
@@ -1044,8 +1033,6 @@ editor_entidor :: proc(e: ^Editor) {
             }
         }
     }
-
-    imgui.End()
 }
 
 editor_ui_toolstrip :: proc(e: ^Editor) {
@@ -1078,7 +1065,7 @@ editor_ui_toolstrip :: proc(e: ^Editor) {
     y :: 4
     imgui.PushStyleVarImVec2(.WindowPadding, vec2{0, y})
 
-    imgui.Begin("##toolbar", flags = imgui.WindowFlags_NoDecoration)
+    do_window("##toolbar", flags = imgui.WindowFlags_NoDecoration)
 
     icon := EditorIcon.StopButton if e.next_play_state == .Edit else EditorIcon.PlayButton
     size := imgui.GetWindowHeight() - y * 2
@@ -1145,8 +1132,6 @@ editor_ui_toolstrip :: proc(e: ^Editor) {
     }
 
     imgui.PopStyleVar(1)
-
-    imgui.End()
 }
 
 Folder :: struct {
@@ -1362,7 +1347,7 @@ return NewScript
     browser := &e.content_browser
 
     imgui.PushStyleVarImVec2(.WindowPadding, vec2{5, 5})
-    opened := imgui.Begin("Content Browser", nil, {})
+    opened := do_window("Content Browser", nil, {})
 
     {
         imgui.BeginChild("folder side view", vec2{150, 0}, {.Border, .ResizeX}, {})
@@ -1577,11 +1562,10 @@ return NewScript
     }
 
     imgui.PopStyleVar()
-    imgui.End()
 }
 
 editor_log_window :: proc(e: ^Editor) {
-    opened := imgui.Begin("Log", nil, {})
+    opened := do_window("Log")
     if opened {
         if do_button("Clear") {
             clear(&e.log_entries)
@@ -1645,7 +1629,6 @@ editor_log_window :: proc(e: ^Editor) {
             imgui.EndChild()
         }
     }
-    imgui.End()
 }
 
 editor_gameobjects :: proc(e: ^Editor) {
@@ -1750,7 +1733,7 @@ editor_gameobjects :: proc(e: ^Editor) {
     if e.engine.world.modified {
         flags += {.UnsavedDocument}
     }
-    if imgui.Begin("Entities", flags = flags) {
+    if do_window("Entities", flags = flags) {
         imgui.TextUnformatted(cstr(e.engine.world.name))
         imgui.Separator()
 
@@ -1785,11 +1768,11 @@ editor_gameobjects :: proc(e: ^Editor) {
             imgui.EndDragDropTarget()
         }
     }
-    imgui.End()
 }
 
 editor_asset_manager :: proc(e: ^Editor) {
-    if e.show_asset_manager && imgui.Begin("Asset Manager", &e.show_asset_manager) {
+    if !e.show_asset_manager do return 
+    if do_window("Asset Manager", &e.show_asset_manager) {
         if imgui.BeginTabBar("##registry") {
             flags := imgui.TableFlags_Borders |
             imgui.TableFlags_Sortable |
@@ -1897,13 +1880,12 @@ editor_asset_manager :: proc(e: ^Editor) {
             }
             imgui.EndTabBar()
         }
-        imgui.End()
     }
 }
 
 editor_undo_redo_window :: proc(e: ^Editor) {
     if e.show_undo_redo {
-        if imgui.Begin("Undo/Redo Stack", &e.show_undo_redo) {
+        if do_window("Undo/Redo Stack", &e.show_undo_redo) {
             size := imgui.GetContentRegionAvail()
 
             flags := imgui.TableFlags_Borders
@@ -1946,7 +1928,6 @@ editor_undo_redo_window :: proc(e: ^Editor) {
                 }
             imgui.EndChild()
         }
-        imgui.End()
     }
 }
 
@@ -2660,7 +2641,7 @@ create_asset_window :: proc(asset: AssetHandle) -> (window: AssetWindow) {
 
 asset_window_render :: proc(window: ^AssetWindow) {
     imgui.SetNextWindowSize(vec2{550, 300}, .Appearing)
-    if imgui.Begin(fmt.ctprintf("Asset View##%d", window.asset), &window.opened, {.MenuBar}) {
+    if do_window(fmt.tprintf("Asset View##%d", window.asset), &window.opened, {.MenuBar}) {
         type := get_asset_type(&EngineInstance.asset_manager, window.asset)
         asset := get_asset(&EngineInstance.asset_manager, window.asset, type)
 
@@ -2686,8 +2667,6 @@ asset_window_render :: proc(window: ^AssetWindow) {
             }
         }
     }
-
-    imgui.End()
 }
 
 pbr_material_asset_window :: proc(window: ^AssetWindow, material: ^PbrMaterial) {
@@ -2962,24 +2941,22 @@ editor_render_notifications :: proc(e: ^Editor) {
 
         imgui.SetNextWindowClass(&class)
 
-        title: cstring
+        title: string
         switch notification.type {
         case .Info:
             imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_WHITE)
-            title = fmt.ctprintf("Info##%v", i)
+            title = fmt.tprintf("Info##%v", i)
         case .Warning:
             imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_YELLOW)
-            title = fmt.ctprintf("Warning##%v", i)
+            title = fmt.tprintf("Warning##%v", i)
         case .Error:
             imgui.PushStyleColorImVec4(.Text, cast(vec4) COLOR_ROSE)
-            title = fmt.ctprintf("Error##%v", i)
+            title = fmt.tprintf("Error##%v", i)
         }
-        if imgui.Begin(title, &notification._opened, {.NoSavedSettings, .NoCollapse, .NoMove, .NoResize, .NoDocking}) {
+        if do_window(title, &notification._opened, {.NoSavedSettings, .NoCollapse, .NoMove, .NoResize, .NoDocking}) {
             imgui.TextWrapped(cstr(notification.message))
         }
         imgui.PopStyleColor()
-
-        imgui.End()
 
         if !notification._opened {
             append(&items_to_remove, i)
