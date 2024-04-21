@@ -194,6 +194,11 @@ engine_setup_window :: proc(e: ^Engine) -> Engine_Error {
     glfw.MakeContextCurrent(e.window)
     gl.load_up_to(4, 6, glfw.gl_set_proc_address)
 
+    // HACK(minebill): Try force clearing the background to black, otherwise you get a flashbang.
+    gl.ClearColor(0, 0, 0, 1)
+    gl.Clear(gl.COLOR_BUFFER_BIT)
+    glfw.SwapBuffers(e.window)
+
     glfw.SwapInterval(1)
 
     setup_glfw_callbacks(e.window)
