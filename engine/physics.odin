@@ -105,6 +105,8 @@ physics_init :: proc(physics: ^Physics) {
         context = EngineInstance.ctx
         sub_shape_pair := sub_shape_pair
 
+        // TODO(minebill): I'm pretty sure we need to "lock" something over here before reading
+        // otherwise we can crash here.
         body_lock_interface := jolt.PhysicsSystem_GetBodyLockInterface(PhysicsInstance.physics_system)
         body1 := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &sub_shape_pair.first.body_id)
         body2 := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &sub_shape_pair.second.body_id)
