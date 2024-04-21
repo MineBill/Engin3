@@ -180,8 +180,6 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.logger = create_category_logger(&e.category_logger, &e.log_entries)
     context.logger = e.logger
 
-    log_debug(LC.Editor, "Pepegas %v", 213)
-
     e.content_browser.root_dir = project_get_assets_folder(e.active_project)
     cb_navigate_to_folder(&e.content_browser, e.content_browser.root_dir)
 
