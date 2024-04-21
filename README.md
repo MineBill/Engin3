@@ -3,11 +3,15 @@
   <img src="assets/editor/icons/Logo_Shadow.png" />
 </p>
 
-This is a very simple project that aims to help me learn how graphics work and how to develop a simple game engine.
+This is a very simple project that aims to help me learn how graphics work and how to develop a simple game engine. It is __NOT__ a serious tool but a learning project, so please keep that in mind.
 
 ## Status
 Currently, only work on the "Editor" part is being done. Once i'm satisfied with that, the next step would be to get the "runtime" working, meaning
 being able to load a "cooked" game from a single asset file.
+
+## Architecture
+The engine uses a "component" based system. Entities exist in the world and can have multiple components attached to them. It follows the logic of Unity's MonoBehaviour and not an ECS.
+The reason for this is that i just feel more comfortable working with this type of components and speed is not a hude concern right now.
 
 ## Building and Running
 > [!WARNING]  
