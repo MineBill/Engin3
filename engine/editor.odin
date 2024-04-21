@@ -2907,6 +2907,11 @@ Notification :: struct {
 // Notifications are always visible as top-most even when the editor is not focused/visible. This allows the
 // user to get notification while editing a shader/script and they make a mistake.
 editor_push_notification :: proc(e: ^Editor, message: string, type := NotificationType.Info, always_visible := false) {
+    MAX_NOTIFICATIONS :: 10
+    if len(e.notifications) == MAX_NOTIFICATIONS {
+        return
+    }
+
     notification := Notification {
         type = type,
         message = strings.clone(message),
