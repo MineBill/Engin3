@@ -89,6 +89,7 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     editor_init(&e.editor, e)
     context.logger = e.editor.logger
+    e.ctx = context
 
     physics_init(&e.physics)
 
@@ -110,7 +111,7 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
     e.run_mode = .Editor
 
     if !deserialize_world(&e.world, "assets/scenes/New World.world") {
-        log.debug("Failed to deserialize 'New World.world")
+        log_debug(LC.Engine, "Failed to deserialize 'New World.world")
     }
 
     return {}

@@ -1,7 +1,6 @@
 package engine
 import "core:strings"
 import "core:os"
-import "core:log"
 import "core:path/filepath"
 import "core:fmt"
 
@@ -26,12 +25,12 @@ free_project :: proc(project: ^Project) {
 
 new_project :: proc(name: string, location: string) -> (project: Project, ok: bool) {
     if !filepath.is_abs(location) {
-        log.errorf("New project location must be an absolute path.")
+        log_error(LC.Engine, "New project location must be an absolute path.")
         return {}, false
     }
 
     if os.exists(location) {
-        log.errorf("Folder already exists at %v", location)
+        log_error(LC.Engine, "Folder already exists at %v", location)
         return {}, false
     }
     project.name = strings.clone(name)

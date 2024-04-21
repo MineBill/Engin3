@@ -2,7 +2,6 @@ package engine
 import gl "vendor:OpenGL"
 import "core:mem"
 import "core:fmt"
-import "core:log"
 import tracy "packages:odin-tracy"
 import "core:encoding/json"
 import "core:os"
@@ -143,7 +142,7 @@ copy_component :: proc(w: ^World, handle, target: EntityHandle, id: typeid) {
 
     target_component := get_component_typeid(w, target, id)
     if target_component == nil {
-        log.errorf("Cannot copy component %v from entity %v because it doesn't exist.", id, target)
+        log_error(LC.EntitySystem, "Cannot copy component %v from entity %v because it doesn't exist.", id, target)
         return
     }
 
@@ -363,6 +362,8 @@ get_object :: proc(world: ^World, handle: EntityHandle) -> ^Entity {
     }
     return nil
 }
+
+get_entity :: get_object
 
 add_child :: proc(world: ^World, parent: EntityHandle, child: EntityHandle) {
     tracy.Zone()

@@ -1,5 +1,4 @@
 package engine
-import "core:log"
 import "packages:mani/mani"
 import "packages:odin-lua/lua"
 import "packages:odin-lua/luaL"
@@ -137,7 +136,7 @@ create_script_instance :: proc(script: ^LuaScript) -> (state: ScriptInstance) {
         return {}
     }
 
-    log.debug("Creating new script instance")
+    log_debug(LC.ScriptingEngine, "Creating new script instance")
     state.state = luaL.newstate()
     L := state.state
 
@@ -147,17 +146,17 @@ create_script_instance :: proc(script: ^LuaScript) -> (state: ScriptInstance) {
     b := cstring(&script.bytecode[0])
 
     if luaL.loadbufferx(L, b, c.ptrdiff_t(len(script.bytecode)), "Script", "b") != lua.OK {
-        log.error("Error while doing string")
+        log_error(LC.ScriptingEngine, "Error while doing string")
         return
     }
 
     if lua.pcall(L, 0, 1, 0) != lua.OK {
-        log.errorf("Failed to execute bytecode: %v", lua.tostring(L, -1))
+        log_error(LC.ScriptingEngine, "Failed to execute bytecode: %v", lua.tostring(L, -1))
         return
     }
 
     if !lua.istable(L, -1) {
-        log.errorf("Script did not return a global table.")
+        log_error(LC.ScriptingEngine, "Script did not return a global table.")
         return
     }
     state.object = i64(luaL.ref(L, lua.REGISTRYINDEX))
@@ -165,7 +164,7 @@ create_script_instance :: proc(script: ^LuaScript) -> (state: ScriptInstance) {
 
     lua.getfield(L, -1, "on_init")
     if !lua.isfunction(L, -1) {
-        log.errorf("on_init is not a function")
+        log_error(LC.ScriptingEngine, "on_init is not a function")
         return
     }
 
@@ -173,7 +172,7 @@ create_script_instance :: proc(script: ^LuaScript) -> (state: ScriptInstance) {
 
     lua.getfield(L, -1, "on_update")
     if !lua.isfunction(L, -1) {
-        log.errorf("on_update is not a function")
+        log_error(LC.ScriptingEngine, "on_update is not a function")
         return
     }
     state.on_update = i64(luaL.ref(L, lua.REGISTRYINDEX))
@@ -189,7 +188,7 @@ compile_script :: proc(se: ^ScriptingEngine, data: []byte, strip := false) -> (s
 
     if lua_error := luaL.loadstring(L, cstr(string(data))); lua_error != lua.OK {
         message := lua.tostring(L, -1)
-        log.errorf("Error while compiling LUA: %s", message)
+        log_error(LC.ScriptingEngine, "Error while compiling LUA: %s", message)
 
         switch lua_error {
         case lua.ERRSYNTAX:
@@ -226,16 +225,16 @@ compile_script :: proc(se: ^ScriptingEngine, data: []byte, strip := false) -> (s
     script.bytecode = make([]byte, len(w.buffer))
     copy(script.bytecode, w.buffer[:])
 
-    log.infof("Compiled lua script:")
-    log.infof("\tDebug info stripped: %v", strip)
-    log.infof("\tSize: %v bytes.", len(script.bytecode))
+    log_info(LC.ScriptingEngine, "Compiled lua script:")
+    log_info(LC.ScriptingEngine, "\tDebug info stripped: %v", strip)
+    log_info(LC.ScriptingEngine, "\tSize: %v bytes.", len(script.bytecode))
 
     // NOTE(minebill): Ideally, as soon as we got the bytecode, we would return.
     // However, we need to get some metadata about the script and we don't want to do that
     // whenever we create new instance.
 
     if lua_error := lua.pcall(L, 0, 1, 0); lua_error != lua.OK {
-        log.errorf("Failed to execute compiled bytecode while gathering script metadata.")
+        log_error(LC.ScriptingEngine, "Failed to execute compiled bytecode while gathering script metadata.")
 
         switch lua_error {
         case lua.ERRRUN:
@@ -249,13 +248,13 @@ compile_script :: proc(se: ^ScriptingEngine, data: []byte, strip := false) -> (s
     }
 
     if !lua.istable(L, -1) {
-        log.errorf("Script must return a table!")
+        log_error(LC.ScriptingEngine, "Script must return a table!")
         return {}, ScriptMetadataError(.MissingTable)
     }
 
     script.properties, error = read_properties_table(L)
 
-    log.debugf("Script properties: %#v", script.properties)
+    log_debug(LC.ScriptingEngine, "Script properties: %#v", script.properties)
     return
 }
 
@@ -269,12 +268,12 @@ api_import :: proc "c" (L: ^lua.State) -> i32 {
         joined := filepath.join({get_cwd(), new_path}, context.temp_allocator)
 
         if luaL.dofile(L, cstr(joined)) != lua.OK {
-            log.errorf("Failed to import %v", joined)
+            log_error(LC.ScriptingEngine, "Failed to import %v", joined)
             return 0
         }
 
         if lua.pcall(L, 0, 1, 0) != lua.OK {
-            log.errorf("Failed to execute import: %v", lua.tostring(L, -1))
+            log_error(LC.ScriptingEngine, "Failed to execute import: %v", lua.tostring(L, -1))
             return 0
         }
 
@@ -314,7 +313,7 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties, error: Scrip
 
         lua.getfield(L, -1, "Name")
         props.name = strings.clone(lua.tostring(L, -1))
-        log.debugf("Name: %v", props.name)
+        log_debug(LC.ScriptingEngine, "Name: %v", props.name)
     }
 
     lua.getfield(L, -2, "Export")
@@ -340,7 +339,7 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties, error: Scrip
             field.name = strings.clone(lua.tostring(L, -2))
 
             if lua.istable(L, -1) {
-                log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
+                log_debug(LC.ScriptingEngine, "%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
 
                 lua.pushnil(L)
                 for lua.next(L, -2) != 0 {
@@ -412,7 +411,7 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties, error: Scrip
 
     //         field := LuaField{}
     //         field.name = strings.clone(lua.tostring(L, -2))
-    //         log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
+    //         log_debug(LC.ScriptingEngine, "%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
 
     //         switch value_type {
     //         case lua.TNUMBER:
@@ -447,7 +446,7 @@ read_properties_table :: proc(L: ^lua.State) -> (props: Properties, error: Scrip
 
     //         field := LuaField{}
     //         field.name = strings.clone(lua.tostring(L, -2))
-    //         log.debugf("%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
+    //         log_debug(LC.ScriptingEngine, "%v => %v", lua.typename(L, key_type), lua.typename(L, value_type))
 
     //         switch value_type {
     //         case lua.TNUMBER:
@@ -472,12 +471,12 @@ table_to_struct :: proc(L: ^lua.State, v: any) {
 
     for lua_name, field in mani.global_state.structs[v.id].fields {
         field_value := reflect.struct_field_value_by_name(v, string(field.odin_name))
-        log.debugf("getfield, %v", field.lua_name)
+        log_debug(LC.ScriptingEngine, "getfield, %v", field.lua_name)
         lua.getfield(L, -1, cstr(string(field.lua_name)))
 
         // The lua table doesn't contain this struct field.
         if lua.isnil(L, -1) {
-            log.debug("Skipped", field.lua_name)
+            log_debug(LC.ScriptingEngine, "Skipped %v", field.lua_name)
             continue
         }
 

@@ -1,7 +1,6 @@
 package engine
 import gl "vendor:OpenGL"
 import array "core:container/small_array"
-import "core:log"
 import "core:math"
 import "packages:back"
 import "core:io"
@@ -31,13 +30,13 @@ renderer_init :: proc(r: ^Renderer) {
     vendor   := gl.GetString(gl.VENDOR)
     renderer := gl.GetString(gl.RENDERER)
     version  := gl.GetString(gl.VERSION)
-    log.infof("Vendor %v", vendor)
-    log.infof("\tUsing %v", renderer)
-    log.infof("\tVersion %v", version)
+    log_info(LC.Renderer, "Vendor %v", vendor)
+    log_info(LC.Renderer, "\tUsing %v", renderer)
+    log_info(LC.Renderer, "\tVersion %v", version)
 
     data: i32
     gl.GetIntegerv(gl.MAX_TEXTURE_MAX_ANISOTROPY, &data)
-    log.debugf("Max texture anistotropy: %v", data)
+    log_debug(LC.Renderer, "Max texture anistotropy: %v", data)
 
     gl.Enable(gl.DEPTH_TEST)
     gl.DepthFunc(gl.LESS)
@@ -117,11 +116,11 @@ print_stack_trace_on_error :: proc() {
         lines, err := back.lines(back.trace())
         if err == nil {
 
-            log.warnf("Stack Trace Begin:")
+            log_warning(LC.Renderer, "Stack Trace Begin:")
             for line in lines {
-                log.warnf("\t%s - %s", line.symbol, line.location)
+                log_warning(LC.Renderer, "\t%s - %s", line.symbol, line.location)
             }
-            log.warnf("Stack Trace End")
+            log_warning(LC.Renderer, "Stack Trace End")
         }
     }
 }
@@ -695,7 +694,7 @@ opengl_debug_callback :: proc "c" (source: u32, type: u32, id: u32, severity: u3
         case gl.DEBUG_TYPE_POP_GROUP:           type_str = "Pop Group"
         case gl.DEBUG_TYPE_OTHER:               type_str = "Other"
     }
-    
+
     severity_str: string
     switch severity
     {
@@ -705,9 +704,9 @@ opengl_debug_callback :: proc "c" (source: u32, type: u32, id: u32, severity: u3
         case gl.DEBUG_SEVERITY_NOTIFICATION: severity_str = "notification"
     }
 
-    log.warn("OpenGL Debug Messenger:")
-    log.warnf("\tSource: %v", source_str)
-    log.warnf("\tType: %v", type_str)
-    log.warnf("\tSeverity: %v", severity_str)
-    log.warnf("\tMessage: %v", message)
+    log_warning(LC.Renderer, "OpenGL Debug Messenger:")
+    log_warning(LC.Renderer, "\tSource: %v", source_str)
+    log_warning(LC.Renderer, "\tType: %v", type_str)
+    log_warning(LC.Renderer, "\tSeverity: %v", severity_str)
+    log_warning(LC.Renderer, "\tMessage: %v", message)
 }

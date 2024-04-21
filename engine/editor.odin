@@ -25,7 +25,7 @@ import "core:thread"
 import "core:container/small_array"
 
 DEFAULT_EDITOR_CAMERA_POSITION :: vec3{0, 3, 5}
-USE_EDITOR :: true
+USE_EDITOR :: #config(USE_EDITOR, true)
 
 EditorInstance: ^Editor
 
@@ -84,7 +84,10 @@ Editor :: struct {
     window_size: vec2,
 
     log_entries: [dynamic]LogEntry,
+    clear_log_on_play: bool,
+    selected_log_categories: LogCategories,
     logger: log.Logger,
+    category_logger: CategoryLogger(LC),
 
     force_show_fields: bool,
     show_asset_manager: bool,
@@ -166,8 +169,18 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
 
     gl.CreateVertexArrays(1, &e.editor_va)
 
+    // Logging setup
+    // TODO(minebill): CaptureLogger is not really needed any more. Should be replaced by a simple console logger.
     e.logger = create_capture_logger(&e.log_entries)
     context.logger = e.logger
+
+    log_set_categories(&e.category_logger, LogCategories{.Editor, .AssetSystem, .PhysicsSystem, .ScriptingEngine})
+    e.selected_log_categories = ~LogCategories{}
+
+    e.logger = create_category_logger(&e.category_logger, &e.log_entries)
+    context.logger = e.logger
+
+    log_debug(LC.Editor, "Pepegas %v", 213)
 
     e.content_browser.root_dir = project_get_assets_folder(e.active_project)
     cb_navigate_to_folder(&e.content_browser, e.content_browser.root_dir)
@@ -226,7 +239,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.icons[.AssetReferene], err   = import_texture_from_path("assets/editor/icons/AssetReference.png")
     e.icons[.CogWheel], err        = import_texture_from_path("assets/editor/icons/CogWheel.png")
     if err != nil {
-        log.errorf("Error while loading editor icons: %v", err)
+        log_error(LC.Editor, "Error while loading editor icons: %v", err)
     }
 
     ok: bool
@@ -301,10 +314,10 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
         if e.shaders_watcher.triggered {
             file := &e.shaders_watcher.changed_file
-            log.debugf("File changed: %v", file^)
+            log_debug(LC.Editor, "File changed: %v", file^)
             for name, &shader in e.renderer.shaders {
                 if strings.contains(shader.vertex, file^) || strings.contains(shader.fragment, file^) {
-                    log.debug("pepe")
+                    log_debug(LC.Editor, "pepe")
                     shader_reload(&shader)
                 }
             }
@@ -361,7 +374,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 if .Control in ev.mods {
                     #partial switch ev.key {
                     case .S:
-                        log.debug("Saving world!")
+                        log_debug(LC.Editor, "Saving world!")
                         serialize_world(e.engine.world, e.engine.world.file_path)
                         e.engine.world.modified = false
                     case .D:
@@ -617,7 +630,6 @@ editor_render_scene :: proc(e: ^Editor) {
 runtime_render_scene :: proc(e: ^Editor) {
     if camera := find_first_component(&e.engine.world, Camera); camera != nil {
         go := get_object(&e.engine.world, camera.owner)
-        e.engine.camera_position   = go.transform.position
 
         euler := go.transform.local_rotation
         rotation := linalg.quaternion_from_euler_angles(
@@ -651,7 +663,10 @@ runtime_render_scene :: proc(e: ^Editor) {
 }
 
 editor_on_scene_play :: proc(e: ^Editor) {
-    log.debug("On Scene Play")
+    log_debug(LC.Editor, "On Scene Play")
+    if e.clear_log_on_play {
+        clear(&e.log_entries)
+    }
 
     // Save first
     serialize_world(e.engine.world, e.engine.world.file_path)
@@ -664,15 +679,15 @@ editor_on_scene_play :: proc(e: ^Editor) {
 }
 
 editor_on_scene_pause :: proc(e: ^Editor) {
-    log.debug("Scene paused")
+    log_debug(LC.Editor, "Scene paused")
 }
 
 editor_on_scene_resume :: proc(e: ^Editor) {
-    log.debug("Scene resumed")
+    log_debug(LC.Editor, "Scene resumed")
 }
 
 editor_on_scene_stop :: proc(e: ^Editor) {
-    log.debug("On Scene Stop")
+    log_debug(LC.Editor, "On Scene Stop")
 
     destroy_world(&e.runtime_world)
     e.engine.world = e.editor_world
@@ -720,31 +735,6 @@ editor_go_to_state :: proc(e: ^Editor, new_state: EditorState) {
 }
 
 editor_random_testing_window :: proc(e: ^Editor) {
-    imgui.Begin("Random")
-
-    @static s: struct {
-        name: string,
-        age: int,
-        is_pepegas: bool,
-        hm: vec3,
-        hmm: vec4,
-        // pepegas: Color,
-
-        smol_struct: struct {
-            number: int,
-            other_number: int,
-        }
-    }
-
-    for field in reflect.struct_fields_zipped(type_of(s)) {
-        if do_property(field.name) {
-            do_property_name(field.name)
-            value := reflect.struct_field_value(s, field)
-            do_property_value(value, field.tag)
-        }
-    }
-
-    imgui.End()
 }
 
 editor_env_panel :: proc(e: ^Editor) {
@@ -841,7 +831,7 @@ editor_viewport :: proc(e: ^Editor) {
                 data := transmute(^AssetHandle)payload.Data
                 // path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
-                // log.debug("Load model from", path)
+                // log_debug(LC.Editor, "Load model from", path)
 
                 if is_asset_handle_valid(&EngineInstance.asset_manager, data^) {
                     entity := new_object(&e.engine.world, "New Mesh")
@@ -855,32 +845,37 @@ editor_viewport :: proc(e: ^Editor) {
         flags := imgui.WindowFlags_NoDecoration
         flags += imgui.WindowFlags_NoNav
         flags += {.NoDocking, .NoMove, .AlwaysAutoResize, .NoSavedSettings, .NoFocusOnAppearing}
-        offset := imgui.GetItemRectMin()
-        imgui.SetNextWindowPos(offset + vec2{20, 20}, .Always)
-
-        imgui.SetNextWindowBgAlpha(0.35)
-
-        imgui.PushStyleVarImVec2(.WindowPadding, vec2{10, 10})
-        imgui.PushFont(e.fonts[.Light])
-        if imgui.Begin("Render Stats", flags = flags) {
-            imgui.TextUnformatted(fmt.ctprintf("MSAA Level: %v", g_msaa_level))
-            imgui.TextUnformatted(fmt.ctprintf("Viewport Size: %v", e.viewport_size))
-            imgui.TextUnformatted(fmt.ctprintf("Viewport Position: %v", e.viewport_position))
-            global_mouse := g_event_ctx.mouse + g_event_ctx.window_position
-            imgui.TextUnformatted(fmt.ctprintf("Mouse Position(global): %v", global_mouse))
-            imgui.TextUnformatted(fmt.ctprintf("Editor State: %v", e.state))
-            imgui.TextUnformatted(fmt.ctprintf("Draw calls: %v", g_render_stats.draw_calls))
-            imgui.TextUnformatted(fmt.ctprintf("Debug lines: %v", len(g_dbg_context.lines)))
-            imgui.Separator()
-            @(static) show_camera_stats := false
-            do_checkbox("Editor Camera Stats", &show_camera_stats)
-            if show_camera_stats {
-                imgui.TextUnformatted(fmt.ctprintf("Editor Camera: %#v", e.camera))
+        render_stats: {
+            offset := imgui.GetItemRectMin()
+            imgui.SetNextWindowPos(offset + vec2{20, 20}, .Always)
+            imgui.SetNextWindowBgAlpha(0.35)
+            imgui.PushStyleVarImVec2(.WindowPadding, vec2{10, 10})
+            imgui.PushFont(e.fonts[.Light])
+            if imgui.Begin("Render Stats", flags = flags) {
+                imgui.TextUnformatted(fmt.ctprintf("MSAA Level: %v", g_msaa_level))
+                imgui.TextUnformatted(fmt.ctprintf("Viewport Size: %v", e.viewport_size))
+                imgui.TextUnformatted(fmt.ctprintf("Viewport Position: %v", e.viewport_position))
+                global_mouse := g_event_ctx.mouse + g_event_ctx.window_position
+                imgui.TextUnformatted(fmt.ctprintf("Mouse Position(global): %v", global_mouse))
+                imgui.TextUnformatted(fmt.ctprintf("Editor State: %v", e.state))
+                imgui.TextUnformatted(fmt.ctprintf("Draw calls: %v", g_render_stats.draw_calls))
+                imgui.TextUnformatted(fmt.ctprintf("Debug lines: %v", len(g_dbg_context.lines)))
+                imgui.Separator()
+                @(static) show_camera_stats := false
+                do_checkbox("Editor Camera Stats", &show_camera_stats)
+                if show_camera_stats {
+                    imgui.TextUnformatted(fmt.ctprintf("Editor Camera: %#v", e.camera))
+                }
+                imgui.End()
             }
-            imgui.End()
+            imgui.PopFont()
+            imgui.PopStyleVar()
         }
-        imgui.PopFont()
-        imgui.PopStyleVar()
+
+        pip: {
+            // imgui.SetNextWindowPos
+        }
+
     }
     imgui.End()
     imgui.PopStyleVar()
@@ -1117,7 +1112,7 @@ editor_ui_toolstrip :: proc(e: ^Editor) {
     // Only enable the step button when we are in the Paused state.
     step_enabled := e.state == .Paused
     if do_image_button("##step_button", e.icons[.StepFrameButton], vec2{size, size}, .Disabled if !step_enabled else .GenericRounded, disabled = !step_enabled) {
-        log.debug("Stepping 1 frame")
+        log_debug(LC.Editor, "Stepping 1 frame")
         world_update(&e.engine.world, e.delta, true)
         physics_update(PhysicsInstance, e.delta)
     }
@@ -1219,7 +1214,7 @@ cb_navigate_to_folder :: proc(cb: ^ContentBrowser, folder: string, relative := f
     } else {
         cb.current_dir = folder
     }
-    log.debugf("New current dir is %v", cb.current_dir)
+    log_debug(LC.Editor, "New current dir is %v", cb.current_dir)
 
     cb_refresh(cb)
 }
@@ -1312,7 +1307,7 @@ editor_content_browser :: proc(e: ^Editor) {
 
                 dir, err := filepath.rel(e.active_project.root, e.content_browser.current_dir, context.temp_allocator)
                 if err != nil {
-                    log.errorf("%v", err)
+                    log_error(LC.Editor, "%v", err)
                     return
                 }
 
@@ -1330,7 +1325,7 @@ editor_content_browser :: proc(e: ^Editor) {
 
                 handle, err := os.open(path, os.O_CREATE | os.O_WRONLY)
                 if err != 0 {
-                    log.errorf("Error opening file %v: %v", path, err)
+                    log_error(LC.Editor, "Error opening file %v: %v", path, err)
                     return
                 }
                 defer os.close(handle)
@@ -1601,6 +1596,10 @@ editor_log_window :: proc(e: ^Editor) {
 
         imgui.SameLine()
 
+        do_checkbox("Clear on play", &e.clear_log_on_play)
+
+        imgui_flags_box("Categories", &e.selected_log_categories)
+
         @(static) filter_backing: [100]byte
         imgui.InputText("Filter", transmute(cstring)&filter_backing, 100, {})
         filter := cast(string)(transmute(cstring)&filter_backing)
@@ -1608,8 +1607,11 @@ editor_log_window :: proc(e: ^Editor) {
         child_opened := imgui.BeginChild("scrolling_region", vec2{0, 0}, {.FrameStyle}, {.HorizontalScrollbar})
         if child_opened {
             width := imgui.GetContentRegionAvail().x
+
             for entry, i in e.log_entries {
-                if !strings.contains(entry.text, filter) || entry.text == "" {
+                category := cast(LC) entry.category.value
+
+                if !strings.contains(entry.text, filter) || entry.text == "" || category not_in e.selected_log_categories {
                     continue
                 }
                 text := raw_data(entry.text)
@@ -2250,7 +2252,7 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
             if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM_ASSET"); payload != nil {
                 asset_handle := cast(^AssetHandle)payload.Data
 
-                log.debug("Setting field %v to %v", field.name, asset_handle^)
+                log_debug(LC.Editor, "Setting field %v to %v", field.name, asset_handle^)
                 handle^ = asset_handle^
             }
         }
@@ -2544,13 +2546,6 @@ help_marker :: proc(message: string, help_mode: HelpMode = .Info) {
     imgui.PopStyleColor()
 }
 
-LogEntry :: struct {
-    level: log.Level,
-    text: string,
-    options: log.Options,
-    locations: runtime.Source_Code_Location,
-}
-
 CaptureLogger :: struct {
     base_logger: log.Logger,
     log_entries: ^[dynamic]LogEntry,
@@ -2601,7 +2596,7 @@ capture_logger_proc :: proc(
     // Ensure to call the base logger (file, console, etc.)
     capture_logger.base_logger.procedure(capture_logger.base_logger.data, level, text, options, location)
 
-    append(capture_logger.log_entries, LogEntry{level, strings.clone(text), options, location})
+    // append(capture_logger.log_entries, LogEntry{level, strings.clone(text), options, location})
 }
 
 ContentItemType :: enum {

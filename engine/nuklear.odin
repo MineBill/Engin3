@@ -2,7 +2,6 @@ package engine
 import nk "packages:odin-nuklear"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
-import "core:log"
 
 MAX_VERTEX_BUFFER :: 512 * 1024
 MAX_ELEMENT_BUFFER :: 128 * 1024

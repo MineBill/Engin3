@@ -1,6 +1,5 @@
 package engine
 import imgui "packages:odin-imgui"
-import "core:log"
 import "core:reflect"
 
 ACCENT_COLOR :: 0x3C3798FF

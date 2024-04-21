@@ -1,7 +1,6 @@
 package engine
 import "core:encoding/json"
 import "core:fmt"
-import "core:log"
 import "core:os"
 import "core:path/filepath"
 import "core:reflect"
@@ -107,9 +106,11 @@ when USE_EDITOR {
 
                 assets_folder_name := filepath.base(project_get_assets_folder(EditorInstance.active_project, temp))
                 path := filepath.join({assets_folder_name, file}, temp)
-                log.debugf("Attemping to re-import asset '%v'", path)
                 handle := get_asset_handle_from_path(manager, path)
-                reimport_asset(manager, handle)
+                if get_asset_type(manager, handle) == .LuaScript {
+                    log_debug(LC.AssetSystem, "Attemping to re-import lua script '%v'", path)
+                    reimport_asset(manager, handle)
+                }
             })
 
         s: SerializeContext
@@ -167,17 +168,17 @@ when USE_EDITOR {
                 if error != nil {
                     switch x in error {
                     case AssetNotFoundError:
-                        log.errorf("Asset at path '%v' could not be found. Make sure it exists.", x.path)
+                        log_error(LC.AssetSystem, "Asset at path '%v' could not be found. Make sure it exists.", x.path)
                     case InvalidAssetFormatError:
-                        log.errorf("Asset importer reported that the source asset is in a wrong format: %s", x.message)
+                        log_error(LC.AssetSystem, "Asset importer reported that the source asset is in a wrong format: %s", x.message)
                     case ScriptCompilationError:
-                        log.errorf("Script compilation error: %v", x)
+                        log_error(LC.AssetSystem, "Script compilation error: %v", x)
                         editor_push_notification(EditorInstance, fmt.tprintf("Script compilation failed. Reason: '%v'. Check the console for more info.", x), .Error)
                     case GenericMessageError:
-                        log.errorf("Asset import error: %s", error)
+                        log_error(LC.AssetSystem, "Asset import error: %s", error)
                     }
                 }
-                log.errorf("Could not import asset handle '%v'", handle)
+                log_error(LC.AssetSystem, "Could not import asset handle '%v'", handle)
                 return nil
             }
             manager.loaded_assets[handle] = asset
@@ -199,7 +200,7 @@ when USE_EDITOR {
     // Re-Imports a loaded asset from file. If the file is not loaded then this acts the same as `import_asset`.
     reimport_asset :: proc(manager: ^EditorAssetManager, handle: AssetHandle) {
         if !is_asset_handle_valid(manager, handle) {
-            log.errorf("Asked to reimport invalid asset handle '%v'", handle)
+            log_error(LC.AssetSystem, "Asked to reimport invalid asset handle '%v'", handle)
             return
         }
 
@@ -210,17 +211,17 @@ when USE_EDITOR {
             if error != nil {
                 switch x in error {
                 case AssetNotFoundError:
-                    log.errorf("Asset at path '%v' could not be found. Make sure it exists.", x.path)
+                    log_error(LC.AssetSystem, "Asset at path '%v' could not be found. Make sure it exists.", x.path)
                 case InvalidAssetFormatError:
-                    log.errorf("Asset importer reported that the source asset is in a wrong format: %s", x.message)
+                    log_error(LC.AssetSystem, "Asset importer reported that the source asset is in a wrong format: %s", x.message)
                 case ScriptCompilationError:
-                    log.errorf("Script compilation error: %v", x)
+                    log_error(LC.AssetSystem, "Script compilation error: %v", x)
                     editor_push_notification(EditorInstance, fmt.tprintf("Script compilation failed. Reason: '%v'. Check the console for more info.", x), .Error)
                 case GenericMessageError:
-                    log.errorf("Asset import error: %s", error)
+                    log_error(LC.AssetSystem, "Asset import error: %s", error)
                 }
             }
-            log.errorf("Could not import asset handle '%v'", handle)
+            log_error(LC.AssetSystem, "Could not import asset handle '%v'", handle)
             return
         }
 
@@ -255,17 +256,17 @@ when USE_EDITOR {
         if rel_err != nil {
             #partial switch rel_err {
             case .Cannot_Relate:
-                log.errorf("Cannot relate '%v' to '%v'", absolute_file_path, new_file_path)
+                log_error(LC.AssetSystem, "Cannot relate '%v' to '%v'", absolute_file_path, new_file_path)
             }
             return
         }
-        log.debugf("Relative path to project: '%v'", relative_path_to_project)
+        log_debug(LC.AssetSystem, "Relative path to project: '%v'", relative_path_to_project)
 
-        log.debugf("Copying file '%v' to location '%v'", absolute_file_path, new_file_path)
+        log_debug(LC.AssetSystem, "Copying file '%v' to location '%v'", absolute_file_path, new_file_path)
         fs.copy_file(absolute_file_path, new_file_path)
 
         ext := filepath.ext(file_name)
-        log.debugf("File ext: '%v'", ext)
+        log_debug(LC.AssetSystem, "File ext: '%v'", ext)
 
         type: AssetType = .Invalid
         if ext in SUPPORTED_ASSETS {
@@ -311,7 +312,7 @@ when USE_EDITOR {
             full_path := filepath.join({EditorInstance.active_project.root, metadata.path})
             serialize_dump(&s, full_path)
         } else {
-            log.warnf("Attempet to serialize asset '%v' without a serializer.", metadata.type)
+            log_warning(LC.AssetSystem, "Attempet to serialize asset '%v' without a serializer.", metadata.type)
         }
     }
 
@@ -342,7 +343,7 @@ when USE_EDITOR {
     rename_asset :: proc(manager: ^EditorAssetManager, asset: AssetHandle, new_name: string) -> bool {
         tmp := context.temp_allocator
         if !is_asset_handle_valid(manager, asset) {
-            log.errorf("Cannot rename invalid asset '%v'", asset)
+            log_error(LC.AssetSystem, "Cannot rename invalid asset '%v'", asset)
             return false
         }
         metadata := &manager.registry[asset]
@@ -351,11 +352,11 @@ when USE_EDITOR {
         ext := filepath.ext(metadata.path)
         asset_dir := filepath.dir(metadata.path, tmp)
         new_metadata_path := filepath.join({asset_dir, strings.join({new_name,  ext}, "", tmp)})
-        // log.debugf("os.rename(%v, %v)", abs_asset_path, filepath.join({EditorInstance.active_project.root, metadata.path}, tmp))
+        // log_debug(LC.AssetSystem, "os.rename(%v, %v)", abs_asset_path, filepath.join({EditorInstance.active_project.root, metadata.path}, tmp))
 
         new_abs_path := filepath.join({EditorInstance.active_project.root, new_metadata_path}, tmp)
         if os.exists(new_abs_path) {
-            log.errorf("Cannot rename asset '%s' to '%s' because another file with that name exists!", abs_asset_path, new_abs_path)
+            log_error(LC.AssetSystem, "Cannot rename asset '%s' to '%s' because another file with that name exists!", abs_asset_path, new_abs_path)
             return false
         }
 
@@ -363,19 +364,19 @@ when USE_EDITOR {
 
         error := os.rename(abs_asset_path, new_abs_path)
         if error != 0 {
-            log.errorf("Could not rename asset. Error: %v", error)
+            log_error(LC.AssetSystem, "Could not rename asset. Error: %v", error)
             return false
         }
         // dir := filepath.dir(metadata.path, context.temp_allocator)
         // new_path := filepath.join({EditorInstance.active_project.root, dir, new_name}, context.temp_allocator)
         // new_path_rel := filepath.join({dir, new_name}, context.temp_allocator)
-        // log.debugf("Renaming asset: From %v to %v", old_path, new_path_rel)
+        // log_debug(LC.AssetSystem, "Renaming asset: From %v to %v", old_path, new_path_rel)
 
         // metadata.path = strings.clone(new_path_rel)
 
         // error := os.rename(old_path, new_path)
         // if error != 0 {
-        //     log.errorf("Error while renaming asset: %v", error)
+        //     log_error(LC.AssetSystem, "Error while renaming asset: %v", error)
         //     return false
         // }
         return true
@@ -388,7 +389,7 @@ when USE_EDITOR {
     rename_folder :: proc(manager: ^EditorAssetManager, absolute_folder_path: string, new_name: string) -> bool {
         relative_to_project, err := filepath.rel(EditorInstance.active_project.root, absolute_folder_path, context.temp_allocator)
         if err != nil {
-            log.errorf("Cannot relate '%v' to '%v'", EditorInstance.active_project.root, absolute_folder_path)
+            log_error(LC.AssetSystem, "Cannot relate '%v' to '%v'", EditorInstance.active_project.root, absolute_folder_path)
             return false
         }
         base := filepath.dir(relative_to_project, context.temp_allocator)
@@ -397,7 +398,7 @@ when USE_EDITOR {
         new_absolute_path := filepath.join({filepath.dir(absolute_folder_path, context.temp_allocator), new_name}, context.temp_allocator)
         move_error := os.rename(absolute_folder_path, new_absolute_path)
         if move_error != 0 {
-            log.errorf("Error renaming directory. Error code: %v", move_error)
+            log_error(LC.AssetSystem, "Error renaming directory. Error code: %v", move_error)
             return false
         }
 

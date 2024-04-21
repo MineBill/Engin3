@@ -1,7 +1,6 @@
 package engine
 
 import "vendor:glfw"
-import "core:log"
 import "core:runtime"
 
 Event :: union {

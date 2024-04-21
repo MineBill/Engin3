@@ -4,10 +4,149 @@ import "core:os"
 import "core:strings"
 import "core:fmt"
 import "core:time"
+import intr "base:intrinsics"
+import rt "base:runtime"
+import "core:reflect"
+
+when USE_EDITOR {
+    LogCategory :: enum {
+        Editor,
+
+        Engine,
+        Renderer,
+        EntitySystem,
+        AssetSystem,
+        PhysicsSystem,
+        ScriptingEngine,
+        UserScript,
+    }
+} else {
+    LogCategory :: enum {
+        Engine,
+        Renderer,
+        EntitySystem,
+        AssetSystem,
+        PhysicsSystem,
+        ScriptingEngine,
+        UserScript,
+    }
+}
+
+LC :: LogCategory
+
+LogCategories :: bit_set[LogCategory]
+
+LogEntry :: struct {
+    level: log.Level,
+    category: reflect.Enum_Field,
+    text: string,
+    options: log.Options,
+    locations: rt.Source_Code_Location,
+}
+
+RawCategoryLogger :: struct {
+    base_logger: log.Logger,
+    typed_category_logger: rawptr,
+
+    log_entries: ^[dynamic]LogEntry,
+}
+
+CategoryLogger :: struct($T: typeid) where intr.type_is_enum(T) {
+    categories: bit_set[T],
+}
+
+create_category_logger :: proc(
+    typed_category_logger: ^CategoryLogger($T),
+    log_entries: ^[dynamic]LogEntry,
+    base_logger := context.logger,
+    level: log.Level = .Debug,
+    options := log.Options{.Level, .Short_File_Path, .Line, .Procedure},
+) -> log.Logger {
+    logger := new(RawCategoryLogger)
+    logger.base_logger = base_logger
+    logger.typed_category_logger = typed_category_logger
+    logger.log_entries = log_entries
+
+    return log.Logger {
+        raw_category_logger_proc,
+        logger,
+        level,
+        options,
+    }
+}
+
+@(private = "file")
+raw_category_logger_proc :: proc(logger_data: rawptr, level: log.Level, text: string, options: log.Options, location := #caller_location) {
+    raw_category_logger := cast(^RawCategoryLogger) logger_data
+
+    raw_category_logger.base_logger.procedure(raw_category_logger.base_logger.data, level, text, options, location)
+}
+
+cat_logger_proc :: proc(raw_logger: ^RawCategoryLogger, category: $T, level: log.Level, text: string, options: log.Options, location := #caller_location) {
+    raw_logger.base_logger.procedure(raw_logger.base_logger.data, level, text, options, location)
+
+    name, ok := reflect.enum_name_from_value(category)
+    append(
+        raw_logger.log_entries,
+        LogEntry{level, {
+            name, cast(reflect.Type_Info_Enum_Value) category,
+        },
+        fmt.aprintf("[%v] %v", name, text),
+        options,
+        location})
+}
+
+@(private = "file")
+log_actual :: proc(category: $T, level: log.Level, text: string, location := #caller_location) where intr.type_is_enum(T) {
+    if context.logger.procedure == raw_category_logger_proc {
+        raw_logger := cast(^RawCategoryLogger) context.logger.data
+
+        category_logger := cast(^CategoryLogger(T)) raw_logger.typed_category_logger
+        cat_logger_proc(raw_logger, category, level, text, context.logger.options, location)
+    }
+}
+
+log_set_categories :: proc(logger: ^CategoryLogger($T), categories: bit_set[T]) where intr.type_is_enum(T) {
+    logger.categories = categories
+}
+
+log_debug :: proc(category: $T, text: string, args: ..any, location := #caller_location) {
+    log_actual(category, .Debug, fmt.tprintf(text, ..args), location)
+}
+
+log_info :: proc(category: $T, text: string, args: ..any, location := #caller_location) where intr.type_is_enum(T) {
+    log_actual(category, .Info, fmt.tprintf(text, ..args), location)
+}
+
+log_warning :: proc(category: $T, text: string, args: ..any, location := #caller_location) where intr.type_is_enum(T) {
+    log_actual(category, .Warning, fmt.tprintf(text, ..args), location)
+}
+
+log_error :: proc(category: $T, text: string, args: ..any, location := #caller_location) where intr.type_is_enum(T) {
+    log_actual(category, .Error, fmt.tprintf(text, ..args), location)
+}
+
+_ :: proc() {
+    Category :: enum {
+        All,
+        Physics,
+        Editor,
+        Scripts,
+    }
+
+    Categories :: bit_set[Category]
+
+    category_logger: CategoryLogger(Category)
+    context.logger = create_category_logger(&category_logger, nil)
+
+    log_set_categories(&category_logger, Categories{.Editor, .Physics})
+
+    log_info(Category.Editor, "Hello, world!")
+    log_warning(Category.Editor, "")
+    log_error(Category.Editor, "")
+}
 
 // Custom console logger that colors the entire log text.
-
-
 create_custom_console_logger :: proc(lowest := log.Level.Debug, opt := log.Default_Console_Logger_Opts, ident := "") -> log.Logger {
     data := new(log.File_Console_Logger_Data)
     data.file_handle = os.INVALID_HANDLE

@@ -156,9 +156,13 @@ vec2_to_string :: proc(v: vec2) -> string {
     return fmt.tprintf("vec2{{%v, %v}}", v.x, v.y)
 }
 
-@(LuaExport)
-print :: proc(what: string) {
-    log.info(what)
+@(LuaExport = {
+    Module = "Debug",
+    Name = "Log",
+})
+api_print :: proc(what: string) {
+    log.infof("DEBUG.LOG: %v", what)
+    log_info(LogCategory.UserScript, what)
 }
 
 @(LuaExport = {
