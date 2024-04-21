@@ -38,6 +38,9 @@ Task is a single binary and can easily be installed:
 
 Once installed, execute `task run` at the project root.
 
+### Discord
+Everybody and their mum has a discord server, so why not me? :)
+[Join the Discord](https://discord.gg/K9QfYjKwng)
 
 ### Screenshots
 ![Screenshot_7](https://github.com/MineBill/Engin3/assets/30367251/33772937-d243-48c0-9ba7-8039c686b8ea)
