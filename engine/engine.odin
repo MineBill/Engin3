@@ -1,7 +1,6 @@
 package engine
 import "core:fmt"
 import "core:intrinsics"
-import "core:log"
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
@@ -20,8 +19,6 @@ import tracy "packages:odin-tracy"
 
 EngineInstance: ^Engine
 
-CAMERA_DEFAULT_POSITION :: vec3{0, 3, 10}
-
 SHADOW_MAP_RES :: 4096
 
 EngineMode :: enum {
@@ -34,37 +31,15 @@ Engine :: struct {
     window: glfw.WindowHandle,
     quit:   bool,
 
-    triangle_shader: Shader,
-    outline_shader:  Shader,
-    screen_shader:   Shader,
-    grid_shader:     Shader,
-    depth_shader:    Shader,
-
-    triangle_va:     u32,
-    grid_va: u32,
-
-    ubo:          u32,
-    material_ubo: u32,
-
-    light_entity: int,
-    box_entity: int,
-
     previouse_mouse:   vec2,
     editor:            Editor,
-    // camera:          EditorCamera,
-    camera_projection: mat4,
-    camera_view:       mat4,
-    camera_position:   vec3,
-    camera_rotation:   quaternion128,
+
     game:              Game,
     run_mode:          EngineMode,
 
     world: World,
-
     dbg_draw: DebugDrawContext,
-
     asset_manager: AssetManager,
-
     scripting_engine: ScriptingEngine,
     renderer: Renderer,
     physics: Physics,
