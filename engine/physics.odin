@@ -1,6 +1,5 @@
 package engine
 import "packages:jolt"
-import "core:log"
 
 PhysicsInstance: ^Physics
 
@@ -93,31 +92,34 @@ physics_init :: proc(physics: ^Physics) {
     physics.contact_listener.OnContactAdded = proc "c" (body1, body2: jolt.Body, manifold: jolt.ContactManifold, settings: ^jolt.ContactSettings) {
         context = EngineInstance.ctx
 
-        log.infof("COLLISION DETECTED %v - %v", body1.id, body2.id)
+        handle_a := cast(EntityHandle) body1.user_data
+        handle_b := cast(EntityHandle) body2.user_data
+
+        entity_a := get_entity(&EngineInstance.world, handle_a)
+        entity_b := get_entity(&EngineInstance.world, handle_b)
+        log_debug(LC.PhysicsSystem, "Collision started between '{}' and '{}'", ds_to_string(entity_a.name), ds_to_string(entity_b.name))
     }
 
     // CAN BE CALLED FROM A DIFFERENT THREAD
     physics.contact_listener.OnContactRemoved = proc "c" (sub_shape_pair: jolt.SubShapeIDPair) {
         context = EngineInstance.ctx
+        sub_shape_pair := sub_shape_pair
 
-        first := sub_shape_pair.first.body_id
-        second := sub_shape_pair.second.body_id
-        log.infof("COLLISION FINISHED %v - %v", first, second)
+        body_lock_interface := jolt.PhysicsSystem_GetBodyLockInterface(PhysicsInstance.physics_system)
+        body1 := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &sub_shape_pair.first.body_id)
+        body2 := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &sub_shape_pair.second.body_id)
+
+        handle_a := cast(EntityHandle) body1.user_data
+        handle_b := cast(EntityHandle) body2.user_data
+
+        entity_a := get_entity(&EngineInstance.world, handle_a)
+        entity_b := get_entity(&EngineInstance.world, handle_b)
+        log_debug(LC.PhysicsSystem, "Collision ended between '{}' and '{}'", ds_to_string(entity_a.name), ds_to_string(entity_b.name))
     }
 
     // CAN BE CALLED FROM A DIFFERENT THREAD
     physics.contact_listener.OnContactPersisted = proc "c" (in_body1: jolt.Body, in_body2: jolt.Body, in_manifold: jolt.ContactManifold, io_settings: ^jolt.ContactSettings) {
         context = EngineInstance.ctx
-
-        position1 := vec3{}
-        jolt.ContactManifold_GetWorldSpaceContactPointOn1(in_manifold, 0, &position1)
-
-        position2 := vec3{}
-        jolt.ContactManifold_GetWorldSpaceContactPointOn2(in_manifold, 0, &position2)
-
-        dbg_draw_line(g_dbg_context, position1, position1 + in_manifold.normal.xyz * 1)
-        dbg_draw_line(g_dbg_context, position2, position2 + in_manifold.normal.xyz * 1, color = COLOR_PEACH)
-        // dbg_draw_cube(g_dbg_context, position1, vec3{}, vec3{0.2, 0.2, 0.2})
     }
 
     physics.contact_listener.OnContactValidate = proc "c" (in_body1,in_body2: jolt.Body,in_base_offset:vec3,in_collision_result: jolt.CollideShapeResult) -> jolt.ValidateResult {
@@ -152,10 +154,6 @@ physics_update :: proc(physics: ^Physics, delta: f64) {
     INTEGRATION_SUB_STEPS :: 0
 
     jolt.PhysicsSystem_Update(physics.physics_system, f32(1.0 / 60.0), COLLSION_STEPS, INTEGRATION_SUB_STEPS, physics.temp_allocator, physics.job_system)
-}
-
-physics_set_instance :: proc(physics: ^Physics) {
-    PhysicsInstance = physics
 }
 
 physics_deinit :: proc(physics: ^Physics) {
@@ -207,10 +205,10 @@ physics_raycast :: proc(physics: ^Physics, from: vec3, direction: vec3) -> (hit:
 
     body_lock_interface := jolt.PhysicsSystem_GetBodyLockInterface(physics.physics_system)
     body := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &result.body_id)
-    // body.user_data
 
     hit.position = from + result.fraction * direction
-    // jolt.Body_GetWorldSpaceSurfaceNormal(body^, result.sub_shape_id, &hit.position, &hit.normal)
-
+    if body != nil {
+        jolt.Body_GetWorldSpaceSurfaceNormal(body^, result.sub_shape_id, &hit.position, &hit.normal)
+    }
     return
 }

@@ -957,6 +957,7 @@ rigid_body_init :: proc(this: rawptr) {
         body_type_to_jolt(this.body_type),
         jolt.ObjectLayer(ObjectLayers.Moving))
     sphere := jolt.BodyInterface_CreateBody(physics.body_interface, &sphere_body_settings)
+    sphere.user_data = cast(u64) this.owner
     this.body_id = sphere.id
 
     // TODO(minebill): Future possibility??
