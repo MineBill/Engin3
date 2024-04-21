@@ -152,7 +152,15 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     // Located in the engine folder, NOT a project thing(yet?).
     fs.watcher_init(&e.shaders_watcher, "assets/shaders")
 
-    engine_set_window_title(EngineInstance, fmt.tprintf("Engin3 - %v", e.active_project.name))
+    engine_set_window_title(EngineInstance, fmt.tprintf("Engin3 - %v", e.active_project.root))
+
+    image, err := import_image_from_path("assets/editor/icons/Logo_Shadow_40px.png")
+    glfw_image := glfw.Image {
+        width = i32(image.width),
+        height = i32(image.height),
+        pixels = raw_data(image.data),
+    }
+    glfw.SetWindowIcon(engine.window, {glfw_image})
 
     undo_init(&e.undo)
     e.engine = engine
@@ -185,7 +193,6 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
 
     // NOTE(minebill):  Since this is the editor, it's OK to not go through an asset manager and just
     //                  load any textures directly from a path, since we'll never run in a "cooked" mode.
-    err: AssetImportError
     e.content_browser.textures[.Generic], err    = import_texture_from_path("assets/editor/icons/GenericFile.png")
     e.content_browser.textures[.Folder], err     = import_texture_from_path("assets/editor/icons/Folder.png")
     e.content_browser.textures[.FolderBack], err = import_texture_from_path("assets/editor/icons/FolderBack.png")

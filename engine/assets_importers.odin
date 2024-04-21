@@ -21,10 +21,15 @@ import_image :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImp
     image := new(Image)
     image.type = .Image
 
+    image^, error = import_image_from_path(metadata.path)
+    return image, error
+}
+
+import_image_from_path :: proc(path: string) -> (image: Image, error: AssetImportError) {
     w, h, c: i32
-    raw_image := stbi.load(cstr(metadata.path), &w, &h, &c, 4)
+    raw_image := stbi.load(cstr(path), &w, &h, &c, 4)
     if raw_image == nil {
-        return nil, GenericMessageError {
+        return {}, GenericMessageError {
             message = strings.clone_from_cstring(stbi.failure_reason()),
         }
     }
@@ -33,8 +38,7 @@ import_image :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImp
     image.width = int(w)
     image.height = int(h)
     image.channels = int(c)
-
-    return image, nil
+    return
 }
 
 @(importer=Texture2D)
