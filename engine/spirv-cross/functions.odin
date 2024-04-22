@@ -12,6 +12,16 @@ when ODIN_OS == .Windows {
         "bin/spirv-cross-hlsl.lib",
         "bin/spirv-cross-reflect.lib",
     }
+} else when ODIN_OS == .Linux {
+    foreign import lib {
+        "bin/linux/libspirv-cross-c.a",
+        "bin/linux/libspirv-cross-core.a",
+        "bin/linux/libspirv-cross-cpp.a",
+        "bin/linux/libspirv-cross-glsl.a",
+        "bin/linux/libspirv-cross-msl.a",
+        "bin/linux/libspirv-cross-hlsl.a",
+        "bin/linux/libspirv-cross-reflect.a",
+    }
 }
 
 @(link_prefix="spvc_")

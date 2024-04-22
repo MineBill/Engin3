@@ -32,12 +32,14 @@ clang++ $CommonCompilerFlagsNoLink -I../JoltPhysics ../jolt_bind.cpp -o jolt_bin
 
 # Compile Jolt
 pushd ../JoltPhysics/Build/
-rm -rf Linux_Release
-./cmake_linux_clang_gcc.sh Release clang++
-cd Linux_Release
+
+# NOTE(minebill): The build mode for all libraries should be handled by a switch somewhere.
+rm -rf Linux_Debug
+sh ./cmake_linux_clang_gcc.sh Debug clang++ -DTARGET_UNIT_TESTS=OFF -DTARGET_HELLO_WORLD=OFF -DTARGET_PERFORMANCE_TEST=OFF -DTARGET_SAMPLES=OFF -DTARGET_VIEWER=OFF
+cd Linux_Debug
 make -j 8
 popd
-cp ../JoltPhysics/Build/Linux_Release/libJolt.a .
+cp ../JoltPhysics/Build/Linux_Debug/libJolt.a .
 
 # Check if compilation was successful
 if [ $? -eq 0 ]; then

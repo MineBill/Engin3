@@ -20,8 +20,7 @@ when ODIN_OS == .Windows {
 	@(extra_linker_flags = "/IGNORE:4099")
 	foreign import libshaderc "bin/shaderc_combined.lib"
 } else when ODIN_OS == .Linux {
-	// foreign import libshaderc {
-	// }
+	foreign import libshaderc "bin/libshaderc_combined.a"
 }
 
 @(default_calling_convention = "c")

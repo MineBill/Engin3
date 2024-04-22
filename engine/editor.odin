@@ -1337,7 +1337,9 @@ end
 
 return NewScript
 `)
-                os.flush(handle)
+                when ODIN_OS == .Windows {
+                    os.flush(handle)
+                }
 
                 register_asset(&EngineInstance.asset_manager, path)
 

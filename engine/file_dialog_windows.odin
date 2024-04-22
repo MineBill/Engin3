@@ -38,12 +38,6 @@ open_file_dialog :: proc(filter: ..string) -> string {
     return ""
 }
 
-PopupType :: enum {
-    Info,
-    Warning,
-    Error,
-}
-
 show_popup :: proc(title: string, message: string, type: PopupType) {
     message := win32.utf8_to_utf16(message)
     caption := win32.utf8_to_utf16(title)

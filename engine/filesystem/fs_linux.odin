@@ -5,51 +5,69 @@ import "core:strings"
 import "core:os"
 import "core:log"
 import "core:fmt"
+import "core:sync"
 
 copy_file :: proc(from: string, to: string) {
+    unimplemented()
+}
+
+open_file_explorer :: proc(dir: string) {
     unimplemented()
 }
 
 Watcher :: struct {
     handle:     os.Handle,
 
-    // // Paths to look out for
-    // paths:      []string,
+    mutex: sync.Mutex,
 
     triggered:  bool,
-    path_index: int,
+    changed_file: string,
+
+    user_data: rawptr,
+    callback: WatchCallback,
 }
 
-watcher_init :: proc(file_watcher: ^Watcher, directory: string) {
-    file_watcher.handle = inotify.init()
+watcher_init :: proc(watcher: ^Watcher, directory: string) {
+    watcher.handle = inotify.init()
 
-    handle, err := inotify.add_watch(file_watcher.handle, directory, {
+    handle, err := inotify.add_watch(watcher.handle, directory, {
         .Modify})
     if err != os.ERROR_NONE {
-        log.errorf("Error creating file_watcher watch: %v", err)
+        log.errorf("Error creating watcher watch: %v", err)
     }
-
-    // file_watcher.paths = make([]string, len(paths))
-    // copy(file_watcher.paths, paths)
 }
 
-watcher_deinit :: proc(file_watcher: ^Watcher) {
-    delete(file_watcher.paths)
+watcher_init_with_callback :: proc(watcher: ^Watcher, directory: string, data: rawptr, callback: WatchCallback) {
+    watcher.handle = inotify.init()
+
+    handle, err := inotify.add_watch(watcher.handle, directory, {
+        .Modify})
+    if err != os.ERROR_NONE {
+        log.errorf("Error creating watcher watch: %v", err)
+    }
+
+    watcher.callback = callback
+    watcher.user_data = data
+}
+
+watcher_deinit :: proc(watcher: ^Watcher) {
 }
 
 @(private = "file")
 thread_proc :: proc(data: rawptr) {
-    file_watcher := cast(^Watcher)data
+    watcher := cast(^Watcher)data
     for {
-        events := inotify.read_events(file_watcher.handle)
+        events := inotify.read_events(watcher.handle)
         event_loop: for event in events {
-            for path, i in file_watcher.paths {
-                if strings.contains(path, event.name) {
-                    file_watcher.triggered = true
-                    file_watcher.path_index = i
-                    break event_loop
-                }
+            sync.mutex_lock(&watcher.mutex)
+            delete(watcher.changed_file)
+            watcher.triggered = true
+            watcher.changed_file = strings.clone(event.name)
+            if watcher.callback != nil {
+                watcher.callback(watcher.user_data, watcher.changed_file)
+                watcher.triggered = false
             }
+            sync.mutex_unlock(&watcher.mutex)
         }
     }
 }

@@ -2,6 +2,8 @@ package filesystem
 import "core:strings"
 import "core:os"
 
+WatchCallback :: #type proc(data: rawptr, file: string)
+
 make_directory_recursive :: proc(path: string) {
     path, _ := strings.clone(path, context.temp_allocator)
 

@@ -26,8 +26,6 @@ open_file_explorer :: proc(dir: string) {
     )
 }
 
-WatchCallback :: #type proc(data: rawptr, file: string)
-
 Watcher :: struct {
     handle:     windows.HANDLE,
 

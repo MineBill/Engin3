@@ -94,6 +94,9 @@ physics_init :: proc(physics: ^Physics) {
 
         handle_a := cast(EntityHandle) body1.user_data
         handle_b := cast(EntityHandle) body2.user_data
+        if handle_a == 0 || handle_b == 0 {
+            return
+        }
 
         entity_a := get_entity(&EngineInstance.world, handle_a)
         entity_b := get_entity(&EngineInstance.world, handle_b)
@@ -110,6 +113,9 @@ physics_init :: proc(physics: ^Physics) {
         body_lock_interface := jolt.PhysicsSystem_GetBodyLockInterface(PhysicsInstance.physics_system)
         body1 := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &sub_shape_pair.first.body_id)
         body2 := jolt.BodyLockInterface_TryGetBody(body_lock_interface, &sub_shape_pair.second.body_id)
+        if body1 == nil || body2 == nil {
+            return
+        }
 
         handle_a := cast(EntityHandle) body1.user_data
         handle_b := cast(EntityHandle) body2.user_data

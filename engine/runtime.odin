@@ -403,7 +403,7 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         )
 
         gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.ssao_frame_buffer.handle)
-        gl.Clear(gl.COLOR_BUFFER_BIT)
+        gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
         gl.UseProgram(world_renderer.shaders["ssao"].program)
         gl.BindTextureUnit(0, get_color_attachment(world_renderer.g_buffer, 0))
         gl.BindTextureUnit(1, get_color_attachment(world_renderer.g_buffer, 1))
@@ -413,6 +413,7 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
 
         gl.BindFramebuffer(gl.FRAMEBUFFER, world_renderer.ssao_blur_frame_buffer.handle)
+        gl.Clear(gl.COLOR_BUFFER_BIT)
         gl.UseProgram(world_renderer.shaders["ssao_blur"].program)
         gl.BindTextureUnit(0, get_color_attachment(world_renderer.ssao_frame_buffer))
 
