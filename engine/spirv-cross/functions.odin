@@ -11,6 +11,7 @@ when ODIN_OS == .Windows {
         "bin/spirv-cross-msl.lib",
         "bin/spirv-cross-hlsl.lib",
         "bin/spirv-cross-reflect.lib",
+        "bin/spirv-cross-util.lib",
     }
 } else when ODIN_OS == .Linux {
     foreign import lib {
@@ -21,6 +22,7 @@ when ODIN_OS == .Windows {
         "bin/linux/libspirv-cross-msl.a",
         "bin/linux/libspirv-cross-hlsl.a",
         "bin/linux/libspirv-cross-reflect.a",
+        "bin/linux/libspirv-cross-util.a",
     }
 }
 

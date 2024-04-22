@@ -16,14 +16,14 @@ tasks:
     platforms: [linux]
     cmd: ./packages/build.sh
 
-  copy-dlls:
-    platforms: [windows]
-    cmd: cmd /c "copy packages\odin-lua\bin\windows\lua542.dll ."
-    dir: ./
-    sources:
-      - packages/odin-lua/bin/windows/lua542.dll
-    generates:
-      - lua542.dll
+  # copy-dlls:
+  #   platforms: [windows]
+  #   cmd: cmd /c "copy packages\odin-lua\bin\windows\lua542.dll ."
+  #   dir: ./
+  #   sources:
+  #     - packages/odin-lua/bin/windows/lua542.dll
+  #   generates:
+  #     - lua542.dll
 
   build-meta:
     cmds:
@@ -100,7 +100,7 @@ tasks:
       - out/debug/engin3{{.EXE_EXT}}
 
   run:
-    deps: [copy-dlls, build]
+    deps: [build]
     cmds:
       - ./out/debug/engin3{{.EXE_EXT}}
 

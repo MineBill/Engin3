@@ -316,10 +316,10 @@ parsed_data = parse_string(content)
 
 jolt_odin_output += ("package jolt\n")
 jolt_odin_output += ('import "core:c"\n')
-# jolt_odin_output += ('import m "core:math/linalg/hlsl"\n')
 
 jolt_odin_output += """
 when ODIN_OS == .Windows {
+\t@(extra_linker_flags="/IGNORE:4075")
 \tforeign import Jolt {
 \t\t"system:Kernel32.lib",
 \t\t"system:Gdi32.lib",

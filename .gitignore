@@ -12,3 +12,4 @@ cache/
 **/*.obj
 lua*.dll
 scratch/
+**/__pycache__/

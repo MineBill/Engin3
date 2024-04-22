@@ -2,6 +2,7 @@ package jolt
 import "core:c"
 
 when ODIN_OS == .Windows {
+    @(extra_linker_flags="/IGNORE:4075")
 	foreign import Jolt {
 		"system:Kernel32.lib",
 		"system:Gdi32.lib",
