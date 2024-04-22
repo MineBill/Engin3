@@ -55,8 +55,11 @@ def main():
 
     if did_re_execute(): return
 
-    # build_lua()
-    setup_vulkan()
+    ok = setup_vulkan()
+    if not ok:
+        print("Vulkan setup failed. Exiting early..")
+        return
+    build_lua()
 
 
 if __name__ == "__main__":
