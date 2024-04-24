@@ -53,6 +53,17 @@ create_framebuffer :: proc(spec: FrameBufferSpecification) -> (framebuffer: Fram
     return
 }
 
+destroy_framebuffer :: proc(fb: ^FrameBuffer) {
+    if !fb.spec.dont_create_images {
+        for &image in fb.color_attachments {
+            destroy_image(&image)
+        }
+        destroy_image(&fb.depth_attachment)
+    }
+
+    vk.DestroyFramebuffer(fb.spec.device.handle, fb.handle, nil)
+}
+
 // This constructor is used to create a framebuffer from an existing image.
 @(private)
 create_framebuffer_from_images :: proc(spec: FrameBufferSpecification, images: []Image) -> (framebuffer: FrameBuffer) {
@@ -75,23 +86,31 @@ create_framebuffer_from_images :: proc(spec: FrameBufferSpecification, images: [
     return
 }
 
+framebuffer_resize :: proc(fb: ^FrameBuffer, new_size: Vector2) {
+    fb.spec.width = int(new_size.x)
+    fb.spec.height = int(new_size.y)
+
+    destroy_framebuffer(fb)
+    framebuffer_invalidate(fb)
+}
+
 framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
     // Check if the spec has attachments and create the required images.
     if !fb.spec.dont_create_images  {
         if len(fb.color_formats) > 0 {
             fb.color_attachments = make([dynamic]Image, 0, len(fb.color_formats))
 
-            for &attachment in fb.color_attachments {
+            for format in fb.color_formats {
                 spec := ImageSpecification {
                     device = fb.spec.device,
-                    format = fb.color_formats[0],
+                    format = format,
                     width = fb.spec.width,
                     height = fb.spec.height,
                     samples = fb.spec.samples,
-                    usage = {.Sampled, .TransferSrc, .TransferDst},
+                    usage = {.Sampled, .TransferSrc, .TransferDst, .ColorAttachment},
                 }
 
-                attachment = create_image(spec)
+                append(&fb.color_attachments, create_image(spec))
 
                 // image_create_info := vk.ImageCreateInfo {
                 //     sType = .IMAGE_CREATE_INFO,
@@ -118,10 +137,6 @@ framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
 
                 // vma.CreateImage(fb.spec.device.allocator, &image_create_info, &allocation_create_info, &attachment.handle, &attachment.allocation, nil)
             }
-
-            for format in fb.color_formats {
-                append(&fb.spec.attachments, format)
-            }
         }
 
         if fb.depth_format != .None {
@@ -131,7 +146,7 @@ framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
                 height = fb.spec.height,
                 samples = fb.spec.samples,
                 format = fb.depth_format,
-                usage = {.Sampled, .TransferSrc, .TransferDst},
+                usage = {.Sampled, .TransferSrc, .TransferDst, .DepthStencilAttachment},
             }
             fb.depth_attachment = create_image(spec)
         }

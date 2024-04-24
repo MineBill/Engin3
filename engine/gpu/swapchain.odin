@@ -11,14 +11,15 @@ Swapchain :: struct {
 
     current_frame: int,
     images: [dynamic]Image,
-    // images: [dynamic]vk.Image,
-    // image_views: [dynamic]vk.ImageView,
     framebuffers: [dynamic]FrameBuffer,
     depth_image: Image,
 
     in_flight_fences: [MAX_FRAMES_IN_FLIGHT]vk.Fence,
     image_available_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
     render_finished_semaphores: [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
+
+    surface_support_details: SurfaceSupportDetails,
+    image_count: u32,
 
     spec: SwapchainSpecification,
 }
@@ -36,32 +37,77 @@ create_swapchain :: proc(spec: SwapchainSpecification) -> (swapchain: Swapchain,
     swapchain.spec = spec
     swapchain.renderpass = spec.renderpass
 
+    swapchain.surface_support_details = query_surface_support(swapchain.device.physical_device, swapchain.device.instance.surface)
+
+    capabilities := swapchain.surface_support_details.capabilities
+    swapchain.image_count = capabilities.minImageCount + 1
+    if capabilities.maxImageCount > 0 && swapchain.image_count > capabilities.maxImageCount {
+        swapchain.image_count = capabilities.maxImageCount
+    }
+
     swapchain_invalidate(&swapchain)
     return
 }
 
-destroy_swapchain :: proc(swapchain: Swapchain) {
-    
+destroy_swapchain :: proc(swapchain: ^Swapchain, keep_handle := false) {
+    // for framebuffer in framebuffers {
+    //     vk.DestroyFramebuffer(device.device, framebuffer, nil)
+    // }
+    // delete(framebuffers)
+
+    // for view in swapchain_image_views {
+    //     vk.DestroyImageView(device.device, view, nil)
+    // }
+    // delete(swapchain_image_views)
+
+    // image_destroy(&swapchain.color_image)
+    // image_destroy(&swapchain.depth_image)
+
+    // vk.DestroySwapchainKHR(device.device, swapchain_handle, nil)
+    // vk.DestroyRenderPass(device.device, renderpass, nil)
+
+    // destroy_semaphores(device, image_available_semaphores)
+    // destroy_semaphores(device, render_finished_semaphores)
+    // destroy_fences(device, in_flight_fences)
+    for &fb in swapchain.framebuffers {
+        destroy_framebuffer(&fb)
+    }
+    delete(swapchain.framebuffers)
+
+    for &image in swapchain.images {
+        destroy_image(&image)
+    }
+    delete(swapchain.images)
+
+    destroy_image(&swapchain.depth_image)
+
+    device_destroy_fences(swapchain.device^, swapchain.in_flight_fences[:])
+    device_destroy_semaphores(swapchain.device^, swapchain.image_available_semaphores[:])
+    device_destroy_semaphores(swapchain.device^, swapchain.render_finished_semaphores[:])
+
+    if !keep_handle {
+        vk.DestroySwapchainKHR(swapchain.device.handle, swapchain.handle, nil)
+        swapchain.handle = 0
+    }
 }
 
 swapchain_resize :: proc(swapchain: ^Swapchain, new_size: Extent2D) {
     swapchain.spec.extent = new_size
+    destroy_swapchain(swapchain, keep_handle = true)
+
     swapchain_invalidate(swapchain)
 }
 
 swapchain_invalidate :: proc(swapchain: ^Swapchain) -> (error: SwapchainCreationError) {
-    details := query_surface_support(swapchain.device.physical_device, swapchain.device.instance.surface, context.temp_allocator)
-    // Validate spec.format, spec.present_mode against the actual details.
+    swapchain.current_frame = 0
 
-    image_count := details.capabilities.minImageCount + 1
-    if details.capabilities.maxImageCount > 0 && image_count > details.capabilities.maxImageCount {
-        image_count = details.capabilities.maxImageCount
-    }
+    details := query_surface_support(swapchain.device.physical_device, swapchain.device.instance.surface, context.temp_allocator)
+    _ = details
 
     swapchain_create_info := vk.SwapchainCreateInfoKHR {
         sType = .SWAPCHAIN_CREATE_INFO_KHR,
         surface = swapchain.device.instance.surface,
-        minImageCount = image_count,
+        minImageCount = swapchain.image_count,
         imageFormat = image_format_to_vulkan(swapchain.spec.format),
         imageColorSpace = .SRGB_NONLINEAR,
         presentMode = present_mode_to_vulkan(swapchain.spec.present_mode),
@@ -69,10 +115,10 @@ swapchain_invalidate :: proc(swapchain: ^Swapchain) -> (error: SwapchainCreation
         imageArrayLayers = 1,
         imageUsage = {.COLOR_ATTACHMENT, .TRANSFER_SRC},
         imageSharingMode = .EXCLUSIVE,
-        preTransform = details.capabilities.currentTransform,
+        preTransform = swapchain.surface_support_details.capabilities.currentTransform,
         compositeAlpha = {.OPAQUE},
         clipped = true,
-        oldSwapchain = 0,
+        oldSwapchain = swapchain.handle,
     }
 
     check(vk.CreateSwapchainKHR(swapchain.device.handle, &swapchain_create_info, nil, &swapchain.handle))
@@ -182,9 +228,10 @@ swapchain_get_images :: proc(swapchain: ^Swapchain) {
     swapchain_image_count: u32
     vk.GetSwapchainImagesKHR(swapchain.device.handle, swapchain.handle, &swapchain_image_count, nil)
 
-    vk_images := make([dynamic]vk.Image, swapchain_image_count)
+    vk_images := make([dynamic]vk.Image, swapchain_image_count, context.temp_allocator)
     vk.GetSwapchainImagesKHR(swapchain.device.handle, swapchain.handle, &swapchain_image_count, raw_data(vk_images[:]))
 
+    swapchain.images = make([dynamic]Image, 0, len(vk_images))
     for vk_image in vk_images {
         spec := ImageSpecification {
             device       = swapchain.spec.device,

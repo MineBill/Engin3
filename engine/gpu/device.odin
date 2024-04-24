@@ -18,10 +18,22 @@ Device :: struct {
     debug_messenger: vk.DebugUtilsMessengerEXT,
 
     allocator: vma.Allocator,
+    callbacks: ImageCallbacks,
 }
 
-create_device :: proc(instance: Instance) -> (device: Device) {
+ImageCreateCallback  :: #type proc(user_data: rawptr, image: ^Image)
+ImageDestroyCallback :: #type proc(user_data: rawptr, image: ^Image)
+
+ImageCallbacks :: struct {
+    user_data: rawptr,
+
+    image_create:  ImageCreateCallback,
+    image_destroy: ImageDestroyCallback,
+}
+
+create_device :: proc(instance: Instance, callbacks: ImageCallbacks = {}) -> (device: Device) {
     device.instance = instance
+    device.callbacks = callbacks
 
     device.debug_messenger = create_debug_messenger(instance, device.instance.debug_context)
     device.surface = instance.surface
@@ -59,6 +71,24 @@ destroy_device :: proc(#by_ptr device: Device) {
 device_get_name :: proc(device: Device, allocator := context.allocator) -> string {
     device := device
     return strings.clone(string(device.properties.deviceName[:]))
+}
+
+_vk_device_create_descriptor_pool :: proc(
+    device: Device,
+    count: u32,
+    sizes: []vk.DescriptorPoolSize,
+    flags := vk.DescriptorPoolCreateFlags{},
+) -> (pool: vk.DescriptorPool) {
+    pool_info := vk.DescriptorPoolCreateInfo {
+        sType         = vk.StructureType.DESCRIPTOR_POOL_CREATE_INFO,
+        poolSizeCount = u32(len(sizes)),
+        pPoolSizes    = raw_data(sizes),
+        maxSets       = count,
+        flags = flags,
+    }
+
+    check(vk.CreateDescriptorPool(device.handle, &pool_info, nil, &pool))
+    return
 }
 
 @(private)
