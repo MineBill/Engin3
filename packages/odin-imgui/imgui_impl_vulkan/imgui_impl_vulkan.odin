@@ -45,6 +45,9 @@ foreign lib {
 	DestroyFontsTexture      :: proc() ---
 	SetMinImageCount         :: proc(min_image_count: u32) --- // To override MinImageCount after initialization (e.g. if swap chain is recreated)
 
+	AddTexture               :: proc(sampler: vk.Sampler, image_view: vk.ImageView, image_layout: vk.ImageLayout) -> vk.DescriptorSet ---
+	RemoveTexture            :: proc(descriptor_set: vk.DescriptorSet) ---
+
 	LoadFunctions :: proc(loader_func: proc "c" (function_name: cstring, user_data: rawptr) -> vk.ProcVoidFunction, user_data: rawptr = nil) -> bool ---
 }
 
