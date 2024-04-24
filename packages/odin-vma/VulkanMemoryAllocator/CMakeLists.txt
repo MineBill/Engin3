@@ -12,7 +12,7 @@ option(VMA_BUILD_SAMPLE_SHADERS "Build VulkanMemoryAllocator sample application'
 message(STATUS "VMA_BUILD_SAMPLE = ${VMA_BUILD_SAMPLE}")
 message(STATUS "VMA_BUILD_SAMPLE_SHADERS = ${VMA_BUILD_SAMPLE_SHADERS}")
 
-option(VMA_STATIC_VULKAN_FUNCTIONS "Link statically with Vulkan API" ON)
+option(VMA_STATIC_VULKAN_FUNCTIONS "Link statically with Vulkan API" OFF)
 option(VMA_DYNAMIC_VULKAN_FUNCTIONS "Fetch pointers to Vulkan functions internally (no static linking)" OFF)
 option(VMA_DEBUG_ALWAYS_DEDICATED_MEMORY "Every allocation will have its own memory block" OFF)
 option(VMA_DEBUG_INITIALIZE_ALLOCATIONS "Automatically fill new allocations and destroyed allocations with some bit pattern" OFF)
