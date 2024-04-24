@@ -183,6 +183,11 @@ def main():
 		full_dep = backend_deps[backend_dep]
 		ensure_checked_out_with_commit(path.join("backend_deps", full_dep["path"]), full_dep["repo"], full_dep["commit"])
 
+	os.chdir("imgui")
+	# Apply vulkan backend patch
+	exec(["git", "apply", "../vulkan_multiview_fix.patch"], "Apply vulkan backend patch")
+	os.chdir("..")
+
 	# Clear the temp folder
 	shutil.rmtree(path="temp", ignore_errors=True)
 	os.mkdir("temp")
