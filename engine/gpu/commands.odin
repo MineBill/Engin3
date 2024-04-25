@@ -2,6 +2,7 @@ package gpu
 import vk "vendor:vulkan"
 
 CommandBuffer :: struct {
+    id: UUID,
     handle: vk.CommandBuffer,
 
     spec: CommandBufferSpecification,
@@ -13,6 +14,7 @@ CommandBufferSpecification :: struct {
 }
 
 create_command_buffer :: proc(device: Device, spec: CommandBufferSpecification) -> (cmd_buffer: CommandBuffer) {
+    cmd_buffer.id = new_id()
     cmd_buffer.spec = spec
 
     cmd_buffer_create_info := vk.CommandBufferAllocateInfo {
@@ -43,7 +45,8 @@ CommandType :: enum {
     SingleTime,
 }
 
-cmd_begin :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) {
+@(deferred_in=cmd_end)
+cmd_begin :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) -> bool {
     begin_info := vk.CommandBufferBeginInfo {
         sType = .COMMAND_BUFFER_BEGIN_INFO,
     }
@@ -51,11 +54,13 @@ cmd_begin :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) {
         begin_info.flags += {.ONE_TIME_SUBMIT}
     }
     vk.BeginCommandBuffer(cmd_buffer.handle, &begin_info)
+    return true
 }
 
-cmd_end :: proc(cmd_buffer: CommandBuffer) {
+cmd_end :: proc(cmd_buffer: CommandBuffer, _: CommandType) {
     vk.EndCommandBuffer(cmd_buffer.handle)
 }
+
 
 reset_command_buffer :: proc(cmd_buffer: CommandBuffer) {
     vk.ResetCommandBuffer(cmd_buffer.handle, {})
@@ -92,4 +97,14 @@ set_scissor :: proc(cmd: CommandBuffer, x, y, width, height: u32) {
 
 draw :: proc(cmd: CommandBuffer, vertex_count, instance_count: u32, first_vertex: u32 = 0, first_instance: u32 = 0) {
     vk.CmdDraw(cmd.handle, vertex_count, instance_count, first_vertex, first_instance)
+}
+
+bind_buffers :: proc(cmd: CommandBuffer, buffers: ..Buffer) {
+    vk_buffer_handles := make([dynamic]vk.Buffer, len(buffers))
+    for buffer, i in buffers {
+        vk_buffer_handles[i] = buffer.handle
+    }
+
+    offsets := vk.DeviceSize(0)
+    vk.CmdBindVertexBuffers(cmd.handle, 0, cast(u32) len(buffers), raw_data(vk_buffer_handles), &offsets)
 }

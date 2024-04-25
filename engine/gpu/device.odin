@@ -131,7 +131,7 @@ device_begin_single_time_command :: proc(device: Device) -> CommandBuffer {
 @(private)
 device_end_single_time_command :: proc(device: Device, cmd: CommandBuffer) {
     cmd := cmd
-    cmd_end(cmd)
+    cmd_end(cmd, .SingleTime)
 
     submit_info := vk.SubmitInfo {
         sType              = vk.StructureType.SUBMIT_INFO,

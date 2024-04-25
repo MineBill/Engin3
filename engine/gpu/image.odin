@@ -4,6 +4,7 @@ import vma "packages:odin-vma"
 import "core:fmt"
 
 Image :: struct {
+    id: UUID,
     _destroy_handle: bool,
     handle: vk.Image,
     allocation: vma.Allocation,
@@ -24,6 +25,7 @@ ImageSpecification :: struct {
 }
 
 create_image :: proc(spec: ImageSpecification) -> (image: Image) {
+    image.id = new_id()
     image.spec = spec
     image._destroy_handle = true
 
@@ -100,6 +102,7 @@ create_image_from_existing_vk_image :: proc(vk_image: vk.Image, spec: ImageSpeci
 }
 
 ImageView :: struct {
+    id: UUID,
     handle: vk.ImageView,
 
     spec: ImageViewSpecification,
@@ -113,6 +116,7 @@ ImageViewSpecification :: struct {
 }
 
 create_image_view :: proc(image: Image, spec: ImageViewSpecification) -> (view: ImageView) {
+    view.id = new_id()
     view.spec = spec
     aspect_mask: vk.ImageAspectFlag
     if is_depth_format(spec.format) {
@@ -146,6 +150,7 @@ destroy_image_view :: proc(view: ^ImageView) {
 transition_image_layout :: proc(device: Device, image: ^Image, new_layout: ImageLayout) {
     command_buffer := device_begin_single_time_command(device)
     defer device_end_single_time_command(device, command_buffer)
+
     old := image.spec.layout
     image.spec.layout = new_layout
 
@@ -297,6 +302,7 @@ image_usage_to_vulkan :: proc(image_usage: ImageUsageFlags) -> (usage: vk.ImageU
 }
 
 Sampler :: struct {
+    id: UUID,
     handle: vk.Sampler,
 
     spec: SamplerSpecification,
@@ -330,6 +336,7 @@ sampler_border_color_to_vulkan :: proc(color: SamplerBorderColor) -> vk.BorderCo
 }
 
 create_sampler :: proc(device: Device, spec: SamplerSpecification) -> (sampler: Sampler) {
+    sampler.id = new_id()
     sampler.spec = spec
 
     sampler_create_info := vk.SamplerCreateInfo {

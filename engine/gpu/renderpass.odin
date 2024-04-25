@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:log"
 
 RenderPass :: struct {
+    id: UUID,
     handle: vk.RenderPass,
 
     spec: RenderPassSpecification,
@@ -18,6 +19,7 @@ RenderPassSpecification :: struct {
 }
 
 create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: RenderPass) {
+    renderpass.id = new_id()
     renderpass.spec = spec
 
     attachments := [dynamic]vk.AttachmentDescription {}
@@ -136,7 +138,15 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
     return
 }
 
+@(deferred_in=render_pass_end)
+do_render_pass :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, framebuffer: FrameBuffer, image: u32) -> bool {
+    render_pass_begin(cmd_buffer, renderpass, framebuffer, image)
+    return true
+}
+
 render_pass_begin :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, framebuffer: FrameBuffer, image: u32) {
+    g_stats.renderpasses[renderpass.id] = {}
+
     clear_values := make([dynamic]vk.ClearValue, context.temp_allocator)
     for attachment in renderpass.spec.attachments {
         if is_depth_format(attachment.format) {
@@ -176,7 +186,7 @@ render_pass_begin :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, fra
     vk.CmdBeginRenderPass(cmd_buffer.handle, &begin_info, .INLINE)
 }
 
-render_pass_end :: proc(cmd: CommandBuffer, renderpass: RenderPass) {
+render_pass_end :: proc(cmd: CommandBuffer, _: RenderPass, _: FrameBuffer, _: u32) {
     vk.CmdEndRenderPass(cmd.handle)
 }
 

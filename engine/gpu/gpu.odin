@@ -87,6 +87,7 @@ create_framebuffer_from_images :: proc(spec: FrameBufferSpecification, images: [
 }
 
 framebuffer_resize :: proc(fb: ^FrameBuffer, new_size: Vector2) {
+    vk.DeviceWaitIdle(fb.spec.device.handle)
     fb.spec.width = int(new_size.x)
     fb.spec.height = int(new_size.y)
 

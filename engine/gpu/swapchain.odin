@@ -5,6 +5,7 @@ import vk "vendor:vulkan"
 MAX_FRAMES_IN_FLIGHT :: 1
 
 Swapchain :: struct {
+    id: UUID,
     handle: vk.SwapchainKHR,
     device: ^Device,
     renderpass: RenderPass,
@@ -33,6 +34,7 @@ SwapchainSpecification :: struct {
 }
 
 create_swapchain :: proc(spec: SwapchainSpecification) -> (swapchain: Swapchain, error: Error) {
+    swapchain.id = new_id()
     swapchain.device = spec.device
     swapchain.spec = spec
     swapchain.renderpass = spec.renderpass

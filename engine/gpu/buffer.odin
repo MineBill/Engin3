@@ -3,6 +3,7 @@ import vk "vendor:vulkan"
 import vma "packages:odin-vma"
 
 Buffer :: struct {
+    id: UUID,
     handle: vk.Buffer,
 
     device: ^Device,
@@ -17,20 +18,24 @@ BufferUsage :: enum {
     Index,
 }
 
+BufferUsageFlags :: bit_set[BufferUsage]
+
 BufferSpecification :: struct {
-    allocator: vma.Allocator,
+    device: ^Device,
     name: cstring,
-    usage: BufferUsage,
+    usage: BufferUsageFlags,
     size: int,
 }
 
 create_buffer :: proc(spec: BufferSpecification) -> (buffer: Buffer) {
+    buffer.id = new_id()
     buffer.spec = spec
     buffer_create_info := vk.BufferCreateInfo {
         sType = .BUFFER_CREATE_INFO,
         flags = {},
         size = vk.DeviceSize(spec.size),
         sharingMode = .EXCLUSIVE,
+        usage = buffer_usage_to_vulkan(spec.usage),
     }
 
     allocation_info := vma.AllocationCreateInfo {
@@ -38,38 +43,40 @@ create_buffer :: proc(spec: BufferSpecification) -> (buffer: Buffer) {
         flags = {.HOST_ACCESS_SEQUENTIAL_WRITE},
     }
 
-    check(vma.CreateBuffer(spec.allocator, &buffer_create_info, &allocation_info, &buffer.handle, &buffer.allocation, nil))
-    vma.SetAllocationName(spec.allocator, buffer.allocation, spec.name)
+    check(vma.CreateBuffer(spec.device.allocator, &buffer_create_info, &allocation_info, &buffer.handle, &buffer.allocation, nil))
+    vma.SetAllocationName(spec.device.allocator, buffer.allocation, spec.name)
 
     return
 }
 
 destroy_buffer :: proc(buffer: Buffer) {
     info: vma.AllocationInfo
-    vma.GetAllocationInfo(buffer.spec.allocator, buffer.allocation, &info)
+    vma.GetAllocationInfo(buffer.spec.device.allocator, buffer.allocation, &info)
 
     if info.pMappedData != nil {
         buffer_unmap(buffer)
     }
 
-    vma.DestroyBuffer(buffer.spec.allocator, buffer.handle, buffer.allocation)
+    vma.DestroyBuffer(buffer.spec.device.allocator, buffer.handle, buffer.allocation)
 }
 
 buffer_map :: proc(buffer: Buffer, data: ^rawptr) {
-    vma.MapMemory(buffer.spec.allocator, buffer.allocation, data)
+    vma.MapMemory(buffer.spec.device.allocator, buffer.allocation, data)
 }
 
 buffer_unmap :: proc(buffer: Buffer)  {
-    vma.UnmapMemory(buffer.spec.allocator, buffer.allocation)
+    vma.UnmapMemory(buffer.spec.device.allocator, buffer.allocation)
 }
 
 @(private)
-buffer_usage_to_vulkan :: proc(usage: BufferUsage) -> vk.BufferUsageFlag {
-    switch usage {
-    case .Index:
-        return .INDEX_BUFFER
-    case .Vertex:
-        return .VERTEX_BUFFER
+buffer_usage_to_vulkan :: proc(usages: BufferUsageFlags) -> (vk_usage: vk.BufferUsageFlags) {
+    for usage in usages {
+        switch usage {
+        case .Index:
+            vk_usage += {.INDEX_BUFFER}
+        case .Vertex:
+            vk_usage += {.VERTEX_BUFFER}
+        }
     }
-    unreachable()
+    return
 }

@@ -2,6 +2,7 @@ package gpu
 import vk "vendor:vulkan"
 
 Shader :: struct {
+    id: UUID,
     device: ^Device,
 
     vertex_module: vk.ShaderModule,

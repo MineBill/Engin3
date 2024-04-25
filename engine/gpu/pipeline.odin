@@ -2,6 +2,7 @@ package gpu
 import vk "vendor:vulkan"
 
 Pipeline :: struct {
+    id: UUID,
     handle: vk.Pipeline,
     device: ^Device,
 
@@ -17,6 +18,7 @@ PipelineSpecification :: struct {
 }
 
 create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeline: Pipeline, error: PipelineCreationError) {
+    pipeline.id = new_id()
     pipeline.device = device
     pipeline.spec = spec
 
@@ -41,9 +43,9 @@ create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeli
 
     vertex_input_state := vk.PipelineVertexInputStateCreateInfo {
         sType = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        vertexBindingDescriptionCount = 0,
+        vertexBindingDescriptionCount = 1 if len(spec.attribute_layout.attributes) > 0 else 0,
         pVertexBindingDescriptions = &binding_desc,
-        vertexAttributeDescriptionCount = 0,
+        vertexAttributeDescriptionCount = cast(u32) len(attribute_desc),
         pVertexAttributeDescriptions = raw_data(attribute_desc),
     }
 
@@ -94,6 +96,7 @@ pipeline_bind :: proc(cmd: CommandBuffer, pipeline: Pipeline) {
 }
 
 PipelineLayout :: struct {
+    id: UUID,
     handle: vk.PipelineLayout,
 
     spec: PipelineLayoutSpecification,
@@ -106,6 +109,7 @@ PipelineLayoutSpecification :: struct {
 }
 
 create_pipeline_layout :: proc(spec: PipelineLayoutSpecification) -> (layout: PipelineLayout) {
+    layout.id = new_id()
     layout.spec = spec
 
     pipeline_layout_create_info := vk.PipelineLayoutCreateInfo {
@@ -272,7 +276,7 @@ VertexAttributeLayout :: struct {
     stride: int,
 }
 
-vertex_attribute_layout :: proc(attributes: ..VertexAttribute) -> (layout: VertexAttributeLayout) {
+vertex_layout :: proc(attributes: ..VertexAttribute) -> (layout: VertexAttributeLayout) {
     attributes := attributes
 
     offset := 0
@@ -306,6 +310,7 @@ vertex_vulkan_attribute_description :: proc(
             binding = 0,
             location = u32(i),
             format = vertex_element_type_to_vulkan(attr.type),
+            offset = cast(u32) attr.offset,
         }
         append(&thing, description)
     }
