@@ -83,6 +83,7 @@ destroy_image :: proc(image: ^Image) {
     }
 
     destroy_image_view(&image.view)
+    destroy_sampler(image.spec.device^, image.sampler)
 }
 
 @(private)
@@ -352,4 +353,8 @@ create_sampler :: proc(device: Device, spec: SamplerSpecification) -> (sampler: 
 
     vk.CreateSampler(device.handle, &sampler_create_info, nil, &sampler.handle)
     return
+}
+
+destroy_sampler :: proc(device: Device, sampler: Sampler) {
+    vk.DestroySampler(device.handle, sampler.handle, nil)
 }
