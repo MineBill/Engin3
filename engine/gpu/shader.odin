@@ -34,3 +34,27 @@ create_shader :: proc(device: ^Device, spec: ShaderSpecification) -> (shader: Sh
     check(vk.CreateShaderModule(device.handle, &shader_create_info, nil, &shader.fragment_module))
     return
 }
+
+ShaderStage :: enum {
+    Vertex,
+    Fragment,
+    Compute,
+}
+
+ShaderStages :: bit_set[ShaderStage]
+
+@(private)
+shader_stage_to_vulkan :: proc(stages: ShaderStages) -> (flags: vk.ShaderStageFlags) {
+    for stage in stages {
+        switch stage {
+        case .Vertex:
+            flags += {.VERTEX}
+        case .Fragment:
+            flags += {.FRAGMENT}
+        case .Compute:
+            flags += {.COMPUTE}
+        }
+    }
+    return
+}
+

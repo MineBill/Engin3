@@ -95,7 +95,7 @@ set_scissor :: proc(cmd: CommandBuffer, x, y, width, height: u32) {
     vk.CmdSetScissor(cmd.handle, 0, 1, &scissor)
 }
 
-draw :: proc(cmd: CommandBuffer, vertex_count, instance_count: u32, first_vertex: u32 = 0, first_instance: u32 = 0) {
+draw :: proc(cmd: CommandBuffer, #any_int vertex_count, instance_count: u32, first_vertex: u32 = 0, first_instance: u32 = 0) {
     vk.CmdDraw(cmd.handle, vertex_count, instance_count, first_vertex, first_instance)
 }
 
@@ -107,4 +107,12 @@ bind_buffers :: proc(cmd: CommandBuffer, buffers: ..Buffer) {
 
     offsets := vk.DeviceSize(0)
     vk.CmdBindVertexBuffers(cmd.handle, 0, cast(u32) len(buffers), raw_data(vk_buffer_handles), &offsets)
+}
+
+bind_resource :: proc(cmd: CommandBuffer, resource: Resource, pipeline: Pipeline) {
+    sets := []vk.DescriptorSet {
+        resource.handle,
+    }
+
+    vk.CmdBindDescriptorSets(cmd.handle, .GRAPHICS, pipeline.spec.layout.handle, 0, 1, raw_data(sets), 0, nil)
 }

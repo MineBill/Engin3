@@ -7,8 +7,8 @@ Buffer :: struct {
     handle: vk.Buffer,
 
     device: ^Device,
-    memory: vk.DeviceMemory,
     allocation: vma.Allocation,
+    alloc_info: vma.AllocationInfo,
 
     spec: BufferSpecification,
 }
@@ -16,6 +16,7 @@ Buffer :: struct {
 BufferUsage :: enum {
     Vertex,
     Index,
+    Uniform,
 }
 
 BufferUsageFlags :: bit_set[BufferUsage]
@@ -25,6 +26,7 @@ BufferSpecification :: struct {
     name: cstring,
     usage: BufferUsageFlags,
     size: int,
+    mapped: bool,
 }
 
 create_buffer :: proc(spec: BufferSpecification) -> (buffer: Buffer) {
@@ -42,8 +44,11 @@ create_buffer :: proc(spec: BufferSpecification) -> (buffer: Buffer) {
         usage = .AUTO,
         flags = {.HOST_ACCESS_SEQUENTIAL_WRITE},
     }
+    if spec.mapped {
+        allocation_info.flags += {.MAPPED}
+    }
 
-    check(vma.CreateBuffer(spec.device.allocator, &buffer_create_info, &allocation_info, &buffer.handle, &buffer.allocation, nil))
+    check(vma.CreateBuffer(spec.device.allocator, &buffer_create_info, &allocation_info, &buffer.handle, &buffer.allocation, &buffer.alloc_info))
     vma.SetAllocationName(spec.device.allocator, buffer.allocation, spec.name)
 
     return
@@ -76,6 +81,8 @@ buffer_usage_to_vulkan :: proc(usages: BufferUsageFlags) -> (vk_usage: vk.Buffer
             vk_usage += {.INDEX_BUFFER}
         case .Vertex:
             vk_usage += {.VERTEX_BUFFER}
+        case .Uniform:
+            vk_usage += {.UNIFORM_BUFFER}
         }
     }
     return

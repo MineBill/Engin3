@@ -15,6 +15,7 @@ PipelineSpecification :: struct {
     layout:           PipelineLayout,
     attribute_layout: VertexAttributeLayout,
     renderpass:       RenderPass,
+    config:           Maybe(PipelineConfig),
 }
 
 create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeline: Pipeline, error: PipelineCreationError) {
@@ -66,7 +67,7 @@ create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeli
         pDynamicStates    = raw_data(dynamic_states),
     }
 
-    config := default_pipeline_config()
+    config := default_pipeline_config() if spec.config == nil else spec.config.?
     config.colorblend_info.pAttachments = &config.colorblend_attachment_info
 
     pipeline_create_info := vk.GraphicsPipelineCreateInfo {
@@ -106,6 +107,7 @@ PipelineLayoutSpecification :: struct {
     tag: cstring,
     device: ^Device,
     // descriptor_set_layout: ...
+    layout: ResourceLayout,
 }
 
 create_pipeline_layout :: proc(spec: PipelineLayoutSpecification) -> (layout: PipelineLayout) {
@@ -114,18 +116,14 @@ create_pipeline_layout :: proc(spec: PipelineLayoutSpecification) -> (layout: Pi
 
     pipeline_layout_create_info := vk.PipelineLayoutCreateInfo {
         sType = .PIPELINE_LAYOUT_CREATE_INFO,
+        setLayoutCount = 1 if layout.spec.layout.handle != 0 else 0,
+        pSetLayouts = &layout.spec.layout.handle,
     }
 
     check(vk.CreatePipelineLayout(spec.device.handle, &pipeline_layout_create_info, nil, &layout.handle))
     return
 }
 
-@(private = "file")
-create_pipeline_layout :: proc() -> vk.PipelineLayout {
-    return {}
-}
-
-@(private)
 PipelineConfig :: struct {
     input_assembly_info:        vk.PipelineInputAssemblyStateCreateInfo,
     rasterization_info:         vk.PipelineRasterizationStateCreateInfo,
@@ -135,7 +133,6 @@ PipelineConfig :: struct {
     depth_stencil_info:         vk.PipelineDepthStencilStateCreateInfo,
 }
 
-@(private)
 default_pipeline_config :: proc() -> (config: PipelineConfig) {
     config.input_assembly_info = vk.PipelineInputAssemblyStateCreateInfo {
         sType                  = vk.StructureType.PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
