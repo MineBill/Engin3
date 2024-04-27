@@ -416,10 +416,6 @@ make_cubemap :: proc() -> rawptr {
     // }
 
     ok: bool
-    cube.shader, ok = shader_load_from_file(
-        "assets/shaders/cubemap.vert.glsl",
-        "assets/shaders/cubemap.frag.glsl",
-        )
     if !ok {
         log.warnf("Failed to load shader")
     }

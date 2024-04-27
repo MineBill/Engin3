@@ -4,53 +4,93 @@ import array "core:container/small_array"
 import "core:math"
 import "packages:back"
 import "core:io"
+import "gpu"
+import vk "vendor:vulkan"
+import "packages:odin-imgui/imgui_impl_vulkan"
+import "packages:odin-imgui/imgui_impl_glfw"
+import imgui "packages:odin-imgui"
+import "core:runtime"
+import "core:fmt"
+import glfw "vendor:glfw"
 
 GL_DEBUG_CONTEXT :: ODIN_DEBUG
 
 RendererInstance: ^Renderer
 
 Renderer :: struct {
+    has_main_renderpass: bool,
+    instance:  gpu.Instance,
+    device:    gpu.Device,
+    swapchain: gpu.Swapchain,
+
+    current_image_index: u32,
+
+    resource_pool:   gpu.ResourcePool,
+    uniform_layout:  gpu.ResourceLayout,
+    samplers_layout: gpu.ResourceLayout,
+
+    renderpasses:    map[string]gpu.RenderPass,
+    pipelines:       map[string]gpu.Pipeline,
+    uniform_buffers: map[string]gpu.Buffer,
+
+    command_buffers: [dynamic]gpu.CommandBuffer,
+
     white_texture:  AssetHandle,
     normal_texture: AssetHandle,
     height_texture: AssetHandle,
+
+    _editor_images: map[gpu.UUID]vk.DescriptorSet,
+}
+
+tex :: proc(image: gpu.Image) -> imgui.TextureID {
+    return transmute(imgui.TextureID) RendererInstance._editor_images[image.id]
 }
 
 renderer_init :: proc(r: ^Renderer) {
-    when GL_DEBUG_CONTEXT {
-        flags: i32
-        gl.GetIntegerv(gl.CONTEXT_FLAGS, &flags)
-        if flags & gl.CONTEXT_FLAG_DEBUG_BIT != 0 {
-            gl.Enable(gl.DEBUG_OUTPUT)
-            gl.Enable(gl.DEBUG_OUTPUT_SYNCHRONOUS)
-            gl.DebugMessageCallback(opengl_debug_callback, r)
-            gl.DebugMessageControl(gl.DONT_CARE, gl.DONT_CARE, gl.DONT_CARE, 0, nil, true)
-        }
+    RendererInstance = r
+    error: gpu.Error
+    r.instance, error = gpu.create_instance(
+        "Engin3 Editor",
+        "Engin3",
+        0, 0, EngineInstance.window,
+    )
+    if error != nil {
+        log_error(LC.Renderer, "%v", error)
     }
 
-    vendor   := gl.GetString(gl.VENDOR)
-    renderer := gl.GetString(gl.RENDERER)
-    version  := gl.GetString(gl.VERSION)
-    log_info(LC.Renderer, "Vendor %v", vendor)
-    log_info(LC.Renderer, "\tUsing %v", renderer)
-    log_info(LC.Renderer, "\tVersion %v", version)
+    r.device = gpu.create_device(r.instance, {
+        user_data = r,
+        image_create = proc(user_data: rawptr, image: ^gpu.Image) {
+            m := cast(^Renderer) user_data
 
-    data: i32
-    gl.GetIntegerv(gl.MAX_TEXTURE_MAX_ANISOTROPY, &data)
-    log_debug(LC.Renderer, "Max texture anistotropy: %v", data)
+            if .Sampled in image.spec.usage {
+                m._editor_images[image.id] = imgui_impl_vulkan.AddTexture(
+                    image.sampler.handle,
+                    image.view.handle,
+                    .SHADER_READ_ONLY_OPTIMAL,
+                )
+            }
+        },
+        image_destroy = proc(user_data: rawptr, image: ^gpu.Image) {
+            m := cast(^Renderer) user_data
 
-    gl.Enable(gl.DEPTH_TEST)
-    gl.DepthFunc(gl.LESS)
-    gl.FrontFace(gl.CW)
+            if image.id in m._editor_images {
+                imgui_impl_vulkan.RemoveTexture(m._editor_images[image.id])
+            }
+        },
+    })
 
-    gl.Enable(gl.CULL_FACE)
-    gl.CullFace(gl.FRONT)
+    // TODO(minebill): This does not belong here, probably.
+    initialize_imgui_for_vulkan(r)
 
-    gl.Enable(gl.STENCIL_TEST)
-    gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+    cmd_spec := gpu.CommandBufferSpecification {
+        tag = "Swapchain Command Buffer",
+        device = r.device,
+    }
 
-    gl.Enable(gl.BLEND)
-    gl.BlendEquation(gl.FUNC_ADD)
-    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    r.command_buffers = gpu.create_command_buffers(r.device, cmd_spec, gpu.MAX_FRAMES_IN_FLIGHT)
+
+    renderer_create_swapchain(r)
 
     spec := TextureSpecification {
         width = 1,
@@ -74,8 +114,63 @@ renderer_deinit :: proc(r: ^Renderer) {
 
 }
 
+// // Sets the main renderpass to be used for the swapchain. This proc __MUST__ be called once, to
+// // initialize the swapchain and setup the main renderpass.
+// renderer_set_main_renderpass :: proc(r: ^Renderer, rp: gpu.RenderPass) {
+//     assert(!r.has_main_renderpass, "Main renderpass and swapchain have already been created.")
+
+//     r.renderpasses["main"] = rp
+
+//     r.has_main_renderpass = true
+// }
+
 renderer_set_instance :: proc(r: ^Renderer) {
     RendererInstance = r
+}
+
+renderer_begin_rendering :: proc(r: ^Renderer) -> (cmd: gpu.CommandBuffer, error: gpu.SwapchainError) {
+    r.current_image_index, error = gpu.swapchain_get_next_image(&r.swapchain)
+    if error == .SwapchainOutOfDate || error == .SwapchainSuboptimal {
+        vk.DeviceWaitIdle(r.device.handle)
+        width, height := glfw.GetFramebufferSize(EngineInstance.window)
+        gpu.swapchain_resize(&r.swapchain, {f32(width), f32(height)})
+        // r.current_image_index, _ = gpu.swapchain_get_next_image(&r.swapchain)
+        return
+    }
+
+    cmd = r.command_buffers[r.swapchain.current_frame]
+    gpu.reset(cmd)
+
+    gpu.cmd_begin(cmd)
+    return
+}
+
+renderer_end_rendering :: proc(r: ^Renderer, cmd: gpu.CommandBuffer) {
+    gpu.cmd_end(cmd, {})
+    gpu.swapchain_cmd_submit(&r.swapchain, {cmd})
+    gpu.swapchain_present(&r.swapchain, r.current_image_index)
+}
+
+@(private = "file")
+renderer_create_swapchain :: proc(r: ^Renderer) {
+    // assert(r.has_main_renderpass, "Must have called `renderer_set_main_renderpass` to create the main renderpass first.")
+
+    swapchain_spec := gpu.SwapchainSpecification {
+        device = &r.device,
+        renderpass = r.renderpasses["imgui"],
+        present_mode = .Mailbox,
+        extent = {
+            width = u32(EngineInstance.screen_size.x),
+            height = u32(EngineInstance.screen_size.y),
+        },
+        format = .B8G8R8A8_UNORM,
+    }
+
+    error: gpu.Error
+    r.swapchain, error = gpu.create_swapchain(swapchain_spec)
+    if error != nil {
+        log_error(LC.Renderer, "Error creating swapchain: %v", error)
+    }
 }
 
 MSAA_Level :: enum {
@@ -197,9 +292,7 @@ FrameBuffer :: struct {
 @(private="file")
 is_depth_format :: proc(format: FrameBufferTextureFormat) -> bool {
     #partial switch format {
-    case .DEPTH24_STENCIL8:
-        fallthrough
-    case .DEPTH32F:
+    case .DEPTH24_STENCIL8, .DEPTH32F:
         return true
     }
     return false
@@ -564,7 +657,7 @@ TextureSpecification :: struct {
 Texture :: struct {
     using base: Asset,
 
-    handle: RenderHandle,
+    handle: gpu.Image,
     spec: TextureSpecification,
 }
 
@@ -581,36 +674,19 @@ create_texture2d :: proc(spec: TextureSpecification, data: []byte = {}) -> (text
     spec.anisotropy = 1 if spec.anisotropy <= 0 else spec.anisotropy
     spec.desired_format = spec.format if spec.desired_format == nil else spec.desired_format
     spec.pixel_type = .Unsigned if spec.pixel_type == nil else spec.pixel_type
-
     texture.spec = spec
-    multisampled := spec.samples > 1
-    gl.CreateTextures(texture_target(multisampled, spec.type), 1, &texture.handle)
 
-    min_image_count := i32(math.floor(math.log2(f32(math.max(spec.width, spec.height))))) + 1
-    format := texture_format_to_opengl_internal(spec.desired_format)
-    switch spec.type {
-    case .CubeMap: fallthrough
-    case .Normal:
-        if !multisampled {
-            gl.TextureStorage2D(texture.handle, min_image_count, format, i32(spec.width), i32(spec.height))
-
-            gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_S, texture_wrap_to_opengl(spec.wrap))
-            gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_T, texture_wrap_to_opengl(spec.wrap))
-            gl.TextureParameteri(texture.handle, gl.TEXTURE_WRAP_R, texture_wrap_to_opengl(spec.wrap))
-        } else {
-            gl.TextureStorage2DMultisample(texture.handle, i32(spec.samples), format, i32(spec.width), i32(spec.height), true)
-        }
-
-        gl.TextureParameteri(texture.handle, gl.TEXTURE_MIN_FILTER, texture_filter_to_opengl(spec.filter))
-        gl.TextureParameteri(texture.handle, gl.TEXTURE_MAG_FILTER, texture_filter_to_opengl(spec.filter))
-        gl.TextureParameteri(texture.handle, gl.TEXTURE_MAX_ANISOTROPY, i32(spec.anisotropy))
-        // gl.TextureStorage3D(texture.handle, min_image_count, format, i32(spec.width), i32(spec.height), 6)
+    image_spec := gpu.ImageSpecification {
+        device = &RendererInstance.device,
+        width = spec.width,
+        height = spec.height,
+        samples = spec.samples,
+        usage = {.Sampled, .TransferDst},
+        format = .R8G8B8A8_SRGB,
     }
 
-    if len(data) > 0 {
-        set_texture2d_data(texture, data)
-    }
-
+    texture.handle = gpu.create_image(image_spec)
+    gpu.image_set_data(&texture.handle, data)
     return
 }
 
@@ -620,28 +696,8 @@ new_texture2d :: proc(spec: TextureSpecification, data: []byte = {}) -> (texture
     return
 }
 
-set_texture2d_data :: proc(texture: Texture2D, data: []byte, level: i32 = 0, layer := 0) {
-    switch texture.spec.type {
-    case .Normal:
-        gl.TextureSubImage2D(
-            texture.handle,
-            level,
-            0, 0,
-            i32(texture.spec.width), i32(texture.spec.height),
-            texture_format_to_opengl(texture.spec.format), texture_pixel_type_to_open(texture.spec.pixel_type),
-            raw_data(data),
-        )
-    case .CubeMap:
-        gl.TextureSubImage3D(
-            texture.handle, 0,
-            0, 0, i32(layer),
-            i32(texture.spec.width),
-            i32(texture.spec.height),
-            1,
-            texture_format_to_opengl(texture.spec.format), gl.UNSIGNED_BYTE, raw_data(data))
-    }
-
-    gl.GenerateTextureMipmap(texture.handle)
+set_texture2d_data :: proc(texture: ^Texture2D, data: []byte, level: i32 = 0, layer := 0) {
+    gpu.image_set_data(&texture.handle, data)
 }
 
 // CubemapTexture :: struct {
@@ -709,4 +765,97 @@ opengl_debug_callback :: proc "c" (source: u32, type: u32, id: u32, severity: u3
     log_warning(LC.Renderer, "\tType: %v", type_str)
     log_warning(LC.Renderer, "\tSeverity: %v", severity_str)
     log_warning(LC.Renderer, "\tMessage: %v", message)
+}
+
+@(private = "file")
+initialize_imgui_for_vulkan :: proc(r: ^Renderer) {
+    s := r
+    IMGUI_MAX :: 100
+    imgui_descriptor_pool := gpu._vk_device_create_descriptor_pool(s.device, IMGUI_MAX, {
+        { .COMBINED_IMAGE_SAMPLER, IMGUI_MAX},
+        { .SAMPLER, IMGUI_MAX},
+        { .SAMPLED_IMAGE, IMGUI_MAX },
+        { .STORAGE_IMAGE, IMGUI_MAX },
+        { .UNIFORM_TEXEL_BUFFER, IMGUI_MAX },
+        { .STORAGE_TEXEL_BUFFER, IMGUI_MAX },
+        { .UNIFORM_BUFFER, IMGUI_MAX },
+        { .STORAGE_BUFFER, IMGUI_MAX },
+        { .UNIFORM_BUFFER_DYNAMIC, IMGUI_MAX },
+        { .STORAGE_BUFFER_DYNAMIC, IMGUI_MAX },
+        { .INPUT_ATTACHMENT, IMGUI_MAX },
+    }, {.FREE_DESCRIPTOR_SET})
+
+    imgui_init := imgui_impl_vulkan.InitInfo {
+        Instance = s.instance.handle,
+        PhysicalDevice = s.device.physical_device,
+        Device = s.device.handle,
+        QueueFamily = u32(0), // TODO: This is wrong. It just happens to line up for now.
+        Queue = s.device.graphics_queue,
+        PipelineCache = 0, // NOTE(minebill): We don't use pipeline caches right now.
+        DescriptorPool = imgui_descriptor_pool,
+        Subpass = 0,
+        MinImageCount = 2,
+        ImageCount = 2,
+        MSAASamples = {._1},
+
+        // Dynamic Rendering (Optional)
+        UseDynamicRendering = false,
+
+        // Allocation, Debugging
+        Allocator = nil,
+        CheckVkResultFn = proc"c"(result: vk.Result) {
+            if result != .SUCCESS {
+                // context = EngineInstance.ctx
+                context = runtime.default_context()
+                // log_error(LC.Renderer, "Vulkan error from imgui: %v", result)
+                fmt.eprintfln("Vulkan error from imgui: %v", result)
+            }
+        },
+    }
+
+    imgui_rp_spec := gpu.RenderPassSpecification {
+        tag         = "Dear ImGui Renderpass",
+        device      = &s.device,
+        attachments = gpu.make_list([]gpu.RenderPassAttachment {
+            {
+                tag          = "Color",
+                format       = .B8G8R8A8_UNORM,
+                load_op      = .Clear,
+                store_op     = .Store,
+                final_layout = .PresentSrc,
+                clear_color  = [4]f32{1, 0, 0, 1},
+            },
+            {
+                tag          = "Depth",
+                format       = .D32_SFLOAT,
+                load_op      = .Clear,
+                final_layout = .DepthStencilAttachmentOptimal,
+                clear_depth  = 1.0,
+            },
+        }),
+        subpasses = gpu.make_list([]gpu.RenderPassSubpass {
+            {
+                color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {
+                    { attachment = 0, layout = .ColorAttachmentOptimal, },
+                }),
+                depth_stencil_attachment = gpu.RenderPassAttachmentRef {
+                    attachment = 1, layout = .DepthStencilAttachmentOptimal,
+                },
+            },
+        }),
+    }
+    s.renderpasses["imgui"] = gpu.create_render_pass(imgui_rp_spec)
+
+    imgui.CHECKVERSION()
+    imgui.CreateContext(nil)
+    io := imgui.GetIO()
+    io.ConfigFlags += {.DockingEnable, .ViewportsEnable, .IsSRGB, .NavEnableKeyboard}
+
+    imgui_impl_glfw.InitForVulkan(EngineInstance.window, true)
+    imgui_impl_vulkan.LoadFunctions(proc "c" (name: cstring, user_data: rawptr) -> vk.ProcVoidFunction {
+        // NOTE(minebill): Odin recommends not to use auto_cast but eh.
+        return vk.GetInstanceProcAddr(auto_cast user_data, name)
+    }, s.instance.handle)
+
+    imgui_impl_vulkan.Init(&imgui_init, s.renderpasses["imgui"].handle)
 }

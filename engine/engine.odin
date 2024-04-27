@@ -10,12 +10,12 @@ import "core:runtime"
 import "core:sys/windows"
 import "core:thread"
 import "packages:odin-imgui/imgui_impl_glfw"
-import "packages:odin-imgui/imgui_impl_opengl3"
+import "packages:odin-imgui/imgui_impl_vulkan"
 import "vendor:glfw"
-import gl "vendor:OpenGL"
 import imgui "packages:odin-imgui"
 import nk "packages:odin-nuklear"
 import tracy "packages:odin-tracy"
+import "gpu"
 
 EngineInstance: ^Engine
 
@@ -75,12 +75,11 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
     e.width = 800
     e.height = 800
 
-    nk_init(e.window)
-    atlas: ^nk.Font_Atlas
-    nk_font_stash_begin(&atlas)
-    nk_font_stash_end()
+    // nk_init(e.window)
+    // atlas: ^nk.Font_Atlas
+    // nk_font_stash_begin(&atlas)
+    // nk_font_stash_end()
 
-    dbg_init(&e.dbg_draw)
     g_dbg_context = &e.dbg_draw
 
     e.run_mode = .Editor
@@ -108,7 +107,7 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
     delta := f32(_delta)
     glfw.PollEvents()
 
-    nk_new_frame()
+    // nk_new_frame()
 
     switch e.run_mode {
     case .Game:
@@ -116,8 +115,8 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
 
     case .Editor:
 
+        imgui_impl_vulkan.NewFrame()
         imgui_impl_glfw.NewFrame()
-        imgui_impl_opengl3.NewFrame()
         imgui.NewFrame()
 
         editor_update(&e.editor, _delta)
@@ -131,24 +130,30 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
 
 engine_draw :: proc(e: ^Engine) {
     tracy.Zone()
-    switch e.run_mode {
-    case .Game:
-    case .Editor:
-        gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-
-        imgui.Render()
-        data := imgui.GetDrawData()
-        imgui_impl_opengl3.RenderDrawData(data)
-
-        if .ViewportsEnable in imgui.GetIO().ConfigFlags {
-            ctx := glfw.GetCurrentContext()
-            imgui.UpdatePlatformWindows()
-            imgui.RenderPlatformWindowsDefault()
-            glfw.MakeContextCurrent(ctx)
+    blk: {
+        cmd, error := renderer_begin_rendering(RendererInstance)
+        if error != nil {
+            break blk
         }
+
+        switch e.run_mode {
+        case .Game:
+        case .Editor:
+            // gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+            editor_draw(&e.editor, cmd, RendererInstance.current_image_index)
+            // imgui.EndFrame()
+
+        }
+        renderer_end_rendering(RendererInstance, cmd)
     }
 
-    glfw.SwapBuffers(e.window)
+    if .ViewportsEnable in imgui.GetIO().ConfigFlags {
+        ctx := glfw.GetCurrentContext()
+        imgui.UpdatePlatformWindows()
+        imgui.RenderPlatformWindowsDefault()
+        glfw.MakeContextCurrent(ctx)
+    }
+    // glfw.SwapBuffers(e.window)
 }
 
 engine_deinit :: proc(e: ^Engine) {
@@ -174,14 +179,16 @@ engine_setup_window :: proc(e: ^Engine) -> Engine_Error {
 
     glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, 4)
     glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, 6)
-    glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-    // glfw.WindowHint(glfw.SRGB_CAPABLE, glfw.TRUE)
+    glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
 
     when GL_DEBUG_CONTEXT {
         glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, true)
     }
     e.window = glfw.CreateWindow(1280, 720, "Engin3", nil, nil)
     if e.window == nil do return .GLFW_Failed_Window
+
+    e.screen_size.x = 1280
+    e.screen_size.y = 720
 
     when ODIN_OS == .Windows {
         handle := glfw.GetWin32Window(e.window)
@@ -192,14 +199,14 @@ engine_setup_window :: proc(e: ^Engine) -> Engine_Error {
     glfw.SetInputMode(e.window, glfw.RAW_MOUSE_MOTION, 1)
 
     glfw.MakeContextCurrent(e.window)
-    gl.load_up_to(4, 6, glfw.gl_set_proc_address)
+    // gl.load_up_to(4, 6, glfw.gl_set_proc_address)
 
-    // HACK(minebill): Try force clearing the background to black, otherwise you get a flashbang.
-    gl.ClearColor(0, 0, 0, 1)
-    gl.Clear(gl.COLOR_BUFFER_BIT)
-    glfw.SwapBuffers(e.window)
+    // // HACK(minebill): Try force clearing the background to black, otherwise you get a flashbang.
+    // gl.ClearColor(0, 0, 0, 1)
+    // gl.Clear(gl.COLOR_BUFFER_BIT)
+    // glfw.SwapBuffers(e.window)
 
-    glfw.SwapInterval(1)
+    // glfw.SwapInterval(1)
 
     setup_glfw_callbacks(e.window)
     return {}

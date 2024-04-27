@@ -6,7 +6,6 @@ Buffer :: struct {
     id: UUID,
     handle: vk.Buffer,
 
-    device: ^Device,
     allocation: vma.Allocation,
     alloc_info: vma.AllocationInfo,
 
@@ -17,6 +16,9 @@ BufferUsage :: enum {
     Vertex,
     Index,
     Uniform,
+
+    TransferSource,
+    TransferDest,
 }
 
 BufferUsageFlags :: bit_set[BufferUsage]
@@ -73,6 +75,33 @@ buffer_unmap :: proc(buffer: Buffer)  {
     vma.UnmapMemory(buffer.spec.device.allocator, buffer.allocation)
 }
 
+buffer_copy_to_image :: proc(buffer: Buffer, image: Image) {
+    cmd := device_begin_single_time_command(buffer.spec.device^)
+    defer device_end_single_time_command(buffer.spec.device^, cmd)
+
+    region := vk.BufferImageCopy {
+        bufferOffset = 0,
+        bufferRowLength = 0,
+        bufferImageHeight = 0,
+
+        imageSubresource = vk.ImageSubresourceLayers {
+            aspectMask = {.COLOR},
+            mipLevel = 0,
+            baseArrayLayer = 0,
+            layerCount = 1,
+        },
+
+        imageOffset = {0, 0, 0},
+        imageExtent = {
+            cast(u32) image.spec.width,
+            cast(u32) image.spec.height,
+            1.0,
+        },
+    }
+
+    vk.CmdCopyBufferToImage(cmd.handle, buffer.handle, image.handle, .TRANSFER_DST_OPTIMAL, 1, &region)
+}
+
 @(private)
 buffer_usage_to_vulkan :: proc(usages: BufferUsageFlags) -> (vk_usage: vk.BufferUsageFlags) {
     for usage in usages {
@@ -83,6 +112,10 @@ buffer_usage_to_vulkan :: proc(usages: BufferUsageFlags) -> (vk_usage: vk.Buffer
             vk_usage += {.VERTEX_BUFFER}
         case .Uniform:
             vk_usage += {.UNIFORM_BUFFER}
+        case .TransferSource:
+            vk_usage += {.TRANSFER_SRC}
+        case .TransferDest:
+            vk_usage += {.TRANSFER_DST}
         }
     }
     return

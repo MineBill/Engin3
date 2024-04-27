@@ -139,12 +139,12 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
 }
 
 @(deferred_in=render_pass_end)
-do_render_pass :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, framebuffer: FrameBuffer, image: u32) -> bool {
-    render_pass_begin(cmd_buffer, renderpass, framebuffer, image)
+do_render_pass :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, framebuffer: FrameBuffer) -> bool {
+    render_pass_begin(cmd_buffer, renderpass, framebuffer)
     return true
 }
 
-render_pass_begin :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, framebuffer: FrameBuffer, image: u32) {
+render_pass_begin :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, framebuffer: FrameBuffer) {
     g_stats.renderpasses[renderpass.id] = {}
 
     clear_values := make([dynamic]vk.ClearValue, context.temp_allocator)
@@ -186,7 +186,7 @@ render_pass_begin :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, fra
     vk.CmdBeginRenderPass(cmd_buffer.handle, &begin_info, .INLINE)
 }
 
-render_pass_end :: proc(cmd: CommandBuffer, _: RenderPass, _: FrameBuffer, _: u32) {
+render_pass_end :: proc(cmd: CommandBuffer, _: RenderPass, _: FrameBuffer) {
     vk.CmdEndRenderPass(cmd.handle)
 }
 

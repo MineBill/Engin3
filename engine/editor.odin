@@ -13,7 +13,7 @@ import "core:strconv"
 import "core:strings"
 import "core:sync"
 import "packages:odin-imgui/imgui_impl_glfw"
-import "packages:odin-imgui/imgui_impl_opengl3"
+import "packages:odin-imgui/imgui_impl_vulkan"
 import "vendor:glfw"
 import gl "vendor:OpenGL"
 import imgui "packages:odin-imgui"
@@ -111,8 +111,6 @@ Editor :: struct {
     outline_shader: Shader,
     grid_shader: Shader,
 
-    editor_va: RenderHandle,
-
     // Texture view to visualize individual layers of the shadow map texture array.
     shadow_map_texture_view: TextureView,
 
@@ -175,8 +173,6 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
         far_plane = 1000.0,
     }
 
-    gl.CreateVertexArrays(1, &e.editor_va)
-
     // Logging setup
     // TODO(minebill): CaptureLogger is not really needed any more. Should be replaced by a simple console logger.
     e.logger = create_capture_logger(&e.log_entries)
@@ -233,7 +229,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
         BYTES_PER_CHANNEL :: 1
         // TODO: What about floating point images?
         size := w * h * c * BYTES_PER_CHANNEL
-        set_texture2d_data(e.preview_cubemap_texture, raw_image[:size], layer = i)
+        // set_texture2d_data(e.preview_cubemap_texture, raw_image[:size], layer = i)
     }
 
     e.icons[.PlayButton], err      = import_texture_from_path("assets/editor/icons/PlayButton.png")
@@ -248,20 +244,12 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     }
 
     ok: bool
-    e.outline_shader, ok = shader_load_from_file(
-        "assets/shaders/screen.vert.glsl",
-        "assets/shaders/outline.frag.glsl",
-    )
+    e.outline_shader, ok = shader_load_from_file("assets/shaders/new/outline.shader")
     assert(ok == true, "Failed to read outline shader.")
-    e.grid_shader, ok = shader_load_from_file(
-        "assets/shaders/grid.vert.glsl",
-        "assets/shaders/grid.frag.glsl",
-    )
+    e.grid_shader, ok = shader_load_from_file("assets/shaders/new/grid.shader")
     assert(ok == true, "Failed to read grid shader.")
 
-    imgui.CreateContext(nil)
     io := imgui.GetIO()
-    io.ConfigFlags += {.DockingEnable, .ViewportsEnable, .IsSRGB, .NavEnableKeyboard}
     io.IniFilename = nil
     imgui.LoadIniSettingsFromDisk("editor_layout.ini")
 
@@ -272,8 +260,8 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     // inter_font :: #load("../assets/fonts/inter/Inter-Regular.ttf")
     // imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(inter_font), cast(i32)len(inter_font), 16, nil, nil)
 
-    imgui_impl_glfw.InitForOpenGL(e.engine.window, true)
-    imgui_impl_opengl3.Init("#version 450 core")
+    // imgui_impl_glfw.InitForOpenGL(e.engine.window, true)
+    // imgui_impl_opengl3.Init("#version 450 core")
 
     LIGHT_FONT  :: #load("../assets/fonts/inter/Inter-Light.ttf")
     NORMAL_FONT :: #load("../assets/fonts/inter/Inter-Regular.ttf")
@@ -284,10 +272,13 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
 
     io.FontDefault = e.fonts[.Normal]
 
-    world_renderer_init(&e.renderer)
+    // world_renderer_init(&e.renderer)
+
     e.target_frame_buffer = &e.renderer.final_frame_buffer
     e.target_color_attachment = 0
-    e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map)
+    // e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map)
+
+    // renderer_set_main_renderpass(RendererInstance, )
 }
 
 editor_deinit :: proc(e: ^Editor) {
@@ -300,7 +291,7 @@ editor_deinit :: proc(e: ^Editor) {
     cb_deinit(&e.content_browser)
     asset_manager_deinit(&EngineInstance.asset_manager)
     free_project(&e.active_project)
-    destroy_texture_view(e.shadow_map_texture_view)
+    // destroy_texture_view(e.shadow_map_texture_view)
 
     destroy_capture_logger(e.logger)
 }
@@ -336,7 +327,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         #partial switch ev in event {
         case WindowResizedEvent:
             e.window_size = ev.size
-            gl.Viewport(0, 0, i32(ev.size.x), i32(ev.size.y))
+            // gl.Viewport(0, 0, i32(ev.size.x), i32(ev.size.y))
         case MouseButtonEvent:
             if ev.button == .right {
                 if ev.state == .pressed && e.is_viewport_focused || e.is_asset_window_focused {
@@ -433,10 +424,10 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
             e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), e.camera.near_plane, e.camera.far_plane)
 
-            editor_render_scene(e)
+            // editor_render_scene(e)
         case .Play, .Paused:
             if !e.is_detached {
-                runtime_render_scene(e)
+                // runtime_render_scene(e)
             } else {
                 engine := e.engine
                 if e.capture_mouse && e.was_viewport_focused {
@@ -461,7 +452,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
                 e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), e.camera.near_plane, e.camera.far_plane)
 
-                editor_render_scene(e)
+                // editor_render_scene(e)
             }
         }
     }
@@ -520,23 +511,23 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
     imgui.DockSpaceOverViewport(imgui.GetMainViewport(), {.PassthruCentralNode})
 
-    if show_depth_buffer {
-        if do_window("Shadow Map", &show_depth_buffer) {
-            @(static) active_image := i32(0)
-            if imgui.SliderInt("ShadowMap Layer", &active_image, 0, 3) {
-                destroy_texture_view(e.shadow_map_texture_view)
-                e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map, u32(active_image))
-            }
+    // if show_depth_buffer {
+    //     if do_window("Shadow Map", &show_depth_buffer) {
+    //         @(static) active_image := i32(0)
+    //         if imgui.SliderInt("ShadowMap Layer", &active_image, 0, 3) {
+    //             destroy_texture_view(e.shadow_map_texture_view)
+    //             e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map, u32(active_image))
+    //         }
 
-            size := imgui.GetContentRegionAvail()
+    //         size := imgui.GetContentRegionAvail()
 
-            uv0 := vec2{0, 1}
-            uv1 := vec2{1, 0}
-            imgui.Image(transmute(rawptr)u64(e.shadow_map_texture_view.handle), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
-        }
-    }
+    //         uv0 := vec2{0, 1}
+    //         uv1 := vec2{1, 0}
+    //         imgui.Image(transmute(rawptr)u64(e.shadow_map_texture_view.handle), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+    //     }
+    // }
 
-    editor_random_testing_window(e)
+    // editor_random_testing_window(e)
 
     editor_env_panel(e)
     editor_entidor(e)
@@ -551,14 +542,14 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         physics_update(PhysicsInstance, _delta)
     }
 
-    for handle, &window in e.asset_windows {
-        asset_window_render(&window)
+    // for handle, &window in e.asset_windows {
+    //     asset_window_render(&window)
 
-        if !window.opened {
-            // Remove from map
-            delete_key(&e.asset_windows, handle)
-        }
-    }
+    //     if !window.opened {
+    //         // Remove from map
+    //         delete_key(&e.asset_windows, handle)
+    //     }
+    // }
 
     editor_asset_manager(e)
     editor_undo_redo_window(e)
@@ -568,9 +559,33 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     reset_draw_stats()
 
     undo_commit(&e.undo)
+    imgui.Render()
 }
 
-editor_render_scene :: proc(e: ^Editor) {
+editor_draw :: proc(e: ^Editor, cmd: gpu.CommandBuffer, index: u32) {
+    // switch e.state {
+    // case .Edit:
+    //     editor_render_scene(e, cmd)
+    // case .Play, .Paused:
+    //     if !e.is_detached {
+    //         runtime_render_scene(e, cmd)
+    //     } else {
+    //         editor_render_scene(e, cmd)
+    //     }
+    // }
+
+    // We are always drawing imgui to the swapchain as the last thing.
+    fb := gpu.swapchain_current_framebuffer(RendererInstance.swapchain, index)
+    if gpu.do_render_pass(cmd, RendererInstance.renderpasses["imgui"], fb) {
+        gpu.set_viewport(cmd, e.engine.screen_size)
+        gpu.set_scissor(cmd, 0, 0, u32(e.window_size.x), u32(e.window_size.y))
+
+        data := imgui.GetDrawData()
+        imgui_impl_vulkan.RenderDrawData(data, cmd.handle)
+    }
+}
+
+editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
     packet := RenderPacket{
         world = &e.engine.world,
         size = vec2i{i32(e.viewport_size.x), i32(e.viewport_size.y)},
@@ -595,28 +610,28 @@ editor_render_scene :: proc(e: ^Editor) {
     // Render world normally
     render_world(&e.renderer, packet)
 
-    dbg_render(g_dbg_context)
+    dbg_render(g_dbg_context, cmd)
 
-    // Render editor stuff (grid, outlines, gizmo)
-    gl.BindFramebuffer(gl.FRAMEBUFFER, e.renderer.final_frame_buffer.handle)
-    gl.BindVertexArray(e.editor_va)
-    // Grid
-    {
-        gl.UseProgram(e.grid_shader.program)
-        draw_arrays(gl.TRIANGLES, 0, 6)
-    }
+    // // Render editor stuff (grid, outlines, gizmo)
+    // gl.BindFramebuffer(gl.FRAMEBUFFER, e.renderer.final_frame_buffer.handle)
+    // gl.BindVertexArray(e.editor_va)
+    // // Grid
+    // {
+    //     gl.UseProgram(e.grid_shader.program)
+    //     draw_arrays(gl.TRIANGLES, 0, 6)
+    // }
 
-    gl.Disable(gl.DEPTH_TEST)
-    // Mesh Outline
-    {
-        gl.UseProgram(e.outline_shader.program)
-        gl.BindTextureUnit(0, get_depth_attachment(e.renderer.resolved_frame_buffer))
-        draw_arrays(gl.TRIANGLES, 0, 6)
-    }
-    gl.Enable(gl.DEPTH_TEST)
+    // gl.Disable(gl.DEPTH_TEST)
+    // // Mesh Outline
+    // {
+    //     gl.UseProgram(e.outline_shader.program)
+    //     gl.BindTextureUnit(0, get_depth_attachment(e.renderer.resolved_frame_buffer))
+    //     draw_arrays(gl.TRIANGLES, 0, 6)
+    // }
+    // gl.Enable(gl.DEPTH_TEST)
 }
 
-runtime_render_scene :: proc(e: ^Editor) {
+runtime_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
     if camera := find_first_component(&e.engine.world, Camera); camera != nil {
         go := get_object(&e.engine.world, camera.owner)
 
@@ -647,7 +662,7 @@ runtime_render_scene :: proc(e: ^Editor) {
         // Render world normally
         render_world(&e.renderer, packet)
 
-        dbg_render(g_dbg_context)
+        dbg_render(g_dbg_context, cmd)
     }
 }
 
@@ -735,7 +750,7 @@ editor_env_panel :: proc(e: ^Editor) {
         if do_property("clear_color") {
             do_property_name("Clear Color")
             if do_property_value(clear_color) {
-                gl.ClearColor(expand_values(clear_color), 1.0)
+                // gl.ClearColor(expand_values(clear_color), 1.0)
             }
 
             do_property_name("Ambient Color")
@@ -807,13 +822,13 @@ editor_viewport :: proc(e: ^Editor) {
         }
 
         // is this the correct place?
-        gl.Viewport(0, 0, i32(size.x), i32(size.y))
+        // gl.Viewport(0, 0, i32(size.x), i32(size.y))
 
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
 
-        texture_handle := get_color_attachment(e.target_frame_buffer^, e.target_color_attachment)
-        imgui.Image(rawptr(uintptr(texture_handle)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        // texture_handle := get_color_attachment(e.target_frame_buffer^, e.target_color_attachment)
+        // imgui.Image(rawptr(uintptr(texture_handle)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
 
         if imgui.BeginDragDropTarget() {
             if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Scene], {}); payload != nil {
@@ -1421,7 +1436,7 @@ return NewScript
                     aspect := f32(texture.spec.height) / f32(texture.spec.width)
                     size.y = aspect * size.x
 
-                    imgui.ImageButton(cstr("back"), transmute(rawptr)u64(texture.handle), size)
+                    imgui.ImageButton(cstr("back"), tex(texture.handle), size)
                     if imgui.IsItemHovered({}) && imgui.IsMouseDoubleClicked(.Left) {
                         cb_navigate_to_folder(
                             &e.content_browser,
@@ -1469,7 +1484,7 @@ return NewScript
                     size.y = aspect * size.x
                     clicked := imgui.ImageButton(
                                  cname,
-                                 transmute(rawptr)u64(texture.handle),
+                                 tex(texture.handle),
                                  size)
 
                     if clicked {
@@ -2333,7 +2348,7 @@ editor_get_preview_texture :: proc(e: ^Editor, image: ^Image) -> Texture2D {
         anisotropy = 4,
     }
     e.texture_previews[image.id] = create_texture2d(spec)
-    set_texture2d_data(e.texture_previews[image.id], image.data)
+    set_texture2d_data(&e.texture_previews[image.id], image.data)
 
     return e.texture_previews[image.id]
 }
@@ -2763,8 +2778,8 @@ pbr_material_asset_window :: proc(window: ^AssetWindow, material: ^PbrMaterial) 
 
         uv0 :: vec2{0, 1}
         uv1 :: vec2{1, 0}
-        texture := get_color_attachment(window.preview_framebuffer, 0)
-        imgui.Image(transmute(rawptr)u64(texture), size, uv0, uv1)
+        // texture := get_color_attachment(window.preview_framebuffer, 0)
+        // imgui.Image(tex(texture), size, uv0, uv1)
 
         EditorInstance.is_asset_window_focused = imgui.IsWindowHovered()
 
@@ -2863,7 +2878,7 @@ texture2d_asset_window :: proc(window: ^AssetWindow, texture: ^Texture2D) {
         half_size_uv := (uv1 - uv0) * 0.5
         _uv0 := center_uv - half_size_uv * (1.0 / zoom)
         _uv1 := center_uv + half_size_uv * (1.0 / zoom)
-        imgui.Image(transmute(rawptr)u64(texture), size, _uv0, _uv1)
+        imgui.Image(tex(texture), size, _uv0, _uv1)
 
         EditorInstance.is_asset_window_focused = imgui.IsWindowHovered()
 
@@ -2982,3 +2997,86 @@ editor_render_notifications :: proc(e: ^Editor) {
         ordered_remove(&e.notifications, i)
     }
 }
+
+import "gpu"
+import vk "vendor:vulkan"
+
+// editor_create_imgui_renderpass :: proc(e: ^Editor) {
+//     IMGUI_MAX :: 100
+//     imgui_descriptor_pool := gpu._vk_device_create_descriptor_pool(RendererInstance.device, IMGUI_MAX, {
+//         { .COMBINED_IMAGE_SAMPLER, IMGUI_MAX},
+//         { .SAMPLER, IMGUI_MAX},
+//         { .SAMPLED_IMAGE, IMGUI_MAX },
+//         { .STORAGE_IMAGE, IMGUI_MAX },
+//         { .UNIFORM_TEXEL_BUFFER, IMGUI_MAX },
+//         { .STORAGE_TEXEL_BUFFER, IMGUI_MAX },
+//         { .UNIFORM_BUFFER, IMGUI_MAX },
+//         { .STORAGE_BUFFER, IMGUI_MAX },
+//         { .UNIFORM_BUFFER_DYNAMIC, IMGUI_MAX },
+//         { .STORAGE_BUFFER_DYNAMIC, IMGUI_MAX },
+//         { .INPUT_ATTACHMENT, IMGUI_MAX },
+//     }, {.FREE_DESCRIPTOR_SET})
+
+//     imgui_init := imgui_impl_vulkan.InitInfo {
+//         Instance = RendererInstance.instance.handle,
+//         PhysicalDevice = RendererInstance.device.physical_device,
+//         Device = RendererInstance.device.handle,
+//         QueueFamily = u32(0), // TODO: This is wrong. It just happens to line up for now.
+//         Queue = RendererInstance.device.graphics_queue,
+//         PipelineCache = 0, // NOTE(minebill): We don't use pipeline caches right now.
+//         DescriptorPool = imgui_descriptor_pool,
+//         Subpass = 0,
+//         MinImageCount = 2,
+//         ImageCount = 2,
+//         MSAASamples = {._1},
+
+//         // Dynamic Rendering (Optional)
+//         UseDynamicRendering = false,
+
+//         // Allocation, Debugging
+//         Allocator = nil,
+//         CheckVkResultFn = proc "c" (result: vk.Result) {
+//             if result != .SUCCESS {
+//                 context = runtime.default_context()
+//                 fmt.eprintln("Vulkan error from imgui", result)
+//             }
+//         },
+//     }
+
+//     imgui_rp_spec := gpu.RenderPassSpecification {
+//         tag         = "Dear ImGui Renderpass",
+//         device      = &RendererInstance.device,
+//         attachments = gpu.make_list([]gpu.RenderPassAttachment {
+//             {
+//                 tag          = "Color",
+//                 format       = .B8G8R8A8_UNORM,
+//                 load_op      = .Clear,
+//                 store_op     = .Store,
+//                 final_layout = .PresentSrc,
+//                 clear_color  = [4]f32{0.125, 0.45, 0.2, 1},
+//             },
+//             {
+//                 tag          = "Depth",
+//                 format       = .D32_SFLOAT,
+//                 load_op      = .Clear,
+//                 final_layout = .DepthStencilAttachmentOptimal,
+//                 clear_depth  = 1.0,
+//             },
+//         }),
+//         subpasses = gpu.make_list([]gpu.RenderPassSubpass {
+//             {
+//                 color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {
+//                     { attachment = 0, layout = .ColorAttachmentOptimal, },
+//                 }),
+//                 depth_stencil_attachment = gpu.RenderPassAttachmentRef {
+//                     attachment = 1, layout = .DepthStencilAttachmentOptimal,
+//                 },
+//             },
+//         }),
+//     }
+//     rp := gpu.create_render_pass(imgui_rp_spec)
+
+//     imgui_impl_vulkan.Init(&imgui_init, rp.handle)
+
+//     renderer_set_main_renderpass(RendererInstance, rp)
+// }

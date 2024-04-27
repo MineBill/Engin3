@@ -3,11 +3,11 @@ package engine
 import "core:log"
 import "core:math"
 import "core:math/linalg"
-import gl "vendor:OpenGL"
 import tracy "packages:odin-tracy"
 import "core:math/rand"
 import "core:intrinsics"
 import "core:mem"
+import "gpu"
 
 VISUALIZE_CASCADES :: false
 
@@ -110,162 +110,363 @@ WorldRenderer :: struct {
     shaders: map[string]Shader,
 
     shadow_map: Texture2DArray,
+
+
+    // NEW VULKAN STUFF
+
+    renderpasses: map[string]gpu.RenderPass,
+    pipelines:    map[string]gpu.Pipeline,
+    framebuffers: map[string]gpu.FrameBuffer,
 }
 
 world_renderer_init :: proc(renderer: ^WorldRenderer) {
-    spec := FrameBufferSpecification {
-        width = 800,
-        height = 800,
-        attachments = attachment_list(.RGBA16F, .RGBA16F, .RED_INTEGER, .DEPTH),
-        samples = 1,
-    }
+    // spec := FrameBufferSpecification {
+    //     width = 800,
+    //     height = 800,
+    //     attachments = attachment_list(.RGBA16F, .RGBA16F, .RED_INTEGER, .DEPTH),
+    //     samples = 1,
+    // }
 
-    renderer.world_frame_buffer = create_framebuffer(spec)
+    // renderer.world_frame_buffer = create_framebuffer(spec)
 
-    spec.attachments = attachment_list(.RGBA16F, .RGBA16F, .DEPTH)
-    renderer.resolved_frame_buffer = create_framebuffer(spec)
+    // spec.attachments = attachment_list(.RGBA16F, .RGBA16F, .DEPTH)
+    // renderer.resolved_frame_buffer = create_framebuffer(spec)
 
-    spec.attachments = attachment_list(.RGBA8, .DEPTH)
-    renderer.final_frame_buffer = create_framebuffer(spec)
+    // spec.attachments = attachment_list(.RGBA8, .DEPTH)
+    // renderer.final_frame_buffer = create_framebuffer(spec)
 
-    // Position, Normal
-    spec.attachments = attachment_list(.RGBA16F, .RGBA16F, .DEPTH)
-    renderer.g_buffer = create_framebuffer(spec)
+    // // Position, Normal
+    // spec.attachments = attachment_list(.RGBA16F, .RGBA16F, .DEPTH)
+    // renderer.g_buffer = create_framebuffer(spec)
 
-    spec.attachments = attachment_list(.RED_FLOAT)
-    renderer.ssao_frame_buffer = create_framebuffer(spec)
-    renderer.ssao_blur_frame_buffer = create_framebuffer(spec)
+    // spec.attachments = attachment_list(.RED_FLOAT)
+    // renderer.ssao_frame_buffer = create_framebuffer(spec)
+    // renderer.ssao_blur_frame_buffer = create_framebuffer(spec)
 
-    spec.attachments             = attachment_list(.RGBA16F)
-    renderer.bloom_vertical_fb   = create_framebuffer(spec)
-    renderer.bloom_horizontal_fb = create_framebuffer(spec)
+    // spec.attachments             = attachment_list(.RGBA16F)
+    // renderer.bloom_vertical_fb   = create_framebuffer(spec)
+    // renderer.bloom_horizontal_fb = create_framebuffer(spec)
 
-    spec.width       = SHADOW_MAP_RES
-    spec.height      = SHADOW_MAP_RES
-    spec.attachments = attachment_list(.DEPTH32F)
-    spec.samples     = 1
-    renderer.depth_frame_buffer = create_framebuffer(spec)
+    // spec.width       = SHADOW_MAP_RES
+    // spec.height      = SHADOW_MAP_RES
+    // spec.attachments = attachment_list(.DEPTH32F)
+    // spec.samples     = 1
+    // renderer.depth_frame_buffer = create_framebuffer(spec)
 
-    renderer.shadow_map = create_texture_array(SHADOW_MAP_RES, SHADOW_MAP_RES, gl.DEPTH_COMPONENT32F, 4)
+    // renderer.shadow_map = create_texture_array(SHADOW_MAP_RES, SHADOW_MAP_RES, gl.DEPTH_COMPONENT32F, 4)
 
-    renderer.per_object_data = create_uniform_buffer(PerObjectData, 0)
-    renderer.view_data       = create_uniform_buffer(ViewData, 1)
-    renderer.scene_data      = create_uniform_buffer(SceneData, 2)
-    renderer.light_data      = create_uniform_buffer(LightData, 3)
-    renderer.ssao_data       = create_uniform_buffer(SSAOData, 11)
+    // renderer.per_object_data = create_uniform_buffer(PerObjectData, 0)
+    // renderer.view_data       = create_uniform_buffer(ViewData, 1)
+    // renderer.scene_data      = create_uniform_buffer(SceneData, 2)
+    // renderer.light_data      = create_uniform_buffer(LightData, 3)
+    // renderer.ssao_data       = create_uniform_buffer(SSAOData, 11)
 
-    renderer.depth_pass_per_object_data = create_uniform_buffer(DepthPassPerObjectData, 0)
+    // renderer.depth_pass_per_object_data = create_uniform_buffer(DepthPassPerObjectData, 0)
 
-    // TODO(minebill): These shaders should probably be loaded from the asset system.
-    ok: bool
-    renderer.shaders["depth"], ok = shader_load_from_file(
-        "assets/shaders/depth.vert.glsl",
-        "assets/shaders/depth.frag.glsl",
-    )
-    assert(ok)
+    // // TODO(minebill): These shaders should probably be loaded from the asset system.
+    // ok: bool
+    // renderer.shaders["depth"], ok = shader_load_from_file(
+    //     "assets/shaders/depth.vert.glsl",
+    //     "assets/shaders/depth.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["pbr"], ok = shader_load_from_file(
-        "assets/shaders/triangle.vert.glsl",
-        "assets/shaders/pbr.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["pbr"], ok = shader_load_from_file(
+    //     "assets/shaders/triangle.vert.glsl",
+    //     "assets/shaders/pbr.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["screen"], ok = shader_load_from_file(
-        "assets/shaders/screen.vert.glsl",
-        "assets/shaders/screen.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["screen"], ok = shader_load_from_file(
+    //     "assets/shaders/screen.vert.glsl",
+    //     "assets/shaders/screen.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["bloom"], ok = shader_load_from_file(
-        "assets/shaders/screen.vert.glsl",
-        "assets/shaders/bloom.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["bloom"], ok = shader_load_from_file(
+    //     "assets/shaders/screen.vert.glsl",
+    //     "assets/shaders/bloom.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["bloom_vertical"], ok = shader_load_from_file(
-        "assets/shaders/screen.vert.glsl",
-        "assets/shaders/postprocess/bloom_vertical.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["bloom_vertical"], ok = shader_load_from_file(
+    //     "assets/shaders/screen.vert.glsl",
+    //     "assets/shaders/postprocess/bloom_vertical.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["blend"], ok = shader_load_from_file(
-        "assets/shaders/screen.vert.glsl",
-        "assets/shaders/postprocess/blend.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["blend"], ok = shader_load_from_file(
+    //     "assets/shaders/screen.vert.glsl",
+    //     "assets/shaders/postprocess/blend.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["cubemap"], ok = shader_load_from_file(
-        "assets/shaders/cubemap.vert.glsl",
-        "assets/shaders/cubemap.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["cubemap"], ok = shader_load_from_file(
+    //     "assets/shaders/cubemap.vert.glsl",
+    //     "assets/shaders/cubemap.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["geometry"], ok = shader_load_from_file(
-        "assets/shaders/geometry_pass.vert.glsl",
-        "assets/shaders/geometry_pass.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["geometry"], ok = shader_load_from_file(
+    //     "assets/shaders/geometry_pass.vert.glsl",
+    //     "assets/shaders/geometry_pass.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["ssao"], ok = shader_load_from_file(
-        "assets/shaders/screen.vert.glsl",
-        "assets/shaders/postprocess/ssao.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["ssao"], ok = shader_load_from_file(
+    //     "assets/shaders/screen.vert.glsl",
+    //     "assets/shaders/postprocess/ssao.frag.glsl",
+    // )
+    // assert(ok)
 
-    renderer.shaders["ssao_blur"], ok = shader_load_from_file(
-        "assets/shaders/screen.vert.glsl",
-        "assets/shaders/postprocess/ssao_blur.frag.glsl",
-    )
-    assert(ok)
+    // renderer.shaders["ssao_blur"], ok = shader_load_from_file(
+    //     "assets/shaders/screen.vert.glsl",
+    //     "assets/shaders/postprocess/ssao_blur.frag.glsl",
+    // )
+    // assert(ok)
 
-    device := rand.create(u64(intrinsics.read_cycle_counter()))
+    // device := rand.create(u64(intrinsics.read_cycle_counter()))
 
-    for i in 0..<len(renderer.ssao_data.kernel) {
-        sample := vec3{
-            rand.float32(&device) * 2.0 - 1.0,
-            rand.float32(&device) * 2.0 - 1.0,
-            rand.float32(&device) * 2.0 - 1.0,
+    // for i in 0..<len(renderer.ssao_data.kernel) {
+    //     sample := vec3{
+    //         rand.float32(&device) * 2.0 - 1.0,
+    //         rand.float32(&device) * 2.0 - 1.0,
+    //         rand.float32(&device) * 2.0 - 1.0,
+    //     }
+
+    //     sample = linalg.normalize(sample)
+    //     sample *= rand.float32(&device)
+
+    //     scale := f32(i) / len(renderer.ssao_data.kernel)
+    //     lerp :: proc(a, b, f: f32) -> f32 {
+    //         return a + f * (b - a);
+    //     }
+    //     scale = cast(f32) lerp(f32(0.1), f32(1.0), scale * scale)
+    //     sample *= scale
+    //     // TODO: More options, choose samples closer to the center of the sphere.
+    //     renderer.ssao_data.kernel[i] = sample
+    // }
+    // uniform_buffer_set_data(
+    //     &renderer.ssao_data,
+    //     offset_of(renderer.ssao_data.data.kernel),
+    //     size_of(renderer.ssao_data.data.kernel))
+
+    // ssao_noise: [4 * 4]vec3
+    // for i in 0..<len(ssao_noise) {
+    //     noise := vec3{
+    //         rand.float32(&device) * 2.0 - 1.0,
+    //         rand.float32(&device) * 2.0 - 1.0,
+    //         0,
+    //     }
+    //     ssao_noise[i] = noise
+    // }
+
+    // texture_spec := TextureSpecification {
+    //     width = 4,
+    //     height = 4,
+    //     format = .RGB8,
+    //     desired_format = .RGBA16F,
+    //     wrap = .Repeat,
+    //     filter = .Nearest,
+    //     pixel_type = .Float,
+    // }
+
+    // bytes := mem.slice_to_bytes(ssao_noise[:])
+    // renderer.ssao_noise_texture = create_virtual_asset(&EngineInstance.asset_manager, new_texture2d(texture_spec, bytes), "SSAO Noise")
+
+    // NEW VULKAN STUFF
+
+    // [Depth Renderpass]
+    //               || Output: Depth Attachment
+    //               \/
+    // [3D World Renderpass]
+    //               || Output: Color Attachment
+    //               \/
+    // [Post-Proccess Renderpass]
+    //               || Output: Color Attachment
+    //
+    // (In the Editor)
+    // Display the [Post-Process Renderpass] Output in the Viewport window.
+
+    vertex_layout := gpu.vertex_layout({
+        name = "Position",
+        type = .Float3,
+    }, {
+        name = "Normal",
+        type = .Float3,
+    }, {
+        name = "Tangent",
+        type = .Float3,
+    }, {
+        name = "UV",
+        type = .Float2,
+    }, {
+        name = "Color",
+        type = .Float3,
+    })
+
+    // ================
+    // DEPTH RENDERPASS
+    // ================
+    drp: {
+        renderpass_spec := gpu.RenderPassSpecification {
+            tag         = "Depth RenderPass",
+            device      = &RendererInstance.device,
+            attachments = gpu.make_list([]gpu.RenderPassAttachment {
+                {
+                    tag          = "Depth",
+                    format       = .D32_SFLOAT,
+                    load_op      = .Clear,
+                    final_layout = .DepthStencilAttachmentOptimal,
+                    clear_depth  = 1.0,
+                },
+            }),
+            subpasses = gpu.make_list([]gpu.RenderPassSubpass {
+                {
+                    depth_stencil_attachment = gpu.RenderPassAttachmentRef {
+                        attachment = 0, layout = .DepthStencilAttachmentOptimal,
+                    },
+                },
+            }),
         }
 
-        sample = linalg.normalize(sample)
-        sample *= rand.float32(&device)
+        // NOTE(minebill): Should this be registered with the Renderer? Or we just keep it as local thing? No idea.
+        depth_renderpass := gpu.create_render_pass(renderpass_spec)
+        renderer.renderpasses["depth"] = depth_renderpass
 
-        scale := f32(i) / len(renderer.ssao_data.kernel)
-        lerp :: proc(a, b, f: f32) -> f32 {
-            return a + f * (b - a);
+        // The depth renderpass will only use 1 uniform buffer, the ViewData.
+        resource_layout := gpu.create_resource_layout(RendererInstance.device, gpu.ResourceUsage {
+            type = .UniformBuffer,
+            count = 1,
+            stage = {.Vertex, .Fragment},
+        })
+
+        pipeline_layout_spec := gpu.PipelineLayoutSpecification {
+            tag = "Depth Pipeline Layout",
+            device = &RendererInstance.device,
+            layout = resource_layout,
         }
-        scale = cast(f32) lerp(f32(0.1), f32(1.0), scale * scale)
-        sample *= scale
-        // TODO: More options, choose samples closer to the center of the sphere.
-        renderer.ssao_data.kernel[i] = sample
-    }
-    uniform_buffer_set_data(
-        &renderer.ssao_data,
-        offset_of(renderer.ssao_data.data.kernel),
-        size_of(renderer.ssao_data.data.kernel))
 
-    ssao_noise: [4 * 4]vec3
-    for i in 0..<len(ssao_noise) {
-        noise := vec3{
-            rand.float32(&device) * 2.0 - 1.0,
-            rand.float32(&device) * 2.0 - 1.0,
-            0,
+        pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec)
+
+        depth_shader, ok := shader_load_from_file("assets/shaders/new/depth.shader")
+
+        // NOTE(minebill): Could this be reused with the "world" renderpass? Does it provide a measurable benefit if so?
+        pipeline_spec := gpu.PipelineSpecification {
+            tag = "Depth Pipeline",
+            // device = &RendererInstance.device,
+            shader = depth_shader.shader,
+            layout = pipeline_layout,
+            renderpass = depth_renderpass,
+            // TODO(minebill): This is the same layout with the 3d render pass and we just ignore the rest of the attributes
+            // in the depth shader. However, could we use buffer views on the vertex buffer? That way we could create a position only
+            // view and use that with the depth pass.
+            attribute_layout = vertex_layout,
         }
-        ssao_noise[i] = noise
-    }
 
-    texture_spec := TextureSpecification {
-        width = 4,
-        height = 4,
-        format = .RGB8,
-        desired_format = .RGBA16F,
-        wrap = .Repeat,
-        filter = .Nearest,
-        pixel_type = .Float,
-    }
+        pipeline, error := gpu.create_pipeline(&RendererInstance.device, pipeline_spec)
+        renderer.pipelines["depth"] = pipeline
 
-    bytes := mem.slice_to_bytes(ssao_noise[:])
-    renderer.ssao_noise_texture = create_virtual_asset(&EngineInstance.asset_manager, new_texture2d(texture_spec, bytes), "SSAO Noise")
+        fb_spec := gpu.FrameBufferSpecification {
+            device = &RendererInstance.device,
+            width = 100, height = 100,
+            samples = 1,
+            renderpass = depth_renderpass,
+            attachments = gpu.make_list([]gpu.ImageFormat{.D32_SFLOAT}),
+        }
+        fb := gpu.create_framebuffer(fb_spec)
+        renderer.framebuffers["depth"] = fb
+    }
+    // ====================
+    // END DEPTH RENDERPASS
+    // ====================
+
+    // ===================
+    // 3D WORLD RENDERPASS
+    // ===================
+    wrp: {
+        renderpass_spec := gpu.RenderPassSpecification {
+            tag         = "World RenderPass",
+            device      = &RendererInstance.device,
+            attachments = gpu.make_list([]gpu.RenderPassAttachment {
+                {
+                    tag          = "Color",
+                    format       = .R8G8B8A8_SRGB,
+                    load_op      = .Clear,
+                    store_op     = .Store, // ?
+                    final_layout = .ColorAttachmentOptimal,
+                    clear_depth  = 1.0,
+                },
+                {
+                    tag          = "Depth",
+                    format       = .D32_SFLOAT,
+                    load_op      = .Clear,
+                    final_layout = .DepthStencilAttachmentOptimal,
+                    clear_depth  = 1.0,
+                },
+            }),
+            subpasses = gpu.make_list([]gpu.RenderPassSubpass {
+                {
+                    color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {{
+                        attachment = 0, layout = .ColorAttachmentOptimal,
+                    }}),
+                    depth_stencil_attachment = gpu.RenderPassAttachmentRef {
+                        attachment = 1, layout = .DepthStencilAttachmentOptimal,
+                    },
+                },
+            }),
+        }
+
+        // NOTE(minebill): Should this be registered with the Renderer? Or we just keep it as local thing? No idea.
+        world_renderpass := gpu.create_render_pass(renderpass_spec)
+        renderer.renderpasses["world"] = world_renderpass
+
+        // The world renderpass will only use 1 uniform buffer, for now, the ViewData.
+        resource_layout := gpu.create_resource_layout(RendererInstance.device, gpu.ResourceUsage {
+            type = .UniformBuffer,
+            count = 1,
+            stage = {.Vertex, .Fragment},
+        })
+
+        pipeline_layout_spec := gpu.PipelineLayoutSpecification {
+            tag = "World Pipeline Layout",
+            device = &RendererInstance.device,
+            layout = resource_layout,
+        }
+
+        pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec)
+
+        simple3d_shader, ok := shader_load_from_file("assets/shaders/new/simple_3d.shader")
+
+        // NOTE(minebill): Could this be reused with the "world" renderpass? Does it provide a measurable benefit if so?
+        pipeline_spec := gpu.PipelineSpecification {
+            tag = "World Pipeline",
+            // device = &RendererInstance.device,
+            shader = simple3d_shader.shader,
+            layout = pipeline_layout,
+            renderpass = world_renderpass,
+            attribute_layout = vertex_layout,
+        }
+
+        pipeline, error := gpu.create_pipeline(&RendererInstance.device, pipeline_spec)
+        renderer.pipelines["world"] = pipeline
+
+        fb_spec := gpu.FrameBufferSpecification {
+            device = &RendererInstance.device,
+            width = 100, height = 100,
+            samples = 1,
+            renderpass = world_renderpass,
+            attachments = gpu.make_list([]gpu.ImageFormat{.R8G8B8A8_SRGB, .D32_SFLOAT}),
+        }
+        fb := gpu.create_framebuffer(fb_spec)
+        renderer.framebuffers["world"] = fb
+    }
+    // =======================
+    // END 3D WORLD RENDERPASS
+    // =======================
+
+    // TODO(minebill): Figure out where this actually has to be initialized
+    dbg_init(&EngineInstance.dbg_draw, renderer.renderpasses["world"])
 }
 
 RenderPacket :: struct {
@@ -276,6 +477,7 @@ RenderPacket :: struct {
 }
 
 render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
+    /*
     world_renderer.world = packet.world
     asset_manager := &EngineInstance.asset_manager
 
@@ -588,9 +790,11 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
         gl.Enable(gl.DEPTH_TEST)
 
     }
+    */
 }
 
 do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRenderer, packet: RenderPacket) -> (distances: [4]f32) {
+    /*
     world := world_renderer.world
     view_data := &world_renderer.view_data
     per_object := &world_renderer.depth_pass_per_object_data
@@ -731,21 +935,22 @@ do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRe
             }
         }
     }
+    */
     return
 }
 
 world_renderer_resize :: proc(world_renderer: ^WorldRenderer, width, height: int) {
     world_renderer.world_frame_buffer.spec.samples = int(g_msaa_level)
 
-    resize_framebuffer(&world_renderer.final_frame_buffer, width, height)
-    resize_framebuffer(&world_renderer.world_frame_buffer, width, height)
-    resize_framebuffer(&world_renderer.resolved_frame_buffer, width, height)
-    resize_framebuffer(&world_renderer.g_buffer, width, height)
-    resize_framebuffer(&world_renderer.ssao_frame_buffer, width, height)
-    resize_framebuffer(&world_renderer.ssao_blur_frame_buffer, width, height)
+    // resize_framebuffer(&world_renderer.final_frame_buffer, width, height)
+    // resize_framebuffer(&world_renderer.world_frame_buffer, width, height)
+    // resize_framebuffer(&world_renderer.resolved_frame_buffer, width, height)
+    // resize_framebuffer(&world_renderer.g_buffer, width, height)
+    // resize_framebuffer(&world_renderer.ssao_frame_buffer, width, height)
+    // resize_framebuffer(&world_renderer.ssao_blur_frame_buffer, width, height)
 
-    resize_framebuffer(&world_renderer.bloom_vertical_fb, width, height)
-    resize_framebuffer(&world_renderer.bloom_horizontal_fb, width, height)
+    // resize_framebuffer(&world_renderer.bloom_vertical_fb, width, height)
+    // resize_framebuffer(&world_renderer.bloom_horizontal_fb, width, height)
 }
 
 get_frustum_corners_world_space :: proc(proj, view: mat4) -> (corners: [8]vec4) {
@@ -777,6 +982,7 @@ get_split_depth :: proc(current_split, max_splits: int, near, far: f32, l := f32
 }
 
 render_material_preview :: proc(packet: RenderPacket, target: ^FrameBuffer, material: ^PbrMaterial, mesh: ^Mesh, renderer: ^WorldRenderer, cubemap_texture: ^Texture2D) {
+    /*
     spec := FrameBufferSpecification{
         width = int(packet.size.x),
         height = int(packet.size.y),
@@ -884,4 +1090,5 @@ render_material_preview :: proc(packet: RenderPacket, target: ^FrameBuffer, mate
     gl.Disable(gl.DEPTH_TEST)
     draw_arrays(gl.TRIANGLES, 0, PLANE_VERT_COUNT)
     gl.Enable(gl.DEPTH_TEST)
+    */
 }

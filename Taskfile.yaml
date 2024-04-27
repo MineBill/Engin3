@@ -99,6 +99,17 @@ tasks:
     generates:
       - out/debug/engin3{{.EXE_EXT}}
 
+  check:
+    deps: [run-meta, run-mani]
+    cmds:
+      - |
+        odin check engine \
+        -define:VALIDATION=true \
+        -collection:packages=packages \
+        -define:TRACY_ENABLE={{.USE_TRACY}} {{.USE_DEBUG}} \
+        -ignore-unknown-attributes \
+        -define:GL_DEBUG=false
+
   run:
     deps: [build]
     cmds:
@@ -114,3 +125,6 @@ tasks:
     deps: [build]
     cmds:
       - raddbg.exe --profile:engin3.raddbg_profile --auto_run
+
+  editor_action:
+    deps: [check]

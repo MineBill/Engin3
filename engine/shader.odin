@@ -12,6 +12,7 @@ import fs "filesystem"
 import gl "vendor:OpenGL"
 import spvc "spirv-cross"
 import "core:time"
+import "gpu"
 
 ShaderKind :: enum {
     Vertex,
@@ -22,7 +23,7 @@ ShaderKind :: enum {
 Shader :: struct {
     using base: Asset,
 
-    program: RenderHandle,
+    shader: gpu.Shader,
     vertex, fragment: string,
 }
 
@@ -42,80 +43,94 @@ check_shader_cache :: proc(path: string) -> (bytecode: []byte, ok: bool) {
     return os.read_entire_file(full_path)
 }
 
-load_shader_stage :: proc(path: string, shader_kind: ShaderKind, force_compile := false) -> (handle: RenderHandle, ok: bool) {
-    cache, found := check_shader_cache(path)
-    defer delete(cache)
-    if !found || force_compile {
-        cache, ok = compile_shader(path, shader_kind)
-        // Save to disk
-        fs.make_directory_recursive("cache/shaders")
-        base := filepath.base(path)
-        cached_path := filepath.join({"cache/shaders", base}, context.temp_allocator)
-        full_path := strings.join({cached_path, "cache"}, ".", context.temp_allocator)
-        log.debugf("Will write cache to %v", full_path)
-        os.write_entire_file(full_path, cache)
+load_shader_stage :: proc(path: string, source: string, shader_kind: ShaderKind, force_compile := false) -> (bytecode: []byte, ok: bool) {
+    // cache, found := check_shader_cache(path)
+    // defer delete(cache)
+    // if !found || force_compile {
+    //     cache, ok = compile_shader(path, shader_kind)
+    //     // Save to disk
+    //     fs.make_directory_recursive("cache/shaders")
+    //     base := filepath.base(path)
+    //     cached_path := filepath.join({"cache/shaders", base}, context.temp_allocator)
+    //     full_path := strings.join({cached_path, "cache"}, ".", context.temp_allocator)
+    //     log.debugf("Will write cache to %v", full_path)
+    //     os.write_entire_file(full_path, cache)
+    // }
+    _ = path
+    bytecode, ok = compile_shader_source(path, source, shader_kind)
+    return
+}
+
+shader_load_from_file :: proc(path: string, force_compile := false) -> (shader: Shader, ok: bool) {
+    shader_source, _ := os.read_entire_file(path)
+    vertex_src, fragment_src := split_shader(string(shader_source))
+
+    vertex   := load_shader_stage(path, vertex_src, .Vertex, force_compile) or_return
+    fragment := load_shader_stage(path, fragment_src, .Fragment, force_compile) or_return
+
+    shader_spec := gpu.ShaderSpecification {
+        vertex_spirv = vertex,
+        fragment_spirv = fragment,
     }
+    shader.shader = gpu.create_shader(&RendererInstance.device, shader_spec)
 
-    shader := gl.CreateShader(gl.VERTEX_SHADER if shader_kind == .Vertex else gl.FRAGMENT_SHADER)
+    // shader.program = gl.CreateProgram()
+    // gl.AttachShader(shader.program, vertex)
+    // gl.AttachShader(shader.program, fragment)
+    // gl.LinkProgram(shader.program)
 
-    gl.ShaderBinary(1, &shader, gl.SHADER_BINARY_FORMAT_SPIR_V, raw_data(cache), cast(i32)len(cache))
-    gl.SpecializeShader(shader, "main", 0, nil, nil)
+    // shader.vertex   = strings.clone(vertex_path)
+    // shader.fragment = strings.clone(fragment_path)
 
-    success: i32
-    gl.GetShaderiv(shader, gl.COMPILE_STATUS, &success)
-    if success == 0 {
-        log_buffer: [512]byte
-        length: i32
-        gl.GetShaderInfoLog(shader, len(log_buffer), &length, raw_data(log_buffer[:]))
-        log.errorf("Error compiling %v shader: \n%v", shader_kind, string(log_buffer[:length]))
-        return {}, false
-    }
+    // success: i32
+    // gl.GetProgramiv(shader.program, gl.LINK_STATUS, &success)
+    // if b32(success) != gl.TRUE {
+    //     log_buffer: [512]byte
+    //     length: i32
+    //     gl.GetProgramInfoLog(shader.program, len(log_buffer), &length, raw_data(log_buffer[:]))
+    //     log.errorf("Error linking shader program: \n%v", string(log_buffer[:length]))
+    //     return {}, false
+    // }
 
     return shader, true
 }
 
-shader_load_from_file :: proc(vertex_path, fragment_path: string, force_compile := false) -> (shader: Shader, ok: bool) {
-    vertex := load_shader_stage(vertex_path, .Vertex, force_compile) or_return
-    fragment := load_shader_stage(fragment_path, .Fragment, force_compile) or_return
+// shader_load_from_file :: proc(vertex_path, fragment_path: string, force_compile := false) -> (shader: Shader, ok: bool) {
+//     vertex := load_shader_stage(vertex_path, .Vertex, force_compile) or_return
+//     fragment := load_shader_stage(fragment_path, .Fragment, force_compile) or_return
 
-    shader.program = gl.CreateProgram()
-    gl.AttachShader(shader.program, vertex)
-    gl.AttachShader(shader.program, fragment)
-    gl.LinkProgram(shader.program)
+//     shader.program = gl.CreateProgram()
+//     gl.AttachShader(shader.program, vertex)
+//     gl.AttachShader(shader.program, fragment)
+//     gl.LinkProgram(shader.program)
 
-    shader.vertex   = strings.clone(vertex_path)
-    shader.fragment = strings.clone(fragment_path)
+//     shader.vertex   = strings.clone(vertex_path)
+//     shader.fragment = strings.clone(fragment_path)
 
-    success: i32
-    gl.GetProgramiv(shader.program, gl.LINK_STATUS, &success)
-    if b32(success) != gl.TRUE {
-        log_buffer: [512]byte
-        length: i32
-        gl.GetProgramInfoLog(shader.program, len(log_buffer), &length, raw_data(log_buffer[:]))
-        log.errorf("Error linking shader program: \n%v", string(log_buffer[:length]))
-        return {}, false
-    }
+//     success: i32
+//     gl.GetProgramiv(shader.program, gl.LINK_STATUS, &success)
+//     if b32(success) != gl.TRUE {
+//         log_buffer: [512]byte
+//         length: i32
+//         gl.GetProgramInfoLog(shader.program, len(log_buffer), &length, raw_data(log_buffer[:]))
+//         log.errorf("Error linking shader program: \n%v", string(log_buffer[:length]))
+//         return {}, false
+//     }
 
-    return shader, true
-}
+//     return shader, true
+// }
 
 shader_reload :: proc(shader: ^Shader) {
-    new_shader, ok := shader_load_from_file(shader.vertex, shader.fragment, force_compile = true)
-    if ok {
-        shader^ = new_shader
-    }
+    // new_shader, ok := shader_load_from_file(shader.vertex, shader.fragment, force_compile = true)
+    // if ok {
+    //     shader^ = new_shader
+    // }
 }
 
 // Editor-Only
-compile_shader :: proc(file: string, shader_kind: ShaderKind) -> (bytecode: []byte, ok: bool) {
-    data := os.read_entire_file(file) or_return
-
-    vulkan_spirv := compile_to_spirv_vulkan(data, shader_kind, file) or_return
-    // If we were targeting Vulkan, we would stop here.
-    glsl_source := compile_to_glsl(vulkan_spirv) or_return
-
-    // If we were targeting Vulkan, we would stop here.
-    return compile_to_spirv_opengl(glsl_source, shader_kind, file)
+compile_shader_source :: proc(file: string, source: string, shader_kind: ShaderKind) -> (bytecode: []byte, ok: bool) {
+    bytecode = compile_to_spirv_vulkan(transmute([]byte) source, shader_kind, file) or_return
+    return bytecode, true
 }
 
 compile_to_spirv_vulkan :: proc(source: []byte, shader_kind: ShaderKind, name: string) -> (bytecode: []byte, ok: bool) {
@@ -138,6 +153,16 @@ compile_to_spirv_vulkan :: proc(source: []byte, shader_kind: ShaderKind, name: s
 
     def_name: cstring = "EDITOR"
     shaderc.compile_options_add_macro_definition(options, def_name, len(def_name), nil, 0)
+
+    if shader_kind == .Vertex {
+        name :: "Vertex"
+        value :: "main"
+        shaderc.compile_options_add_macro_definition(options, name, len(name), value, len(value))
+    } else {
+        name :: "Fragment"
+        value :: "main"
+        shaderc.compile_options_add_macro_definition(options, name, len(name), value, len(value))
+    }
 
     ctx := context
     shaderc.compile_options_set_include_callbacks(options, include_resolve, include_result_release, &ctx)
@@ -299,3 +324,48 @@ include_resolve :: proc "c" (
 
 @(private = "file")
 include_result_release :: proc "c" (user_data: rawptr, include_result: ^shaderc.IncludeResult) {}
+
+// Splits a *.shader file into GLSL vertex and GLSL fragment source.
+@(private = "file")
+split_shader :: proc(source: string, allocator := context.allocator) -> (vertex: string, fragment: string) {
+    common_sb, vertex_sb, fragment_sb: strings.Builder
+    strings.builder_init(&common_sb, allocator = context.temp_allocator)
+    strings.builder_init(&vertex_sb, allocator = context.temp_allocator)
+    strings.builder_init(&fragment_sb, allocator = context.temp_allocator)
+
+    sb: ^strings.Builder = &common_sb
+
+    source := source
+    for line in strings.split_lines_iterator(&source) {
+        if strings.contains(line, "#pragma") {
+            res := strings.split_n(line, " ", 2, context.temp_allocator)
+            assert(len(res) == 2)
+
+            res = strings.split(res[1], ":", context.temp_allocator)
+            assert(len(res) == 2)
+
+            keyword, type := strings.trim_space(res[0]), strings.trim_space(res[1])
+            if keyword == "type" {
+                if type == "vertex" {
+                    sb = &vertex_sb
+                } else if type == "fragment" {
+                    sb = &fragment_sb
+                }
+            } else {
+                strings.write_string(sb, line)
+                strings.write_rune(sb, '\n')
+            }
+        } else {
+            strings.write_string(sb, line)
+            strings.write_rune(sb, '\n')
+        }
+    }
+
+    common_source := strings.to_string(common_sb)
+    vertex_source := strings.to_string(vertex_sb)
+    fragment_source := strings.to_string(fragment_sb)
+
+    vertex = strings.concatenate({common_source, vertex_source})
+    fragment = strings.concatenate({common_source, fragment_source})
+    return
+}

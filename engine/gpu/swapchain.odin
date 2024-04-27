@@ -93,8 +93,8 @@ destroy_swapchain :: proc(swapchain: ^Swapchain, keep_handle := false) {
     }
 }
 
-swapchain_resize :: proc(swapchain: ^Swapchain, new_size: Extent2D) {
-    swapchain.spec.extent = new_size
+swapchain_resize :: proc(swapchain: ^Swapchain, new_size: Vector2) {
+    swapchain.spec.extent = {u32(new_size.x), u32(new_size.y)}
     destroy_swapchain(swapchain, keep_handle = true)
 
     swapchain_invalidate(swapchain)
@@ -222,6 +222,10 @@ swapchain_present :: proc(sw: ^Swapchain, image: u32) {
 
     check(vk.QueuePresentKHR(sw.spec.device.present_queue, &present_info))
     sw.current_frame = (sw.current_frame + 1) % MAX_FRAMES_IN_FLIGHT
+}
+
+swapchain_current_framebuffer :: proc(s: Swapchain, image: u32) -> FrameBuffer {
+    return s.framebuffers[image]
 }
 
 @(private = "file")

@@ -53,9 +53,9 @@ nk_device_create :: proc() -> (ok: bool) {
     dev := &nk_context.device
     nk.buffer_init_default(&dev.cmds)
 
-    dev.shader = shader_load_from_file(
-        "assets/shaders/nuklear.vert.glsl",
-        "assets/shaders/nuklear.frag.glsl") or_return
+    // dev.shader = shader_load_from_file(
+    //     "assets/shaders/nuklear.vert.glsl",
+    //     "assets/shaders/nuklear.frag.glsl") or_return
 
     // shader_cache_uniforms(&dev.shader, {
     //     "Texture",
@@ -187,6 +187,7 @@ nk_lock_buffer :: proc() {
 }
 
 nk_render :: proc() {
+    /*
     dev := &nk_context.device
     ortho := mat4 {
         2.0, 0.0, 0.0, -1.0,
@@ -274,6 +275,7 @@ nk_render :: proc() {
     gl.Disable(gl.SCISSOR_TEST)
 
     nk_lock_buffer()
+    */
 }
 
 nk_init :: proc(window: glfw.WindowHandle) {

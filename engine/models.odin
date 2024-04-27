@@ -113,6 +113,7 @@ serialize_pbr_material :: proc(this: ^Asset, s: ^SerializeContext) {
 
 bind_pbr_material :: proc(m: ^PbrMaterial) {
     manager := &EngineInstance.asset_manager
+    /*
     albedo := get_asset(manager, m.albedo_texture, Texture2D)
     if albedo == nil {
         gl.BindTextureUnit(0, get_asset(manager, RendererInstance.white_texture, Texture2D).handle)
@@ -130,6 +131,7 @@ bind_pbr_material :: proc(m: ^PbrMaterial) {
     // gl.BindBufferBase(gl.UNIFORM_BUFFER, 10, m.block.handle)
     uniform_buffer_rebind(&m.block)
     uniform_buffer_set_data(&m.block)
+    */
 }
 
 /*

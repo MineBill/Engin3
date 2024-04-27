@@ -2,6 +2,7 @@ package gpu
 import vk "vendor:vulkan"
 import vma "packages:odin-vma"
 import "core:fmt"
+import "core:mem"
 
 Image :: struct {
     id: UUID,
@@ -88,6 +89,26 @@ destroy_image :: proc(image: ^Image) {
     destroy_sampler(image.spec.device^, image.sampler)
 }
 
+image_set_data :: proc(image: ^Image, data: []byte = {}) {
+    // Create temp buffer
+    spec := BufferSpecification {
+        device = image.spec.device,
+        name = "Staging Buffer",
+        size = image.spec.width * image.spec.height * 4,
+        usage = {.TransferSource},
+        mapped = true,
+    }
+    buffer := create_buffer(spec)
+    defer destroy_buffer(buffer)
+
+    // Do we need to "flush" the copy?
+    mem.copy(buffer.alloc_info.pMappedData, raw_data(data), len(data))
+
+    image_transition_layout(image, .TransferDstOptimal)
+    buffer_copy_to_image(buffer, image^)
+    image_transition_layout(image, .ShaderReadOnlyOptimal)
+}
+
 @(private)
 create_image_from_existing_vk_image :: proc(vk_image: vk.Image, spec: ImageSpecification) -> (image: Image) {
     image.spec = spec
@@ -147,16 +168,16 @@ destroy_image_view :: proc(view: ^ImageView) {
     vk.DestroyImageView(view.spec.device.handle, view.handle, nil)
 }
 
-transition_image_layout :: proc(device: Device, image: ^Image, new_layout: ImageLayout) {
-    command_buffer := device_begin_single_time_command(device)
-    defer device_end_single_time_command(device, command_buffer)
+image_transition_layout :: proc(image: ^Image, new_layout: ImageLayout) {
+    command_buffer := device_begin_single_time_command(image.spec.device^)
+    defer device_end_single_time_command(image.spec.device^, command_buffer)
 
     old := image.spec.layout
     image.spec.layout = new_layout
 
     barrier := vk.ImageMemoryBarrier {
         sType = .IMAGE_MEMORY_BARRIER,
-        oldLayout = image_layout_to_vulkan(image.spec.layout),
+        oldLayout = image_layout_to_vulkan(old),
         newLayout = image_layout_to_vulkan(new_layout),
         srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
         dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,

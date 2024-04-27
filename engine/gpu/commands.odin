@@ -45,8 +45,7 @@ CommandType :: enum {
     SingleTime,
 }
 
-@(deferred_in=cmd_end)
-cmd_begin :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) -> bool {
+cmd_begin :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) {
     begin_info := vk.CommandBufferBeginInfo {
         sType = .COMMAND_BUFFER_BEGIN_INFO,
     }
@@ -54,13 +53,17 @@ cmd_begin :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) -> bool 
         begin_info.flags += {.ONE_TIME_SUBMIT}
     }
     vk.BeginCommandBuffer(cmd_buffer.handle, &begin_info)
+}
+
+@(deferred_in = cmd_end)
+do_cmd :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) -> bool {
+    cmd_begin(cmd_buffer, type)
     return true
 }
 
 cmd_end :: proc(cmd_buffer: CommandBuffer, _: CommandType) {
     vk.EndCommandBuffer(cmd_buffer.handle)
 }
-
 
 reset_command_buffer :: proc(cmd_buffer: CommandBuffer) {
     vk.ResetCommandBuffer(cmd_buffer.handle, {})

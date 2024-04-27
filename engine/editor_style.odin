@@ -134,7 +134,7 @@ do_image_button :: proc(id: cstring, texture: Texture2D, size: vec2, style := Im
         }
     }
 
-    return imgui.ImageButton(id, transmute(rawptr)u64(texture.handle), size, tint_col = cast(vec4) style.tint)
+    return imgui.ImageButton(id, tex(texture.handle), size, tint_col = cast(vec4) style.tint)
 }
 
 do_checkbox :: proc(label: string, value: ^bool, style := CheckBoxStyles.Generic) -> bool {
@@ -182,7 +182,7 @@ end_popup_style :: proc() {
 }
 
 draw_texture :: proc(texture: Texture2D, size: vec2, uv0 := vec2{0, 1}, uv1 := vec2{1, 0}) {
-    imgui.Image(transmute(rawptr)u64(texture.handle), size, uv0, uv1, vec4{1, 1, 1, 1})
+    imgui.Image(tex(texture.handle), size, uv0, uv1, vec4{1, 1, 1, 1})
 }
 
 @(deferred_none=end_window)

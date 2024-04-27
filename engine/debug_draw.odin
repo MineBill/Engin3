@@ -3,6 +3,8 @@ import gl "vendor:OpenGL"
 import "core:math"
 import "core:math/linalg"
 import "core:sync"
+import "gpu"
+import "core:mem"
 
 MAX_LINES :: 10_000
 
@@ -17,37 +19,67 @@ LINE_VERTEX_SIZE :: size_of(vec3) + size_of(f32)
 DebugDrawContext :: struct {
     mutex: sync.Mutex,
     vao, vbo: u32,
+
     shader: Shader,
+    pipeline: gpu.Pipeline,
+    vertex_buffer: gpu.Buffer,
 
     lines: [dynamic]LinePoint,
 }
 
 g_dbg_context: ^DebugDrawContext
 
-dbg_init :: proc(d: ^DebugDrawContext) {
-    ok: bool
-    d.shader, ok = shader_load_from_file(
-        "assets/shaders/line.vert.glsl",
-        "assets/shaders/line.frag.glsl",
-    )
-    assert(ok)
+dbg_init :: proc(d: ^DebugDrawContext, render_pass: gpu.RenderPass) {
+    shader, ok := shader_load_from_file("assets/shaders/new/debug.shader")
 
-    gl.CreateBuffers(1, &d.vbo)
-    gl.NamedBufferStorage(d.vbo, MAX_LINES * 2 * size_of(LinePoint), nil, gl.DYNAMIC_STORAGE_BIT)
+    resource_layout := gpu.create_resource_layout(RendererInstance.device, {
+        type = .UniformBuffer,
+        count = 1,
+        stage = {.Vertex},
+    })
 
-    gl.CreateVertexArrays(1, &d.vao)
+    pipeline_layout_spec := gpu.PipelineLayoutSpecification {
+        tag = "Debug Draw PL",
+        device = &RendererInstance.device,
+        layout = resource_layout,
+    }
+    layout := gpu.create_pipeline_layout(pipeline_layout_spec)
 
-    gl.VertexArrayVertexBuffer(d.vao, 0, d.vbo, 0, size_of(LinePoint))
+    vertex_layout := gpu.vertex_layout({
+        name = "Position",
+        type = .Float3,
+    }, {
+        name = "Thickness",
+        type = .Float,
+    }, {
+        name = "Color",
+        type = .Float4,
+    })
 
-    gl.EnableVertexArrayAttrib(d.vao, 0)
-    gl.EnableVertexArrayAttrib(d.vao, 1)
-    gl.EnableVertexArrayAttrib(d.vao, 2)
-    gl.VertexArrayAttribFormat(d.vao, 0, 3, gl.FLOAT, false, 0)
-    gl.VertexArrayAttribFormat(d.vao, 1, 1, gl.FLOAT, false, u32(offset_of(LinePoint, thickness)))
-    gl.VertexArrayAttribFormat(d.vao, 2, 4, gl.FLOAT, false, u32(offset_of(LinePoint, color)))
-    gl.VertexArrayAttribBinding(d.vao, 0, 0)
-    gl.VertexArrayAttribBinding(d.vao, 1, 0)
-    gl.VertexArrayAttribBinding(d.vao, 2, 0)
+    config := gpu.default_pipeline_config()
+    config.input_assembly_info.topology = .LINE_LIST
+    config.rasterization_info.lineWidth = 1.0
+
+    pipeline_spec := gpu.PipelineSpecification {
+        tag = "Debug Draw Pipeline",
+        shader = shader.shader,
+        layout = layout,
+        renderpass = render_pass,
+        attribute_layout = vertex_layout,
+        config = config,
+    }
+
+    err: gpu.Error
+    d.pipeline, err = gpu.create_pipeline(&RendererInstance.device, pipeline_spec)
+
+    buffer_spec := gpu.BufferSpecification {
+        name = "Debug Drawing Vertex Buffer",
+        size = MAX_LINES * LINE_VERTEX_SIZE,
+        usage = {.Vertex},
+        device = &RendererInstance.device,
+        mapped = true,
+    }
+    d.vertex_buffer = gpu.create_buffer(buffer_spec)
 }
 
 dbg_deinit :: proc(d: DebugDrawContext) {
@@ -145,17 +177,16 @@ dbg_draw_sphere :: proc(
     }
 }
 
-dbg_render :: proc(d: ^DebugDrawContext) {
+dbg_render :: proc(d: ^DebugDrawContext, cmd: gpu.CommandBuffer) {
     line_count := len(d.lines)
     if line_count == 0 do return
     assert(line_count % 2 == 0)
 
-    gl.UseProgram(d.shader.program)
-    gl.BindVertexArray(d.vao)
-    gl.LineWidth(2)
+    gpu.pipeline_bind(cmd, d.pipeline)
 
-    gl.NamedBufferSubData(d.vbo, 0, line_count * size_of(LinePoint), raw_data(d.lines))
-    draw_arrays(gl.LINES, 0, line_count)
+    mem.copy(d.vertex_buffer.alloc_info.pMappedData, raw_data(d.lines), line_count * size_of(LinePoint))
+    gpu.bind_buffers(cmd, d.vertex_buffer)
+    gpu.draw(cmd, line_count, 1)
 
     clear(&d.lines)
 }
