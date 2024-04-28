@@ -92,6 +92,7 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
                 layout = image_layout_to_vulkan(depth_ref.layout),
             }
             src_stage_mask += {.EARLY_FRAGMENT_TESTS}
+            dst_stage_mask += {.FRAGMENT_SHADER}
 
             #partial switch spec.attachments[depth_ref.attachment].final_layout {
             // case .DepthStencilAttachmentOptimal:
@@ -292,9 +293,10 @@ ImageLayout :: enum {
     TransferSrcOptimal,
     TransferDstOptimal,
     PresentSrc,
+    AttachmentOptimal,
 }
 
-@(private)
+// @(private)
 image_layout_to_vulkan :: proc(layout: ImageLayout, loc := #caller_location) -> vk.ImageLayout {
     switch layout {
     case .Undefined:
@@ -314,6 +316,8 @@ image_layout_to_vulkan :: proc(layout: ImageLayout, loc := #caller_location) -> 
         return .TRANSFER_DST_OPTIMAL
     case .PresentSrc:
         return .PRESENT_SRC_KHR
+    case .AttachmentOptimal:
+        return .ATTACHMENT_OPTIMAL
     }
     unreachable()
 }

@@ -1,6 +1,18 @@
 #version 450 core
 
-#include "common.glsl"
+layout(std140, set = 0, binding = 0) uniform ViewData {
+    mat4 projection;
+    mat4 view;
+    vec2 screen_size;
+} u_ViewData;
+
+/* layout(std140, set = 1, binding = 0) uniform PerObjectData {
+    mat4 model;
+
+#ifdef EDITOR
+    int entity_id;
+#endif
+} u_PerObjectData; */
 
 struct VertexOutput {
     vec3 frag_color;
@@ -17,19 +29,24 @@ layout(location = 2) in vec3 a_Tangent;
 layout(location = 3) in vec2 a_UV;
 layout(location = 4) in vec3 a_Color;
 
+layout(push_constant) uniform PushConstants {
+    mat4 model;
+} u_PushConstants;
+
 layout(location = 0) out VertexOutput Out;
 void Vertex() {
     Out.frag_color = a_Color;
     Out.frag_uv = a_UV;
 
-    mat3 normal_matrix = transpose(inverse(mat3(u_PerObjectData.model)));
+    gl_Position = u_ViewData.projection * u_ViewData.view * u_PushConstants.model * vec4(a_Position, 1.0);
+    /* mat3 normal_matrix = transpose(inverse(mat3(u_PerObjectData.model)));
 
     vec3 N = normalize(normal_matrix * a_Normal);
 
     gl_Position = u_ViewData.projection * u_ViewData.view * u_PerObjectData.model * vec4(a_Position, 1.0);
     Out.frag_pos = vec3(u_PerObjectData.model * vec4(a_Position, 1.0));
 
-    Out.normal = N;
+    Out.normal = N; */
 }
 
 #pragma type: fragment

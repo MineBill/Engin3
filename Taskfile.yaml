@@ -124,7 +124,12 @@ tasks:
     platforms: [windows]
     deps: [build]
     cmds:
-      - raddbg.exe --profile:engin3.raddbg_profile --auto_run
+      - raddbg.exe --user:"C:/Users/Jonathan/minebill.raddbg_profile" --profile:engin3.raddbg_profile --auto_run
+
+  run-debug:
+    deps: [build]
+    cmds:
+      - raddbg.exe --ipc run
 
   editor_action:
     deps: [check]

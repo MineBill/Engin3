@@ -1,6 +1,7 @@
 package gpu
 import vk "vendor:vulkan"
 import vma "packages:odin-vma"
+import "core:mem"
 
 Buffer :: struct {
     id: UUID,
@@ -73,6 +74,14 @@ buffer_map :: proc(buffer: Buffer, data: ^rawptr) {
 
 buffer_unmap :: proc(buffer: Buffer)  {
     vma.UnmapMemory(buffer.spec.device.allocator, buffer.allocation)
+}
+
+buffer_upload :: proc(buffer: Buffer, data: []byte) {
+    ptr: rawptr
+    buffer_map(buffer, &ptr)
+    defer buffer_unmap(buffer)
+
+    mem.copy(ptr, raw_data(data), len(data))
 }
 
 buffer_copy_to_image :: proc(buffer: Buffer, image: Image) {

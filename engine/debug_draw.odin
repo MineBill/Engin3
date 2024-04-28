@@ -32,16 +32,12 @@ g_dbg_context: ^DebugDrawContext
 dbg_init :: proc(d: ^DebugDrawContext, render_pass: gpu.RenderPass) {
     shader, ok := shader_load_from_file("assets/shaders/new/debug.shader")
 
-    resource_layout := gpu.create_resource_layout(RendererInstance.device, {
-        type = .UniformBuffer,
-        count = 1,
-        stage = {.Vertex},
-    })
+    resource_layout := gpu.create_resource_layout(Renderer3DInstance.device, Renderer3DInstance.global_uniform_resource_usage)
 
     pipeline_layout_spec := gpu.PipelineLayoutSpecification {
         tag = "Debug Draw PL",
-        device = &RendererInstance.device,
-        layout = resource_layout,
+        device = &Renderer3DInstance.device,
+        layouts = gpu.make_list([]gpu.ResourceLayout{resource_layout}),
     }
     layout := gpu.create_pipeline_layout(pipeline_layout_spec)
 
@@ -70,13 +66,13 @@ dbg_init :: proc(d: ^DebugDrawContext, render_pass: gpu.RenderPass) {
     }
 
     err: gpu.Error
-    d.pipeline, err = gpu.create_pipeline(&RendererInstance.device, pipeline_spec)
+    d.pipeline, err = gpu.create_pipeline(&Renderer3DInstance.device, pipeline_spec)
 
     buffer_spec := gpu.BufferSpecification {
         name = "Debug Drawing Vertex Buffer",
         size = MAX_LINES * LINE_VERTEX_SIZE,
         usage = {.Vertex},
-        device = &RendererInstance.device,
+        device = &Renderer3DInstance.device,
         mapped = true,
     }
     d.vertex_buffer = gpu.create_buffer(buffer_spec)

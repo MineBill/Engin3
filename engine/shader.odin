@@ -72,7 +72,7 @@ shader_load_from_file :: proc(path: string, force_compile := false) -> (shader: 
         vertex_spirv = vertex,
         fragment_spirv = fragment,
     }
-    shader.shader = gpu.create_shader(&RendererInstance.device, shader_spec)
+    shader.shader = gpu.create_shader(&Renderer3DInstance.device, shader_spec)
 
     // shader.program = gl.CreateProgram()
     // gl.AttachShader(shader.program, vertex)

@@ -9,6 +9,7 @@ import gl "vendor:OpenGL"
 import "core:slice"
 import "core:mem"
 import "core:path/filepath"
+import "gpu"
 
 @(importer=Image)
 import_image :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
@@ -204,77 +205,55 @@ import_mesh :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImpo
         indices := indices_raw[:count]
 
         model.num_indices = i32(len(indices))
-        gl.CreateBuffers(1, &model.vertex_buffer)
-        gl.NamedBufferStorage(model.vertex_buffer, size_of(Vertex) * len(vertices), raw_data(vertices), gl.DYNAMIC_STORAGE_BIT)
 
-        gl.CreateBuffers(1, &model.index_buffer)
-        gl.NamedBufferStorage(model.index_buffer, size_of(u16) * len(indices), raw_data(indices), gl.DYNAMIC_STORAGE_BIT)
+        vertex_buffer_spec := gpu.BufferSpecification {
+            device = &Renderer3DInstance.device,
+            name = "Mesh Vertex Buffer",
+            size = size_of(Vertex) * len(vertices),
+            usage = {.Vertex},
+        }
 
-        gl.CreateVertexArrays(1, &model.vertex_array)
+        model.vertex_buffer = gpu.create_buffer(vertex_buffer_spec)
+        gpu.buffer_upload(model.vertex_buffer, mem.slice_to_bytes(vertices))
 
-        vao := model.vertex_array
-        gl.VertexArrayVertexBuffer(vao, 0, model.vertex_buffer, 0, size_of(Vertex))
-        gl.VertexArrayElementBuffer(vao, model.index_buffer)
+        index_buffer_spec := gpu.BufferSpecification {
+            name = "Mesh Index Buffer",
+            device = &Renderer3DInstance.device,
+            size = size_of(u16) * len(indices),
+            usage = {.Index},
+        }
 
-        gl.EnableVertexArrayAttrib(vao, 0)
-        gl.EnableVertexArrayAttrib(vao, 1)
-        gl.EnableVertexArrayAttrib(vao, 2)
-        gl.EnableVertexArrayAttrib(vao, 3)
-        gl.EnableVertexArrayAttrib(vao, 4)
+        model.index_buffer = gpu.create_buffer(index_buffer_spec)
+        gpu.buffer_upload(model.index_buffer, mem.slice_to_bytes(indices))
+        // gl.CreateBuffers(1, &model.vertex_buffer)
+        // gl.NamedBufferStorage(model.vertex_buffer, size_of(Vertex) * len(vertices), raw_data(vertices), gl.DYNAMIC_STORAGE_BIT)
 
-        gl.VertexArrayAttribFormat(vao, 0, 3, gl.FLOAT, false, u32(offset_of(Vertex, position)))
-        gl.VertexArrayAttribFormat(vao, 1, 3, gl.FLOAT, false, u32(offset_of(Vertex, normal)))
-        gl.VertexArrayAttribFormat(vao, 2, 3, gl.FLOAT, false, u32(offset_of(Vertex, tangent)))
-        gl.VertexArrayAttribFormat(vao, 3, 2, gl.FLOAT, false, u32(offset_of(Vertex, uv)))
-        gl.VertexArrayAttribFormat(vao, 4, 3, gl.FLOAT, false, u32(offset_of(Vertex, color)))
+        // gl.CreateBuffers(1, &model.index_buffer)
+        // gl.NamedBufferStorage(model.index_buffer, size_of(u16) * len(indices), raw_data(indices), gl.DYNAMIC_STORAGE_BIT)
 
-        gl.VertexArrayAttribBinding(vao, 0, 0)
-        gl.VertexArrayAttribBinding(vao, 1, 0)
-        gl.VertexArrayAttribBinding(vao, 2, 0)
-        gl.VertexArrayAttribBinding(vao, 3, 0)
-        gl.VertexArrayAttribBinding(vao, 4, 0)
+        // gl.CreateVertexArrays(1, &model.vertex_array)
 
-        // albedo_data: []byte = nil
-        // normal_map_data: []byte = nil
+        // vao := model.vertex_array
+        // gl.VertexArrayVertexBuffer(vao, 0, model.vertex_buffer, 0, size_of(Vertex))
+        // gl.VertexArrayElementBuffer(vao, model.index_buffer)
 
-        // material:^gltf.material = primitive.material
-        // if material != nil {
-        //     log.debugf("\tProcessing material %v", material.name)
-        //     when true {
-        //         if material.has_pbr_metallic_roughness {
-        //             aa: if material.pbr_metallic_roughness.base_color_texture.texture != nil {
-        //                 texture := material.pbr_metallic_roughness.base_color_texture.texture
-        //                 log.debugf("\t\tLoading albedo texture '%v' from memory", texture.image_.name)
-        //                 buffer := texture.image_.buffer_view
-        //                 color_base_data := buffer.buffer.data
-        //                 color_offset := buffer.offset
+        // gl.EnableVertexArrayAttrib(vao, 0)
+        // gl.EnableVertexArrayAttrib(vao, 1)
+        // gl.EnableVertexArrayAttrib(vao, 2)
+        // gl.EnableVertexArrayAttrib(vao, 3)
+        // gl.EnableVertexArrayAttrib(vao, 4)
 
-        //                 size := texture.image_.buffer_view.size
+        // gl.VertexArrayAttribFormat(vao, 0, 3, gl.FLOAT, false, u32(offset_of(Vertex, position)))
+        // gl.VertexArrayAttribFormat(vao, 1, 3, gl.FLOAT, false, u32(offset_of(Vertex, normal)))
+        // gl.VertexArrayAttribFormat(vao, 2, 3, gl.FLOAT, false, u32(offset_of(Vertex, tangent)))
+        // gl.VertexArrayAttribFormat(vao, 3, 2, gl.FLOAT, false, u32(offset_of(Vertex, uv)))
+        // gl.VertexArrayAttribFormat(vao, 4, 3, gl.FLOAT, false, u32(offset_of(Vertex, color)))
 
-        //                 albedo_data = (cast([^]byte)(uintptr(color_base_data) + uintptr(color_offset)))[:size]
-
-        //                 texture = material.normal_texture.texture
-
-        //                 // NOTE(minebill): Do proper checking here
-        //                 if texture == nil do break aa
-        //                 log.debugf("\t\tLoading normal texture '%v' from memory", texture.image_.name)
-        //                 buffer = texture.image_.buffer_view
-        //                 color_base_data = buffer.buffer.data
-        //                 color_offset = buffer.offset
-
-        //                 size = texture.image_.buffer_view.size
-
-        //                 normal_map_data = (cast([^]byte)(uintptr(color_base_data) + uintptr(color_offset)))[:size]
-
-        //             }
-
-        //             // material.albedo_color = Color(material.pbr_metallic_roughness.base_color_factor)
-        //             // material.metallic_factor = material.pbr_metallic_roughness.metallic_factor
-        //             // material.roughness_factor = material.pbr_metallic_roughness.roughness_factor
-        //         }
-        //     }
-        // }
-        // update_material(&e.material, albedo_data, normal_map_data, nil)
+        // gl.VertexArrayAttribBinding(vao, 0, 0)
+        // gl.VertexArrayAttribBinding(vao, 1, 0)
+        // gl.VertexArrayAttribBinding(vao, 2, 0)
+        // gl.VertexArrayAttribBinding(vao, 3, 0)
+        // gl.VertexArrayAttribBinding(vao, 4, 0)
     }
     return model, {}
 }

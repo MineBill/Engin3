@@ -106,7 +106,7 @@ image_set_data :: proc(image: ^Image, data: []byte = {}) {
 
     image_transition_layout(image, .TransferDstOptimal)
     buffer_copy_to_image(buffer, image^)
-    image_transition_layout(image, .ShaderReadOnlyOptimal)
+    image_transition_layout(image, .ColorAttachmentOptimal)
 }
 
 @(private)
@@ -201,9 +201,11 @@ image_transition_layout :: proc(image: ^Image, new_layout: ImageLayout) {
         dstStage = {.TRANSFER}
     } else if old == .TransferDstOptimal && new_layout == .ShaderReadOnlyOptimal {
         barrier.srcAccessMask = {.TRANSFER_WRITE}
-        barrier.dstAccessMask = {.SHADER_READ}
+        barrier.dstAccessMask = {.COLOR_ATTACHMENT_WRITE}
         srcStage = {.TRANSFER}
-        dstStage = {.FRAGMENT_SHADER}
+        dstStage = {.COLOR_ATTACHMENT_OUTPUT}
+    } else if old == .TransferDstOptimal && new_layout == .ColorAttachmentOptimal {
+        // Complete this
     } else {
         fmt.panicf("Unsupported layout transition!")
     }

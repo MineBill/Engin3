@@ -41,15 +41,16 @@ Engine :: struct {
     dbg_draw: DebugDrawContext,
     asset_manager: AssetManager,
     scripting_engine: ScriptingEngine,
-    renderer: Renderer,
+    renderer: Renderer3D,
     physics: Physics,
 
     screen_size: vec2,
-    width, height: i32,
 }
 
 engine_init :: proc(e: ^Engine) -> Engine_Error {
     EngineInstance = e
+    g_dbg_context = &e.dbg_draw
+
     tracy.SetThreadName("main")
     tracy.Zone()
 
@@ -59,8 +60,9 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     asset_manager_init(&e.asset_manager)
 
-    renderer_init(&e.renderer)
-    renderer_set_instance(&e.renderer)
+    // renderer_init(&e.renderer)
+    // renderer_set_instance(&e.renderer)
+    r3d_init(&e.renderer)
 
     editor_init(&e.editor, e)
     context.logger = e.editor.logger
@@ -72,15 +74,10 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     game_init(&e.game, e)
 
-    e.width = 800
-    e.height = 800
-
     // nk_init(e.window)
     // atlas: ^nk.Font_Atlas
     // nk_font_stash_begin(&atlas)
     // nk_font_stash_end()
-
-    g_dbg_context = &e.dbg_draw
 
     e.run_mode = .Editor
 
@@ -91,11 +88,9 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
     return {}
 }
 
-engine_resize :: proc(e: ^Engine, width, height: int) {
-    e.width = i32(width)
-    e.height = i32(height)
-
-    e.screen_size = vec2{f32(width), f32(height)}
+engine_resize :: proc(e: ^Engine, size: vec2) {
+    r3d_on_resize(&e.renderer, size)
+    e.screen_size = size
 }
 
 engine_update :: proc(e: ^Engine, _delta: f64) {
@@ -131,20 +126,18 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
 engine_draw :: proc(e: ^Engine) {
     tracy.Zone()
     blk: {
-        cmd, error := renderer_begin_rendering(RendererInstance)
-        if error != nil {
-            break blk
-        }
+        // cmd, error := renderer_begin_rendering(RendererInstance)
+        // r3d_draw_frame()
 
         switch e.run_mode {
         case .Game:
         case .Editor:
             // gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-            editor_draw(&e.editor, cmd, RendererInstance.current_image_index)
+            editor_draw(&e.editor)
             // imgui.EndFrame()
 
         }
-        renderer_end_rendering(RendererInstance, cmd)
+        // renderer_end_rendering(RendererInstance, cmd)
     }
 
     if .ViewportsEnable in imgui.GetIO().ConfigFlags {
@@ -165,7 +158,7 @@ engine_deinit :: proc(e: ^Engine) {
 
     dbg_deinit(e.dbg_draw)
 
-    renderer_deinit(&e.renderer)
+    r3d_deinit(&e.renderer)
 }
 
 engine_should_close :: proc(e: ^Engine) -> bool {

@@ -33,17 +33,13 @@ Renderer :: struct {
     pipelines:       map[string]gpu.Pipeline,
     uniform_buffers: map[string]gpu.Buffer,
 
-    command_buffers: [dynamic]gpu.CommandBuffer,
+    command_buffers: [1]gpu.CommandBuffer,
 
     white_texture:  AssetHandle,
     normal_texture: AssetHandle,
     height_texture: AssetHandle,
 
     _editor_images: map[gpu.UUID]vk.DescriptorSet,
-}
-
-tex :: proc(image: gpu.Image) -> imgui.TextureID {
-    return transmute(imgui.TextureID) RendererInstance._editor_images[image.id]
 }
 
 renderer_init :: proc(r: ^Renderer) {
@@ -67,7 +63,8 @@ renderer_init :: proc(r: ^Renderer) {
                 m._editor_images[image.id] = imgui_impl_vulkan.AddTexture(
                     image.sampler.handle,
                     image.view.handle,
-                    .SHADER_READ_ONLY_OPTIMAL,
+                    // gpu.image_layout_to_vulkan(image.spec.layout),
+                    .ATTACHMENT_OPTIMAL,
                 )
             }
         },
@@ -158,7 +155,7 @@ renderer_create_swapchain :: proc(r: ^Renderer) {
     swapchain_spec := gpu.SwapchainSpecification {
         device = &r.device,
         renderpass = r.renderpasses["imgui"],
-        present_mode = .Mailbox,
+        present_mode = .Fifo,
         extent = {
             width = u32(EngineInstance.screen_size.x),
             height = u32(EngineInstance.screen_size.y),
@@ -220,7 +217,7 @@ print_stack_trace_on_error :: proc() {
     }
 }
 
-UniformBuffer :: struct($T: typeid) {
+_UniformBuffer :: struct($T: typeid) {
     handle: RenderHandle,
 
     using data : T,
@@ -228,7 +225,7 @@ UniformBuffer :: struct($T: typeid) {
     bind_index: u32,
 }
 
-create_uniform_buffer :: proc($T: typeid, bind_index: int) -> (buffer: UniformBuffer(T)) {
+__create_uniform_buffer :: proc($T: typeid, bind_index: int) -> (buffer: _UniformBuffer(T)) {
     buffer.bind_index = u32(bind_index)
     gl.CreateBuffers(1, &buffer.handle)
 
@@ -238,16 +235,16 @@ create_uniform_buffer :: proc($T: typeid, bind_index: int) -> (buffer: UniformBu
     return
 }
 
-uniform_buffer_upload :: proc(buffer: ^UniformBuffer($T), offset := uintptr(0), size := size_of(T)) {
+uniform_buffer_upload :: proc(buffer: ^_UniformBuffer($T), offset := uintptr(0), size := size_of(T)) {
     gl.NamedBufferSubData(buffer.handle, 0, size_of(buffer.data), &buffer.data)
 }
 
-uniform_buffer_set_data :: proc(buffer: ^UniformBuffer($T), offset := uintptr(0), size := size_of(T)) {
+uniform_buffer_set_data :: proc(buffer: ^_UniformBuffer($T), offset := uintptr(0), size := size_of(T)) {
     data := uintptr(&buffer.data) + offset
     gl.NamedBufferSubData(buffer.handle, int(offset), int(size), rawptr(data))
 }
 
-uniform_buffer_rebind :: proc(buffer: ^UniformBuffer($T)) {
+uniform_buffer_rebind :: proc(buffer: ^_UniformBuffer($T)) {
     gl.BindBufferBase(gl.UNIFORM_BUFFER, buffer.bind_index, buffer.handle)
 }
 
@@ -677,11 +674,11 @@ create_texture2d :: proc(spec: TextureSpecification, data: []byte = {}) -> (text
     texture.spec = spec
 
     image_spec := gpu.ImageSpecification {
-        device = &RendererInstance.device,
+        device = &Renderer3DInstance.device,
         width = spec.width,
         height = spec.height,
         samples = spec.samples,
-        usage = {.Sampled, .TransferDst},
+        usage = {.Sampled, .TransferDst, .ColorAttachment},
         format = .R8G8B8A8_SRGB,
     }
 

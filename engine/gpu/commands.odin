@@ -33,9 +33,9 @@ destroy_command_buffer :: proc(cmd_buffer: CommandBuffer) {
     vk.FreeCommandBuffers(cmd_buffer.spec.device.handle, cmd_buffer.spec.device.command_pool, 1, &cmd_buffer.handle)
 }
 
-create_command_buffers :: proc(device: Device, spec: CommandBufferSpecification, count: int) -> (cmd_buffers: [dynamic]CommandBuffer) {
+create_command_buffers :: proc(device: Device, spec: CommandBufferSpecification, $count: int) -> (cmd_buffers: [count]CommandBuffer) {
     for i in 0..<count {
-        append(&cmd_buffers, create_command_buffer(device, spec))
+        cmd_buffers[i] = create_command_buffer(device, spec)
     }
     return
 }
@@ -62,7 +62,9 @@ do_cmd :: proc(cmd_buffer: CommandBuffer, type: CommandType = .None) -> bool {
 }
 
 cmd_end :: proc(cmd_buffer: CommandBuffer, _: CommandType) {
-    vk.EndCommandBuffer(cmd_buffer.handle)
+    if cmd_buffer.handle != nil {
+        vk.EndCommandBuffer(cmd_buffer.handle)
+    }
 }
 
 reset_command_buffer :: proc(cmd_buffer: CommandBuffer) {
@@ -102,7 +104,16 @@ draw :: proc(cmd: CommandBuffer, #any_int vertex_count, instance_count: u32, fir
     vk.CmdDraw(cmd.handle, vertex_count, instance_count, first_vertex, first_instance)
 }
 
+draw_indexed :: proc(cmd: CommandBuffer, #any_int index_count, instance_count: u32, first_index := u32(0), vertex_offset := i32(0), vertex_count := u32(0)) {
+    vk.CmdDrawIndexed(cmd.handle, index_count, instance_count, first_index, vertex_offset, vertex_count)
+}
+
 bind_buffers :: proc(cmd: CommandBuffer, buffers: ..Buffer) {
+    if .Index in buffers[0].spec.usage {
+        vk.CmdBindIndexBuffer(cmd.handle, buffers[0].handle, 0, .UINT16)
+        return
+    }
+
     vk_buffer_handles := make([dynamic]vk.Buffer, len(buffers))
     for buffer, i in buffers {
         vk_buffer_handles[i] = buffer.handle

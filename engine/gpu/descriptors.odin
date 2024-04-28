@@ -50,7 +50,7 @@ ResourceSpecification :: struct {
 
 }
 
-allocate_resource :: proc(pool: ResourcePool, layout: ResourceLayout) -> (resource: Resource) {
+allocate_resource :: proc(pool: ResourcePool, layout: ResourceLayout) -> (resource: Resource, error: ResourceAllocationError) {
     // descriptorPool:     DescriptorPool,
     // descriptorSetCount: u32,
     // pSetLayouts:        [^]DescriptorSetLayout,
@@ -63,7 +63,13 @@ allocate_resource :: proc(pool: ResourcePool, layout: ResourceLayout) -> (resour
         pSetLayouts = &a,
     }
 
-    vk.AllocateDescriptorSets(pool.spec.device.handle, &alloc_info, &resource.handle)
+    result := vk.AllocateDescriptorSets(pool.spec.device.handle, &alloc_info, &resource.handle)
+    #partial switch result {
+    case .ERROR_OUT_OF_POOL_MEMORY:
+        error = .OutOfMemory
+    case:
+        check(result)
+    }
     return
 }
 
@@ -129,9 +135,9 @@ ResourceLayout :: struct {
 
 create_resource_layout :: proc(device: Device, usages: ..ResourceUsage) -> (layout: ResourceLayout) {
     bindings := make([dynamic]vk.DescriptorSetLayoutBinding, 0, len(usages), context.temp_allocator)
-    for resource in usages {
+    for resource, i in usages {
         a := vk.DescriptorSetLayoutBinding {
-            binding = 0,
+            binding = u32(i),
             descriptorType = resource_type_to_vulkan(resource.type),
             descriptorCount = cast(u32) resource.count,
             stageFlags = shader_stage_to_vulkan(resource.stage),

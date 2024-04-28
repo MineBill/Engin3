@@ -88,7 +88,7 @@ create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeli
         basePipelineHandle  = 0,
         basePipelineIndex   = -1,
     }
-    vk.CreateGraphicsPipelines(device.handle, 0, 1, &pipeline_create_info, nil, &pipeline.handle)
+    check(vk.CreateGraphicsPipelines(device.handle, 0, 1, &pipeline_create_info, nil, &pipeline.handle))
     return
 }
 
@@ -107,17 +107,32 @@ PipelineLayoutSpecification :: struct {
     tag: cstring,
     device: ^Device,
     // descriptor_set_layout: ...
-    layout: ResourceLayout,
+    layouts: [dynamic]ResourceLayout,
+    use_push: bool,
 }
 
 create_pipeline_layout :: proc(spec: PipelineLayoutSpecification) -> (layout: PipelineLayout) {
     layout.id = new_id()
     layout.spec = spec
 
+    layouts := make([dynamic]vk.DescriptorSetLayout, 0, len(spec.layouts), context.temp_allocator)
+
+    for l in spec.layouts {
+        append(&layouts, l.handle)
+    }
+
+    range := vk.PushConstantRange {
+        size = size_of(matrix[4, 4]f32),
+        offset = 0,
+        stageFlags = {.VERTEX},
+    }
+
     pipeline_layout_create_info := vk.PipelineLayoutCreateInfo {
         sType = .PIPELINE_LAYOUT_CREATE_INFO,
-        setLayoutCount = 1 if layout.spec.layout.handle != 0 else 0,
-        pSetLayouts = &layout.spec.layout.handle,
+        setLayoutCount = cast(u32) len(spec.layouts),
+        pSetLayouts = raw_data(layouts),
+        pushConstantRangeCount = 1 if spec.use_push else 0,
+        pPushConstantRanges = &range,
     }
 
     check(vk.CreatePipelineLayout(spec.device.handle, &pipeline_layout_create_info, nil, &layout.handle))

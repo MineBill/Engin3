@@ -28,8 +28,7 @@ game_update :: proc(g: ^Game, _delta: f64) {
         #partial switch ev in event {
         case WindowResizedEvent:
             gl.Viewport(0, 0, i32(ev.size.x), i32(ev.size.y))
-            width, height := int(ev.size.x), int(ev.size.y)
-            engine_resize(g.engine, width, height)
+            engine_resize(g.engine, ev.size)
         case MouseButtonEvent:
             // if ev.button == .right {
             //     if ev.state == .pressed && e.is_viewport_focused {
@@ -80,15 +79,5 @@ game_update :: proc(g: ^Game, _delta: f64) {
         //     euler.y * math.RAD_PER_DEG,
         //     euler.z * math.RAD_PER_DEG,
         //     .XYZ)
-    }
-
-    n := &nk_context.ctx
-    if nk.begin(n, "Window", nk.rect(0, 0, f32(g.engine.width), 150), {}) {
-        nk.layout_row_dynamic(n, 30, 2)
-        if nk.button_string(n, "Button") {
-            log.debug("Button!")
-        }
-        nk.label_string(n, "Label!", {.Centered})
-        nk.end(n)
     }
 }

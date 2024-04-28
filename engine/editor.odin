@@ -181,6 +181,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     log_set_categories(&e.category_logger, LogCategories{.Editor, .AssetSystem, .PhysicsSystem, .ScriptingEngine})
     e.selected_log_categories = ~LogCategories{}
 
+
     e.logger = create_category_logger(&e.category_logger, &e.log_entries)
     context.logger = e.logger
 
@@ -322,11 +323,11 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         }
     }
 
-
     for event in g_event_ctx.events {
         #partial switch ev in event {
         case WindowResizedEvent:
             e.window_size = ev.size
+            r3d_resize_swapchain(Renderer3DInstance, ev.size)
             // gl.Viewport(0, 0, i32(ev.size.x), i32(ev.size.y))
         case MouseButtonEvent:
             if ev.button == .right {
@@ -422,7 +423,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 .XYZ)
 
             e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
-            e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), e.camera.near_plane, e.camera.far_plane)
+            e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.screen_size.x) / f32(e.engine.screen_size.y), e.camera.near_plane, e.camera.far_plane)
 
             // editor_render_scene(e)
         case .Play, .Paused:
@@ -450,7 +451,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                     .XYZ)
 
                 e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
-                e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.width) / f32(e.engine.height), e.camera.near_plane, e.camera.far_plane)
+                e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.screen_size.x) / f32(e.engine.screen_size.y), e.camera.near_plane, e.camera.far_plane)
 
                 // editor_render_scene(e)
             }
@@ -562,32 +563,34 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     imgui.Render()
 }
 
-editor_draw :: proc(e: ^Editor, cmd: gpu.CommandBuffer, index: u32) {
-    // switch e.state {
-    // case .Edit:
-    //     editor_render_scene(e, cmd)
-    // case .Play, .Paused:
-    //     if !e.is_detached {
-    //         runtime_render_scene(e, cmd)
-    //     } else {
-    //         editor_render_scene(e, cmd)
-    //     }
-    // }
+editor_draw :: proc(e: ^Editor) {
+    r := Renderer3DInstance
+    cmd, ok := r3d_begin_frame(r)
+    if !ok do return
+    defer r3d_end_frame(r, cmd)
 
-    // We are always drawing imgui to the swapchain as the last thing.
-    fb := gpu.swapchain_current_framebuffer(RendererInstance.swapchain, index)
-    if gpu.do_render_pass(cmd, RendererInstance.renderpasses["imgui"], fb) {
-        gpu.set_viewport(cmd, e.engine.screen_size)
-        gpu.set_scissor(cmd, 0, 0, u32(e.window_size.x), u32(e.window_size.y))
+    switch e.state {
+    case .Edit:
+        editor_render_scene(e, cmd)
+    case .Play, .Paused:
+        if !e.is_detached {
+            editor_render_game_view(e, cmd)
+        } else {
+            editor_render_scene(e, cmd)
+        }
+    }
 
+    // This actually draws the editor. It ALWAYS happens.
+    if gpu.do_render_pass(cmd, r.imgui_renderpass, r.swapchain.framebuffers[r.image_index]) {
         data := imgui.GetDrawData()
         imgui_impl_vulkan.RenderDrawData(data, cmd.handle)
     }
 }
 
 editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
-    packet := RenderPacket{
-        world = &e.engine.world,
+    packet := RPacket {
+        // world = &e.engine.world,
+        scene = &e.engine.world,
         size = vec2i{i32(e.viewport_size.x), i32(e.viewport_size.y)},
         camera = RenderCamera {
             projection = e.camera.projection,
@@ -597,8 +600,9 @@ editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
             near       = e.camera.near_plane,
             far        = e.camera.far_plane,
         },
-        clear_color = COLOR_BLACK,
+        // clear_color = COLOR_BLACK,
     }
+
     for id, &obj in e.engine.world.objects {
         if id in e.entity_selection {
             for type, component in obj.components {
@@ -607,10 +611,8 @@ editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
         }
     }
 
-    // Render world normally
-    render_world(&e.renderer, packet)
-
-    dbg_render(g_dbg_context, cmd)
+    // This just renders the 3d world.
+    r3d_draw_frame(Renderer3DInstance, packet, cmd)
 
     // // Render editor stuff (grid, outlines, gizmo)
     // gl.BindFramebuffer(gl.FRAMEBUFFER, e.renderer.final_frame_buffer.handle)
@@ -631,7 +633,7 @@ editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
     // gl.Enable(gl.DEPTH_TEST)
 }
 
-runtime_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
+editor_render_game_view :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
     if camera := find_first_component(&e.engine.world, Camera); camera != nil {
         go := get_object(&e.engine.world, camera.owner)
 
@@ -643,11 +645,12 @@ runtime_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
             .XYZ)
 
         camera_view       := linalg.matrix4_from_quaternion(rotation) * linalg.inverse(linalg.matrix4_translate(go.transform.position))
-        camera_projection := linalg.matrix4_perspective_f32(math.to_radians(f32(camera.fov)), f32(e.engine.width) / f32(e.engine.height), camera.near_plane, camera.far_plane)
+        camera_projection := linalg.matrix4_perspective_f32(math.to_radians(f32(camera.fov)), f32(e.engine.screen_size.x) / f32(e.engine.screen_size.y), camera.near_plane, camera.far_plane)
         camera_rotation   := rotation
 
-        packet := RenderPacket{
-            world = &e.engine.world,
+        packet := RPacket {
+            // world = &e.engine.world,
+            scene = &e.engine.world,
             size = vec2i{i32(e.viewport_size.x), i32(e.viewport_size.y)},
             camera = RenderCamera {
                 projection = camera_projection,
@@ -657,12 +660,10 @@ runtime_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
                 near       = camera.near_plane,
                 far        = camera.far_plane,
             },
-            clear_color = COLOR_BLACK,
+            // clear_color = COLOR_BLACK,
         }
-        // Render world normally
-        render_world(&e.renderer, packet)
 
-        dbg_render(g_dbg_context, cmd)
+        r3d_draw_frame(Renderer3DInstance, packet, cmd)
     }
 }
 
@@ -783,9 +784,8 @@ editor_viewport :: proc(e: ^Editor) {
         e.is_viewport_focused = imgui.IsWindowHovered({})
         if imgui.BeginMenuBar() {
             if imgui_enum_combo_id("MSAA Level", g_msaa_level, type_info_of(MSAA_Level)) {
-                width, height := int(e.viewport_size.x), int(e.viewport_size.y)
-                engine_resize(e.engine, width, height)
-                world_renderer_resize(&e.renderer, width, height)
+                engine_resize(e.engine, e.viewport_size)
+                // world_renderer_resize(&e.renderer, width, height)
             }
 
             if imgui_enum_combo_id("View Type", viewport_image, type_info_of(ViewportImage)) {
@@ -817,8 +817,8 @@ editor_viewport :: proc(e: ^Editor) {
             e.viewport_size = size
 
             width, height := int(size.x), int(size.y)
-            engine_resize(e.engine, width, height)
-            world_renderer_resize(&e.renderer, width, height)
+            engine_resize(e.engine, e.viewport_size)
+            // world_renderer_resize(&e.renderer, width, height)
         }
 
         // is this the correct place?
@@ -828,7 +828,7 @@ editor_viewport :: proc(e: ^Editor) {
         uv1 := vec2{1, 0}
 
         // texture_handle := get_color_attachment(e.target_frame_buffer^, e.target_color_attachment)
-        // imgui.Image(rawptr(uintptr(texture_handle)), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        imgui.Image(tex(Renderer3DInstance.world_framebuffers[0].color_attachments[0]), size, uv0, uv1)
 
         if imgui.BeginDragDropTarget() {
             if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Scene], {}); payload != nil {
@@ -2701,14 +2701,14 @@ pbr_material_asset_window :: proc(window: ^AssetWindow, material: ^PbrMaterial) 
         imgui.PushStyleVarImVec2(.FramePadding, {4, 4})
         if imgui.TreeNodeEx("Properties", {.Framed, .FramePadding, .SpanFullWidth}) {
             if do_property("material") {
-                do_property_name("Albedo Color")
-                do_property_value(material.block.albedo_color, "")
+                // do_property_name("Albedo Color")
+                // do_property_value(material.block.albedo_color, "")
 
-                do_property_name("Metallic Factor")
-                do_property_value(material.block.metallic_factor, "")
+                // do_property_name("Metallic Factor")
+                // do_property_value(material.block.metallic_factor, "")
 
-                do_property_name("Roughness")
-                do_property_value(material.block.roughness_factor, "")
+                // do_property_name("Roughness")
+                // do_property_value(material.block.roughness_factor, "")
 
                 do_property_name("Albedo Texture")
                 do_property_value(material.albedo_texture, `asset:"Texture2D"`)

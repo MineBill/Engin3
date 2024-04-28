@@ -11,72 +11,6 @@ import "gpu"
 
 VISUALIZE_CASCADES :: false
 
-// Maybe we could make this work??
-// @(shader_export)
-SSAO_KERNEL_SIZE :: 64
-
-SSAOData :: struct {
-    params: vec4,
-    kernel: [SSAO_KERNEL_SIZE]vec3,
-
-    // radius, bias: f32,
-}
-
-ViewData :: struct {
-    projection: mat4,
-    view: mat4,
-    screen_size: vec2,
-}
-
-SceneData :: struct {
-    view_position: vec3, _: f32,
-    view_direction: vec3, _: f32,
-    ambient_color: Color,
-}
-
-when USE_EDITOR {
-    EditorPerObjectData :: struct {
-        entity_id: int,
-    }
-} else {
-    EditorPerObjectData :: struct {}
-}
-
-PerObjectData :: struct {
-    model: mat4,
-
-    using _ : EditorPerObjectData,
-}
-
-DepthPassPerObjectData :: struct {
-    model, light_space: mat4,
-}
-
-MAX_SPOTLIGHTS :: 10
-MAX_POINTLIGHTS :: 10
-
-LightData :: struct {
-    directional: struct {
-        direction: vec4,
-        color: Color,
-        light_space_matrix: [4]mat4,
-    },
-    point_lights: [MAX_POINTLIGHTS]struct {
-        color: Color,
-        position: vec4,
-
-        constant: f32,
-        linear: f32,
-        quadratic: f32,
-        _: f32,
-    },
-    spot_lights: [MAX_SPOTLIGHTS]struct {
-        _: vec4,
-    },
-
-    shadow_split_distances: vec4,
-}
-
 RenderCamera :: struct {
     position : vec3,
     rotation: quaternion128,
@@ -84,11 +18,44 @@ RenderCamera :: struct {
     near, far: f32,
 }
 
+NewUniformBuffer :: struct($T: typeid) {
+    data: T,
+
+    handle: gpu.Buffer,
+    resource: gpu.Resource,
+}
+
+create_new_uniform_buffer :: proc(device: ^gpu.Device, pool: gpu.ResourcePool, $T: typeid, $name: cstring) -> (buffer: NewUniformBuffer(T)) {
+    spec := gpu.BufferSpecification {
+        name = name + " UBO",
+        device = device,
+        size = size_of(T),
+        usage = {.Uniform},
+        mapped = true,
+    }
+
+    buffer.handle = gpu.create_buffer(spec)
+
+    layout := gpu.create_resource_layout(device^, {
+        type = .UniformBuffer,
+        count = 1,
+        stage = {.Vertex, .Fragment},
+    })
+
+    // buffer.resource = gpu.allocate_resource(pool, layout)
+    // gpu.resource_bind_buffer(buffer.resource, buffer.handle, .UniformBuffer)
+    return
+}
+
+new_unifrom_buffer_flush :: proc(ubo: ^NewUniformBuffer($T)) {
+    mem.copy(ubo.handle.alloc_info.pMappedData, &ubo.data, size_of(T))
+}
+
 WorldRenderer :: struct {
     world: ^World,
 
     per_object_data: UniformBuffer(PerObjectData),
-    view_data:       UniformBuffer(ViewData),
+    // view_data:       UniformBuffer(ViewData),
     light_data:      UniformBuffer(LightData),
     scene_data:      UniformBuffer(SceneData),
     ssao_data:       UniformBuffer(SSAOData),
@@ -117,6 +84,10 @@ WorldRenderer :: struct {
     renderpasses: map[string]gpu.RenderPass,
     pipelines:    map[string]gpu.Pipeline,
     framebuffers: map[string]gpu.FrameBuffer,
+
+    global_resource_pool: gpu.ResourcePool,
+
+    view_data: NewUniformBuffer(ViewData),
 }
 
 world_renderer_init :: proc(renderer: ^WorldRenderer) {
@@ -344,7 +315,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
         pipeline_layout_spec := gpu.PipelineLayoutSpecification {
             tag = "Depth Pipeline Layout",
             device = &RendererInstance.device,
-            layout = resource_layout,
+            // layout = resource_layout,
         }
 
         pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec)
@@ -395,7 +366,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
                     load_op      = .Clear,
                     store_op     = .Store, // ?
                     final_layout = .ColorAttachmentOptimal,
-                    clear_depth  = 1.0,
+                    clear_color  = vec4{0.1, 0.1, 0.1, 1},
                 },
                 {
                     tag          = "Depth",
@@ -431,7 +402,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
         pipeline_layout_spec := gpu.PipelineLayoutSpecification {
             tag = "World Pipeline Layout",
             device = &RendererInstance.device,
-            layout = resource_layout,
+            // layout = resource_layout,
         }
 
         pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec)
@@ -464,6 +435,18 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     // =======================
     // END 3D WORLD RENDERPASS
     // =======================
+
+    pool_spec := gpu.ResourcePoolSpecification {
+        device = &RendererInstance.device,
+        max_sets = 10,
+        resource_limits = gpu.make_list([]gpu.ResourceLimit{{
+            resource = .UniformBuffer,
+            limit    = 10,
+        }}),
+    }
+    renderer.global_resource_pool = gpu.create_resource_pool(pool_spec)
+
+    renderer.view_data = create_new_uniform_buffer(&RendererInstance.device, renderer.global_resource_pool, ViewData, "View Data")
 
     // TODO(minebill): Figure out where this actually has to be initialized
     dbg_init(&EngineInstance.dbg_draw, renderer.renderpasses["world"])
@@ -941,6 +924,10 @@ do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRe
 
 world_renderer_resize :: proc(world_renderer: ^WorldRenderer, width, height: int) {
     world_renderer.world_frame_buffer.spec.samples = int(g_msaa_level)
+
+    for key, &fb in world_renderer.framebuffers {
+        gpu.framebuffer_resize(&fb, {f32(width), f32(height)})
+    }
 
     // resize_framebuffer(&world_renderer.final_frame_buffer, width, height)
     // resize_framebuffer(&world_renderer.world_frame_buffer, width, height)

@@ -73,6 +73,10 @@ device_get_name :: proc(device: Device, allocator := context.allocator) -> strin
     return strings.clone(string(device.properties.deviceName[:]))
 }
 
+device_wait :: proc(device: Device) {
+    vk.DeviceWaitIdle(device.handle)
+}
+
 _vk_device_create_descriptor_pool :: proc(
     device: Device,
     count: u32,

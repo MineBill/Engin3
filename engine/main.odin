@@ -4,14 +4,23 @@ import "core:mem"
 import "core:os"
 import "core:strings"
 import "core:time"
+import "core:fmt"
 import "packages:back"
 import tracy "packages:odin-tracy"
 
 main :: proc() {
-    context.logger = create_custom_console_logger(opt = {
+    log_file, file_err := os.open("output.log", os.O_CREATE | os.O_TRUNC | os.O_RDONLY)
+    if file_err != os.ERROR_NONE {
+        fmt.panicf("Failed to open log file: %v", file_err)
+    }
+    file_logger := log.create_file_logger(log_file)
+
+    console_logger := create_custom_console_logger(opt = {
         .Level,
         .Terminal_Color,
     }, ident = "engine")
+
+    context.logger = log.create_multi_logger(file_logger, console_logger)
 
     back.register_segfault_handler()
     context.assertion_failure_proc = back.assertion_failure_proc

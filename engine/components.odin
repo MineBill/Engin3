@@ -444,7 +444,7 @@ make_camera :: proc() -> rawptr {
     camera.fov = 50
     camera.near_plane = 0.1
     camera.far_plane = 100.0
-    aspect := f32(EngineInstance.width) / f32(EngineInstance.height)
+    aspect := f32(EngineInstance.screen_size.x) / f32(EngineInstance.screen_size.y)
     camera.projection = linalg.matrix4_perspective_f32(camera.fov, aspect, 0.1, 1000.0)
 
     return camera
@@ -463,7 +463,7 @@ camera_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {
 
     this.view = linalg.matrix4_from_quaternion(this.rotation) *
                     linalg.inverse(linalg.matrix4_translate(entity.transform.position))
-    this.projection = linalg.matrix4_perspective_f32(math.to_radians(f32(this.fov)), f32(EngineInstance.width) / f32(EngineInstance.height), this.near_plane, this.far_plane)
+    this.projection = linalg.matrix4_perspective_f32(math.to_radians(f32(this.fov)), f32(EngineInstance.screen_size.x) / f32(EngineInstance.screen_size.y), this.near_plane, this.far_plane)
     corners := get_frustum_corners_world_space(
         this.projection,
         this.view)
@@ -496,7 +496,7 @@ camera_prop_changed :: proc(this: rawptr, prop: any) {
     case "fov":
     case "near_plane":
     case "far_plane":
-        aspect := f32(EngineInstance.width) / f32(EngineInstance.height)
+        aspect := f32(EngineInstance.screen_size.x) / f32(EngineInstance.screen_size.y)
         this.projection = linalg.matrix4_perspective_f32(this.fov, aspect, this.near_plane, this.far_plane)
         // upload_material(this.material)
     }
