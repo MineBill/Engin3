@@ -37,20 +37,23 @@ Renderer3D :: struct {
 
     scene_uniform_usage: gpu.ResourceUsage,
 
+    material_pool: gpu.ResourcePool,
+
     // Probably shouldn't be here.
     imgui_renderpass: gpu.RenderPass,
 
     swapchain_needs_resize: bool,
     _editor_images: map[gpu.UUID]vk.DescriptorSet,
+
+    white_texture, normal_texture: AssetHandle,
 }
 
 tex :: proc(image: gpu.Image) -> imgui.TextureID {
     return transmute(imgui.TextureID) Renderer3DInstance._editor_images[image.id]
 }
 
-r3d_init :: proc(r: ^Renderer3D) {
+r3d_setup :: proc(r: ^Renderer3D) {
     Renderer3DInstance = r
-
     error: gpu.Error
     r.instance, error = gpu.create_instance(
         "Engin3",
@@ -84,7 +87,30 @@ r3d_init :: proc(r: ^Renderer3D) {
         },
     })
 
+    pool_spec := gpu.ResourcePoolSpecification {
+        device = &r.device,
+        max_sets = 2,
+        resource_limits = gpu.make_list([]gpu.ResourceLimit{{
+            resource = .UniformBuffer,
+            limit    = 3,
+        }}),
+    }
+    r.global_pool = gpu.create_resource_pool(pool_spec)
+
+    pool_spec = gpu.ResourcePoolSpecification {
+        device = &r.device,
+        max_sets = 20,
+        resource_limits = gpu.make_list([]gpu.ResourceLimit{{
+            resource = .UniformBuffer,
+            limit    = 30,
+        }}),
+    }
+    r.material_pool = gpu.create_resource_pool(pool_spec)
+}
+
+r3d_init :: proc(r: ^Renderer3D) {
     r3d_setup_renderpasses(r)
+    create_default_resources(r)
 
     swapchain_spec := gpu.SwapchainSpecification {
         device = &r.device,
@@ -96,17 +122,9 @@ r3d_init :: proc(r: ^Renderer3D) {
         renderpass = r.imgui_renderpass
     }
 
+    error: gpu.Error
     r.swapchain, error = gpu.create_swapchain(swapchain_spec)
 
-    pool_spec := gpu.ResourcePoolSpecification {
-        device = &r.device,
-        max_sets = 2,
-        resource_limits = gpu.make_list([]gpu.ResourceLimit{{
-            resource = .UniformBuffer,
-            limit    = 3,
-        }}),
-    }
-    r.global_pool = gpu.create_resource_pool(pool_spec)
     r.global_uniform_buffer = create_uniform_buffer(&r.device, r.global_pool, GlobalUniform, "Global")
 
     r.scene_uniform_buffer = create_uniform_buffer(&r.device, r.global_pool, SceneData, "Scene Data")
@@ -212,6 +230,7 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer) {
     r.scene_uniform_buffer.data.view_position = packet.camera.position
     r.scene_uniform_buffer.data.ambient_color = Color{0.4, 0.1, 0.1, 1.0}
     uniform_buffer_flush(&r.scene_uniform_buffer)
+    gpu.bind_resource(cmd, r.scene_uniform_buffer.resource, r.world_pipeline, 1)
 
     // for mesh in mesh_components {
     //     // mat := mesh
@@ -222,6 +241,12 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer) {
         if mesh == nil do continue
 
         go := get_object(packet.scene, mr.owner)
+
+        material := get_asset(&EngineInstance.asset_manager, mr.material, PbrMaterial)
+        fmt.assertf(material != nil, "Cannot have <nil> material. A default one should have been assigned.")
+
+        uniform_buffer_flush(&material.block)
+        gpu.bind_resource(cmd, material.block.resource, r.world_pipeline, 2)
 
         mat := go.transform.global_matrix
         // draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
@@ -234,7 +259,7 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer) {
 }
 
 UniformBuffer :: struct($T: typeid) {
-    data: T,
+    using data: T,
 
     handle: gpu.Buffer,
     resource: gpu.Resource,
@@ -383,16 +408,22 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) {
             r.world_framebuffers[i] = gpu.create_framebuffer(fb_spec)
         }
 
-        resource_layout := gpu.create_resource_layout(
-            Renderer3DInstance.device,
+        global_layout := gpu.create_resource_layout(
+            r.device,
             r.global_uniform_resource_usage)
 
-        scene_buffer_layout := gpu.create_resource_layout(Renderer3DInstance.device, r.scene_uniform_usage)
+        scene_buffer_layout := gpu.create_resource_layout(r.device, r.scene_uniform_usage)
+
+        object_layout := gpu.create_resource_layout(r.device, gpu.ResourceUsage {
+            type = .UniformBuffer,
+            count = 1,
+            stage = {.Vertex, .Fragment},
+        })
 
         pipeline_layout_spec := gpu.PipelineLayoutSpecification {
             device = &r.device,
             tag = "Object Pipeline Layout",
-            layouts = gpu.make_list([]gpu.ResourceLayout {resource_layout, scene_buffer_layout}),
+            layouts = gpu.make_list([]gpu.ResourceLayout {global_layout, scene_buffer_layout, object_layout}),
             use_push = true,
         }
 
@@ -414,6 +445,24 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) {
 
         r.world_pipeline = world_pipeline
     }
+}
+
+@(private = "file")
+create_default_resources :: proc(r: ^Renderer3D) {
+    spec := TextureSpecification {
+        width = 1,
+        height = 1,
+        samples = 1,
+        anisotropy = 1,
+        filter = .Nearest,
+        format = .RGBA8,
+    }
+
+    white_data := []byte {255, 255, 255, 255}
+    r.white_texture = create_virtual_asset(&EngineInstance.asset_manager, new_texture2d(spec, white_data), "Default White Texture")
+
+    normal_data := []byte {128, 128, 255, 255}
+    r.normal_texture = create_virtual_asset(&EngineInstance.asset_manager, new_texture2d(spec, normal_data), "Default Normal Texture")
 }
 
 @(private = "file")
@@ -508,3 +557,62 @@ initialize_imgui_for_vulkan :: proc(r: ^Renderer3D) {
 
     imgui_impl_vulkan.Init(&imgui_init, s.imgui_renderpass.handle)
 }
+
+TextureSpecification :: struct {
+    width, height: int,
+    samples: int,
+    anisotropy: int,
+    filter: TextureFilter,
+    format, desired_format: TextureFormat,
+    type: TextureType,
+    wrap: TextureWrap,
+    pixel_type: TexturePixelType,
+}
+
+@(asset)
+Texture :: struct {
+    using base: Asset,
+
+    handle: gpu.Image,
+    spec: TextureSpecification,
+}
+
+@(asset = {
+    ImportFormats = ".png,.jpg,.jpeg",
+})
+Texture2D :: struct {
+    using texture_base: Texture,
+}
+
+create_texture2d :: proc(spec: TextureSpecification, data: []byte = {}) -> (texture: Texture2D) {
+    spec := spec
+    spec.samples = 1 if spec.samples <= 0 else spec.samples
+    spec.anisotropy = 1 if spec.anisotropy <= 0 else spec.anisotropy
+    spec.desired_format = spec.format if spec.desired_format == nil else spec.desired_format
+    spec.pixel_type = .Unsigned if spec.pixel_type == nil else spec.pixel_type
+    texture.spec = spec
+
+    image_spec := gpu.ImageSpecification {
+        device = &Renderer3DInstance.device,
+        width = spec.width,
+        height = spec.height,
+        samples = spec.samples,
+        usage = {.Sampled, .TransferDst, .ColorAttachment},
+        format = .R8G8B8A8_SRGB,
+    }
+
+    texture.handle = gpu.create_image(image_spec)
+    gpu.image_set_data(&texture.handle, data)
+    return
+}
+
+new_texture2d :: proc(spec: TextureSpecification, data: []byte = {}) -> (texture: ^Texture2D) {
+    texture = new(Texture2D)
+    texture^ = create_texture2d(spec, data)
+    return
+}
+
+set_texture2d_data :: proc(texture: ^Texture2D, data: []byte, level: i32 = 0, layer := 0) {
+    gpu.image_set_data(&texture.handle, data)
+}
+

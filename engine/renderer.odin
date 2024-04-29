@@ -639,64 +639,6 @@ texture_pixel_type_to_open :: proc(type: TexturePixelType) -> u32 {
     unreachable()
 }
 
-TextureSpecification :: struct {
-    width, height: int,
-    samples: int,
-    anisotropy: int,
-    filter: TextureFilter,
-    format, desired_format: TextureFormat,
-    type: TextureType,
-    wrap: TextureWrap,
-    pixel_type: TexturePixelType,
-}
-
-@(asset)
-Texture :: struct {
-    using base: Asset,
-
-    handle: gpu.Image,
-    spec: TextureSpecification,
-}
-
-@(asset = {
-    ImportFormats = ".png,.jpg,.jpeg",
-})
-Texture2D :: struct {
-    using texture_base: Texture,
-}
-
-create_texture2d :: proc(spec: TextureSpecification, data: []byte = {}) -> (texture: Texture2D) {
-    spec := spec
-    spec.samples = 1 if spec.samples <= 0 else spec.samples
-    spec.anisotropy = 1 if spec.anisotropy <= 0 else spec.anisotropy
-    spec.desired_format = spec.format if spec.desired_format == nil else spec.desired_format
-    spec.pixel_type = .Unsigned if spec.pixel_type == nil else spec.pixel_type
-    texture.spec = spec
-
-    image_spec := gpu.ImageSpecification {
-        device = &Renderer3DInstance.device,
-        width = spec.width,
-        height = spec.height,
-        samples = spec.samples,
-        usage = {.Sampled, .TransferDst, .ColorAttachment},
-        format = .R8G8B8A8_SRGB,
-    }
-
-    texture.handle = gpu.create_image(image_spec)
-    gpu.image_set_data(&texture.handle, data)
-    return
-}
-
-new_texture2d :: proc(spec: TextureSpecification, data: []byte = {}) -> (texture: ^Texture2D) {
-    texture = new(Texture2D)
-    texture^ = create_texture2d(spec, data)
-    return
-}
-
-set_texture2d_data :: proc(texture: ^Texture2D, data: []byte, level: i32 = 0, layer := 0) {
-    gpu.image_set_data(&texture.handle, data)
-}
-
 // CubemapTexture :: struct {
 //     using texture_base: Texture,
 // }

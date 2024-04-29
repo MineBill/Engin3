@@ -58,10 +58,14 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     editor_open_project(&e.editor)
 
+    // NOTE(minebill): Call setup first to create the device which is needed by the material loader (from the asset manager).
+    // There are alternative ways but this is simple right now.
+    // Possible alternatives:
+    // - Defer loading until the renderer is initialized. Probably needs a whole system refactor.
+    r3d_setup(&e.renderer)
+
     asset_manager_init(&e.asset_manager)
 
-    // renderer_init(&e.renderer)
-    // renderer_set_instance(&e.renderer)
     r3d_init(&e.renderer)
 
     editor_init(&e.editor, e)

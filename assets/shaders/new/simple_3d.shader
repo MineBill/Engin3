@@ -1,10 +1,17 @@
 #version 450 core
+#include "new/common.glsl"
 
-layout(std140, set = 0, binding = 0) uniform ViewData {
+layout(std140, set = GLOBAL_SET, binding = 0) uniform ViewData {
     mat4 projection;
     mat4 view;
     vec2 screen_size;
 } u_ViewData;
+
+layout(std140, set = OBJECT_SET, binding = 0) uniform Material {
+    vec4 albedo_color;
+    float metallic;
+    float roughness;
+} u_Material;
 
 /* layout(std140, set = 1, binding = 0) uniform PerObjectData {
     mat4 model;
@@ -62,7 +69,8 @@ void Fragment() {
     vec3 Lo = vec3(0.0);
 
     // Lo += do_directional_light();
-    Lo += vec3(0.6, 0.4, 0.2);
+    // Lo += u_Material.albedo_color.rgb;
+    Lo += u_Material.albedo_color.rgb;
 
     /* for (int i = 0; i < u_LightData.num_point_lights; i++) {
         Lo += do_point_light(u_LightData.pointlights[i]);

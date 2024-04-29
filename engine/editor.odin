@@ -543,14 +543,14 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         physics_update(PhysicsInstance, _delta)
     }
 
-    // for handle, &window in e.asset_windows {
-    //     asset_window_render(&window)
+    for handle, &window in e.asset_windows {
+        asset_window_render(&window)
 
-    //     if !window.opened {
-    //         // Remove from map
-    //         delete_key(&e.asset_windows, handle)
-    //     }
-    // }
+        if !window.opened {
+            // Remove from map
+            delete_key(&e.asset_windows, handle)
+        }
+    }
 
     editor_asset_manager(e)
     editor_undo_redo_window(e)
@@ -2643,13 +2643,13 @@ create_asset_window :: proc(asset: AssetHandle) -> (window: AssetWindow) {
     window.asset = asset
     window.opened = true
 
-    spec := FrameBufferSpecification {
-        width = 300,
-        height = 300,
-        samples = 1,
-        attachments = attachment_list(.RGBA16F, .DEPTH),
-    }
-    window.preview_framebuffer = create_framebuffer(spec)
+    // spec := FrameBufferSpecification {
+    //     width = 300,
+    //     height = 300,
+    //     samples = 1,
+    //     attachments = attachment_list(.RGBA16F, .DEPTH),
+    // }
+    // window.preview_framebuffer = create_framebuffer(spec)
 
     window.preview_camera = EditorCamera {
         position = vec3{0, 0, 3},
@@ -2701,14 +2701,14 @@ pbr_material_asset_window :: proc(window: ^AssetWindow, material: ^PbrMaterial) 
         imgui.PushStyleVarImVec2(.FramePadding, {4, 4})
         if imgui.TreeNodeEx("Properties", {.Framed, .FramePadding, .SpanFullWidth}) {
             if do_property("material") {
-                // do_property_name("Albedo Color")
-                // do_property_value(material.block.albedo_color, "")
+                do_property_name("Albedo Color")
+                do_property_value(material.block.albedo_color, "")
 
-                // do_property_name("Metallic Factor")
-                // do_property_value(material.block.metallic_factor, "")
+                do_property_name("Metallic Factor")
+                do_property_value(material.block.metallic_factor, "")
 
-                // do_property_name("Roughness")
-                // do_property_value(material.block.roughness_factor, "")
+                do_property_name("Roughness")
+                do_property_value(material.block.roughness_factor, "")
 
                 do_property_name("Albedo Texture")
                 do_property_value(material.albedo_texture, `asset:"Texture2D"`)
@@ -2774,7 +2774,7 @@ pbr_material_asset_window :: proc(window: ^AssetWindow, material: ^PbrMaterial) 
             size = vec2i{i32(size.x), i32(size.y)},
             clear_color = COLOR_LAVENDER,
         }
-        render_material_preview(packet, &window.preview_framebuffer, material, window.cube_mesh, &EditorInstance.renderer, &EditorInstance.preview_cubemap_texture)
+        // render_material_preview(packet, &window.preview_framebuffer, material, window.cube_mesh, &EditorInstance.renderer, &EditorInstance.preview_cubemap_texture)
 
         uv0 :: vec2{0, 1}
         uv1 :: vec2{1, 0}

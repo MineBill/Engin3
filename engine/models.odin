@@ -78,6 +78,7 @@ new_pbr_material :: proc() -> ^Asset {
     material := new(PbrMaterial)
 
     // material.block = create_uniform_buffer(type_of(material.block.data), 10)
+    material.block = create_uniform_buffer(&Renderer3DInstance.device, Renderer3DInstance.material_pool, type_of(material.block.data), "PBR Material")
 
     return material
 }
@@ -89,24 +90,24 @@ serialize_pbr_material :: proc(this: ^Asset, s: ^SerializeContext) {
     switch s.mode {
     case .Serialize:
         serialize_begin_table(s, "PbrMaterial")
-        // serialize_do_field(s, "AlbedoColor", this.block.albedo_color)
-        // serialize_do_field(s, "MetallicFactor", this.block.metallic_factor)
-        // serialize_do_field(s, "RoughnessFactor", this.block.roughness_factor)
+        serialize_do_field(s, "AlbedoColor", this.block.albedo_color)
+        serialize_do_field(s, "MetallicFactor", this.block.metallic_factor)
+        serialize_do_field(s, "RoughnessFactor", this.block.roughness_factor)
         serialize_asset_handle(&EngineInstance.asset_manager, s, "AbledoTexture", &this.albedo_texture)
         serialize_asset_handle(&EngineInstance.asset_manager, s, "NormalTexture", &this.normal_texture)
 
         serialize_end_table(s)
     case .Deserialize:
         if serialize_begin_table(s, "PbrMaterial") {
-            // if color, ok := serialize_get_field(s, "AlbedoColor", Color); ok {
-            //     this.block.albedo_color = color
-            // }
-            // if metallic, ok := serialize_get_field(s, "MetallicFactor", f32); ok {
-            //     this.block.metallic_factor = metallic
-            // }
-            // if roughness, ok := serialize_get_field(s, "RoughnessFactor", f32); ok {
-            //     this.block.roughness_factor = roughness
-            // }
+            if color, ok := serialize_get_field(s, "AlbedoColor", Color); ok {
+                this.block.albedo_color = color
+            }
+            if metallic, ok := serialize_get_field(s, "MetallicFactor", f32); ok {
+                this.block.metallic_factor = metallic
+            }
+            if roughness, ok := serialize_get_field(s, "RoughnessFactor", f32); ok {
+                this.block.roughness_factor = roughness
+            }
 
             serialize_asset_handle(&EngineInstance.asset_manager, s, "AbledoTexture", &this.albedo_texture)
             serialize_asset_handle(&EngineInstance.asset_manager, s, "NormalTexture", &this.normal_texture)
