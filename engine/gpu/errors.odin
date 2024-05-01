@@ -20,4 +20,5 @@ PipelineCreationError :: enum {
 ResourceAllocationError :: enum {
     None,
     OutOfMemory,
+    FragmentedPool,
 }

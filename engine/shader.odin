@@ -24,6 +24,9 @@ Shader :: struct {
     using base: Asset,
 
     shader: gpu.Shader,
+    pipeline: gpu.Pipeline,
+
+    pipeline_spec: gpu.PipelineSpecification,
     vertex, fragment: string,
 }
 
@@ -61,7 +64,7 @@ load_shader_stage :: proc(path: string, source: string, shader_kind: ShaderKind,
     return
 }
 
-shader_load_from_file :: proc(path: string, force_compile := false) -> (shader: Shader, ok: bool) {
+shader_load_from_file :: proc(path: string, pipeline_spec: Maybe(gpu.PipelineSpecification) = {}, force_compile := false) -> (shader: Shader, ok: bool) {
     shader_source, _ := os.read_entire_file(path)
     vertex_src, fragment_src := split_shader(string(shader_source))
 
@@ -74,57 +77,30 @@ shader_load_from_file :: proc(path: string, force_compile := false) -> (shader: 
     }
     shader.shader = gpu.create_shader(&Renderer3DInstance.device, shader_spec)
 
-    // shader.program = gl.CreateProgram()
-    // gl.AttachShader(shader.program, vertex)
-    // gl.AttachShader(shader.program, fragment)
-    // gl.LinkProgram(shader.program)
+    if spec, ok := pipeline_spec.?; ok {
+        spec.shader = shader.shader
+        shader.pipeline_spec = spec
 
-    // shader.vertex   = strings.clone(vertex_path)
-    // shader.fragment = strings.clone(fragment_path)
-
-    // success: i32
-    // gl.GetProgramiv(shader.program, gl.LINK_STATUS, &success)
-    // if b32(success) != gl.TRUE {
-    //     log_buffer: [512]byte
-    //     length: i32
-    //     gl.GetProgramInfoLog(shader.program, len(log_buffer), &length, raw_data(log_buffer[:]))
-    //     log.errorf("Error linking shader program: \n%v", string(log_buffer[:length]))
-    //     return {}, false
-    // }
+        pipeline_error: gpu.PipelineCreationError
+        shader.pipeline, pipeline_error = gpu.create_pipeline(&Renderer3DInstance.device, spec)
+        fmt.assertf(pipeline_error == nil, "Failed to create pipeline: %v", pipeline_error)
+    }
 
     return shader, true
 }
 
-// shader_load_from_file :: proc(vertex_path, fragment_path: string, force_compile := false) -> (shader: Shader, ok: bool) {
-//     vertex := load_shader_stage(vertex_path, .Vertex, force_compile) or_return
-//     fragment := load_shader_stage(fragment_path, .Fragment, force_compile) or_return
+new_shader :: proc(path: string, pipeline_spec: Maybe(gpu.PipelineSpecification) = {}, force_compile := false) -> (shader: ^Shader, ok: bool) {
+    shader = new(Shader)
+    shader^, ok = shader_load_from_file(path, pipeline_spec, force_compile)
+    return
+}
 
-//     shader.program = gl.CreateProgram()
-//     gl.AttachShader(shader.program, vertex)
-//     gl.AttachShader(shader.program, fragment)
-//     gl.LinkProgram(shader.program)
-
-//     shader.vertex   = strings.clone(vertex_path)
-//     shader.fragment = strings.clone(fragment_path)
-
-//     success: i32
-//     gl.GetProgramiv(shader.program, gl.LINK_STATUS, &success)
-//     if b32(success) != gl.TRUE {
-//         log_buffer: [512]byte
-//         length: i32
-//         gl.GetProgramInfoLog(shader.program, len(log_buffer), &length, raw_data(log_buffer[:]))
-//         log.errorf("Error linking shader program: \n%v", string(log_buffer[:length]))
-//         return {}, false
-//     }
-
-//     return shader, true
-// }
-
-shader_reload :: proc(shader: ^Shader) {
-    // new_shader, ok := shader_load_from_file(shader.vertex, shader.fragment, force_compile = true)
-    // if ok {
-    //     shader^ = new_shader
-    // }
+shader_reload :: proc(shader: ^Shader, path: string) {
+    log_debug(LC.AssetSystem, "Shader reload requested")
+    new_shader, ok := shader_load_from_file(path, shader.pipeline_spec, true)
+    if ok {
+        shader^ = new_shader
+    }
 }
 
 // Editor-Only

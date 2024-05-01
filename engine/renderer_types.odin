@@ -1,4 +1,5 @@
 package engine
+import "gpu"
 
 GlobalUniform :: struct {
     projection: mat4,
@@ -21,12 +22,6 @@ SSAOData :: struct {
     kernel: [SSAO_KERNEL_SIZE]vec3,
 
     // radius, bias: f32,
-}
-
-ViewData :: struct {
-    projection: mat4,
-    view: mat4,
-    screen_size: vec2,
 }
 
 when USE_EDITOR {
@@ -71,3 +66,32 @@ LightData :: struct {
 
     shadow_split_distances: vec4,
 }
+
+GlobalSet :: struct {
+    resource: gpu.Resource,
+    layout: gpu.ResourceLayout,
+    // pool: gpu.ResourcePool,
+
+    uniform_buffer: UniformBuffer(GlobalUniform),
+}
+
+SceneSet :: struct {
+    resource: gpu.Resource,
+    layout: gpu.ResourceLayout,
+    // pool: gpu.ResourcePool,
+
+    scene_data: UniformBuffer(SceneData),
+    light_data: UniformBuffer(LightData),
+}
+
+ObjectSet :: struct {
+    resource: gpu.Resource,
+    layout: gpu.ResourceLayout,
+    // pool: gpu.ResourcePool,
+
+    material: PbrMaterial,
+
+    albedo_image: gpu.Image,
+    normal_image: gpu.Image,
+}
+

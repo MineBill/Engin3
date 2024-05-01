@@ -139,6 +139,7 @@ swapchain_invalidate :: proc(swapchain: ^Swapchain) -> (error: SwapchainCreation
         height = cast(int) swapchain.spec.extent.height,
         samples = 1,
         usage  = {.DepthStencilAttachment},
+        final_layout = .DepthStencilReadOnlyOptimal,
     }
     swapchain.depth_image = create_image(spec)
 
@@ -246,7 +247,7 @@ swapchain_get_images :: proc(swapchain: ^Swapchain) {
             height       = cast(int) swapchain.spec.extent.height,
             samples      = 1,
             usage        = {.TransferDst, .ColorAttachment},
-            layout       = .Undefined,
+            final_layout = .ColorAttachmentOptimal,
         }
 
         image := create_image_from_existing_vk_image(vk_image, spec)

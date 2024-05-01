@@ -109,6 +109,7 @@ framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
                     height = fb.spec.height,
                     samples = fb.spec.samples,
                     usage = {.Sampled, .TransferSrc, .TransferDst, .ColorAttachment},
+                    final_layout = .ColorAttachmentOptimal,
                 }
 
                 append(&fb.color_attachments, create_image(spec))

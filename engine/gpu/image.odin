@@ -16,12 +16,13 @@ Image :: struct {
 }
 
 ImageSpecification :: struct {
+    tag: cstring,
     device: ^Device,
     width, height: int,
     samples: int,
     format: ImageFormat,
     usage: ImageUsageFlags,
-    layout: ImageLayout,
+    layout, final_layout: ImageLayout,
     sampler: SamplerSpecification,
 }
 
@@ -106,7 +107,7 @@ image_set_data :: proc(image: ^Image, data: []byte = {}) {
 
     image_transition_layout(image, .TransferDstOptimal)
     buffer_copy_to_image(buffer, image^)
-    image_transition_layout(image, .ColorAttachmentOptimal)
+    image_transition_layout(image, .ShaderReadOnlyOptimal)
 }
 
 @(private)
@@ -173,6 +174,9 @@ image_transition_layout :: proc(image: ^Image, new_layout: ImageLayout) {
     defer device_end_single_time_command(image.spec.device^, command_buffer)
 
     old := image.spec.layout
+    if old == new_layout {
+        return
+    }
     image.spec.layout = new_layout
 
     barrier := vk.ImageMemoryBarrier {
@@ -201,13 +205,23 @@ image_transition_layout :: proc(image: ^Image, new_layout: ImageLayout) {
         dstStage = {.TRANSFER}
     } else if old == .TransferDstOptimal && new_layout == .ShaderReadOnlyOptimal {
         barrier.srcAccessMask = {.TRANSFER_WRITE}
-        barrier.dstAccessMask = {.COLOR_ATTACHMENT_WRITE}
+        barrier.dstAccessMask = {.SHADER_READ}
         srcStage = {.TRANSFER}
-        dstStage = {.COLOR_ATTACHMENT_OUTPUT}
+        dstStage = {.FRAGMENT_SHADER}
+    } else if old == .ShaderReadOnlyOptimal && new_layout == .TransferDstOptimal {
+        barrier.srcAccessMask = {.SHADER_READ}
+        barrier.dstAccessMask = {.TRANSFER_WRITE}
+        srcStage = {.FRAGMENT_SHADER}
+        dstStage = {.TRANSFER}
+    } else if old == .ColorAttachmentOptimal && new_layout == .ShaderReadOnlyOptimal {
+        barrier.srcAccessMask = {.COLOR_ATTACHMENT_WRITE}
+        barrier.dstAccessMask = {.SHADER_READ}
+        srcStage = {.COLOR_ATTACHMENT_OUTPUT}
+        dstStage = {.FRAGMENT_SHADER}
     } else if old == .TransferDstOptimal && new_layout == .ColorAttachmentOptimal {
         // Complete this
     } else {
-        fmt.panicf("Unsupported layout transition!")
+        fmt.panicf("Unsupported layout transition from '%v' to '%v'!", old, new_layout)
     }
 
     vk.CmdPipelineBarrier(command_buffer.handle, srcStage, dstStage, {}, 0, nil, 0, nil, 1, &barrier)

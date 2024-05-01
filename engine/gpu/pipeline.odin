@@ -11,11 +11,12 @@ Pipeline :: struct {
 
 PipelineSpecification :: struct {
     tag:              cstring,
-    shader:           Shader,
     layout:           PipelineLayout,
     attribute_layout: VertexAttributeLayout,
     renderpass:       RenderPass,
     config:           Maybe(PipelineConfig),
+
+    shader:           Shader,
 }
 
 create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeline: Pipeline, error: PipelineCreationError) {

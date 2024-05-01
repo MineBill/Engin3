@@ -77,8 +77,13 @@ PbrMaterial :: struct {
 new_pbr_material :: proc() -> ^Asset {
     material := new(PbrMaterial)
 
-    // material.block = create_uniform_buffer(type_of(material.block.data), 10)
-    material.block = create_uniform_buffer(&Renderer3DInstance.device, Renderer3DInstance.material_pool, type_of(material.block.data), "PBR Material")
+    // TODO(minebill): Hacky solution, this doesn't belong here.
+    object_shader := get_asset(&EngineInstance.asset_manager, Renderer3DInstance.object_shader, Shader)
+
+    material.block = create_uniform_buffer(
+        &Renderer3DInstance.device,
+        type_of(material.block.data),
+        "PBR Material")
 
     return material
 }

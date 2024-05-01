@@ -86,8 +86,6 @@ WorldRenderer :: struct {
     framebuffers: map[string]gpu.FrameBuffer,
 
     global_resource_pool: gpu.ResourcePool,
-
-    view_data: NewUniformBuffer(ViewData),
 }
 
 world_renderer_init :: proc(renderer: ^WorldRenderer) {
@@ -446,7 +444,6 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
     }
     renderer.global_resource_pool = gpu.create_resource_pool(pool_spec)
 
-    renderer.view_data = create_new_uniform_buffer(&RendererInstance.device, renderer.global_resource_pool, ViewData, "View Data")
 
     // TODO(minebill): Figure out where this actually has to be initialized
     dbg_init(&EngineInstance.dbg_draw, renderer.renderpasses["world"])

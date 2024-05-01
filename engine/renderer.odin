@@ -155,7 +155,7 @@ renderer_create_swapchain :: proc(r: ^Renderer) {
     swapchain_spec := gpu.SwapchainSpecification {
         device = &r.device,
         renderpass = r.renderpasses["imgui"],
-        present_mode = .Fifo,
+        present_mode = .Mailbox,
         extent = {
             width = u32(EngineInstance.screen_size.x),
             height = u32(EngineInstance.screen_size.y),
