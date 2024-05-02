@@ -54,7 +54,7 @@ when USE_EDITOR {
 Asset :: struct {
     using _ : AssetVTable,
 
-    id: UUID,
+    asset_handle: AssetHandle,
     type: AssetType,
 }
 
@@ -66,6 +66,9 @@ when USE_EDITOR {
         path: string,
 
         is_virtual: bool,
+
+        // If true, this asset will not be serialized in the registry.
+        dont_serialize: bool,
     }
 
     AssetRegistry :: map[AssetHandle]AssetMetadata
@@ -107,9 +110,40 @@ when USE_EDITOR {
                 assets_folder_name := filepath.base(project_get_assets_folder(EditorInstance.active_project, temp))
                 path := filepath.join({assets_folder_name, file}, temp)
                 handle := get_asset_handle_from_path(manager, path)
-                if get_asset_type(manager, handle) == .LuaScript {
+
+                metadata := get_asset_metadata(manager, handle)
+                #partial switch metadata.type {
+                case .LuaScript:
                     log_debug(LC.AssetSystem, "Attemping to re-import lua script '%v'", path)
                     reimport_asset(manager, handle)
+                case .Shader:
+                    log_debug(LC.AssetSystem, "%v", metadata)
+                }
+            })
+
+        BUILTIN_ASSETS_DIR :: "W:\\source\\projects\\Engin3\\assets"
+        fs.watcher_init_with_callback(
+            &manager.assets_watcher,
+            BUILTIN_ASSETS_DIR,
+            manager,
+            proc(data: rawptr, file: string) {
+                context.logger = EditorInstance.logger
+                manager := cast(^EditorAssetManager) data
+                temp := context.temp_allocator
+
+                path, _ := filepath.to_slash(filepath.join({"assets", file}, temp), context.temp_allocator)
+                handle := get_asset_handle_from_path(manager, path)
+
+                metadata := get_asset_metadata(manager, handle)
+                #partial switch metadata.type {
+                case .LuaScript:
+                    log_debug(LC.AssetSystem, "Attemping to re-import lua script '%v'", path)
+                    reimport_asset(manager, handle)
+                case .Shader:
+                    log_debug(LC.AssetSystem, "Starting shader reload..")
+                    shader := get_asset(manager, handle, Shader)
+                    shader_reload(shader, metadata.path)
+                    log_debug(LC.AssetSystem, "Shader reload finished.")
                 }
             })
 
@@ -325,6 +359,7 @@ when USE_EDITOR {
 
                 asset := constructor()
                 handle := AssetHandle(generate_uuid())
+                asset.asset_handle = handle
 
                 metadata := AssetMetadata {
                     type = type,
@@ -434,7 +469,7 @@ when USE_EDITOR {
         delete_key(&manager.registry, asset)
     }
 
-    create_virtual_asset :: proc(manager: ^EditorAssetManager, asset: ^$T, tag: string = "")  -> (handle: AssetHandle)
+    create_virtual_asset :: proc(manager: ^EditorAssetManager, asset: ^$T, tag: string = "Virtual Asset")  -> (handle: AssetHandle)
         where intr.type_is_subtype_of(T, Asset) {
 
         type := RAW_TYPE_TO_ASSET_TYPE[T]
@@ -452,6 +487,7 @@ when USE_EDITOR {
         return
     }
 
+
     serialize_asset_registry :: proc(registry: ^AssetRegistry, s: ^SerializeContext) {
         serialize_begin_table(s, "AssetRegistry")
 
@@ -463,7 +499,7 @@ when USE_EDITOR {
             slice.sort(handles)
             for handle, i in handles {
                 metadata := registry[handle]
-                if metadata.is_virtual do continue
+                if metadata.is_virtual || metadata.dont_serialize do continue
 
                 serialize_begin_table_int(s, i)
                 serialize_do_field(s, "Handle", handle)
