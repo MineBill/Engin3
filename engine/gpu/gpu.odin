@@ -1,10 +1,11 @@
 package gpu
 
+import "core:fmt"
 import vk "vendor:vulkan"
 import array "core:container/small_array"
 import vma "packages:odin-vma"
 
-MAX_FRAMEBUFFER_ATTACHMENTS :: 4
+MAX_FRAMEBUFFER_ATTACHMENTS :: 5
 
 FrameBuffer :: struct {
     handle: vk.Framebuffer,
@@ -30,7 +31,7 @@ FrameBufferSpecification :: struct {
 @(private = "file")
 assert_spec :: proc(spec: FrameBufferSpecification) {
     assert(len(spec.attachments) <= MAX_FRAMEBUFFER_ATTACHMENTS)
-    assert(spec.samples <= 1 || spec.samples == 4)
+    assert(spec.samples <= 1 || spec.samples == 4 || spec.samples == 8)
     return
 }
 
@@ -62,6 +63,55 @@ destroy_framebuffer :: proc(fb: ^FrameBuffer) {
     }
 
     vk.DestroyFramebuffer(fb.spec.device.handle, fb.handle, nil)
+}
+
+get_color_attachment :: proc(fb: FrameBuffer, #any_int index: int) -> Image {
+    fmt.assertf(index >= 0 && index < len(fb.color_attachments), "Invalid color attachment `index` for framebuffer.")
+    return fb.color_attachments[index]
+}
+
+read_pixel :: proc(fb: FrameBuffer, x, y: int, attachment := 0) -> (pixel: [4]byte, ok: bool) {
+    cmd := device_begin_single_time_command(fb.spec.device^)
+
+    image := &fb.color_attachments[attachment]
+
+    buffer_spec := BufferSpecification {
+        name = "Read Pixel Temp Buffer",
+        mapped = true,
+        device = fb.spec.device,
+        usage = {.TransferDest},
+        size = image.spec.width * image.spec.height * 4,
+    }
+
+    buffer := create_buffer(buffer_spec)
+    defer destroy_buffer(buffer)
+
+    copy := vk.BufferImageCopy {
+        imageExtent = vk.Extent3D {
+            width = cast(u32) image.spec.width,
+            height = cast(u32) image.spec.height,
+            depth = 1,
+        },
+        imageSubresource = vk.ImageSubresourceLayers {
+            aspectMask = {.COLOR},
+            layerCount = 1,
+        }
+    }
+
+    image_transition_layout(image, .TransferSrcOptimal, old = .ColorAttachmentOptimal)
+    vk.CmdCopyImageToBuffer(cmd.handle, image.handle, .TRANSFER_SRC_OPTIMAL, buffer.handle, 1, &copy)
+    device_end_single_time_command(fb.spec.device^, cmd)
+
+    image_transition_layout(image, .ColorAttachmentOptimal)
+
+    as_pixels := cast([]byte) (cast([^]byte)buffer.alloc_info.pMappedData)[:buffer_spec.size]
+
+    pos := (y * image.spec.width + x) * 1
+    r := as_pixels[pos + 0]
+    g := as_pixels[pos + 1]
+    b := as_pixels[pos + 2]
+    a := as_pixels[pos + 3]
+    return {r, g, b, a}, true
 }
 
 // This constructor is used to create a framebuffer from an existing image.
@@ -101,13 +151,13 @@ framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
         if len(fb.color_formats) > 0 {
             fb.color_attachments = make([dynamic]Image, 0, len(fb.color_formats))
 
-            for format in fb.color_formats {
+            for format, i in fb.color_formats {
                 spec := ImageSpecification {
                     device = fb.spec.device,
                     format = format,
                     width = fb.spec.width,
                     height = fb.spec.height,
-                    samples = fb.spec.samples,
+                    samples = 1 if i == 2 || i == 3 else fb.spec.samples,
                     usage = {.Sampled, .TransferSrc, .TransferDst, .ColorAttachment},
                     final_layout = .ColorAttachmentOptimal,
                 }

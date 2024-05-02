@@ -46,8 +46,9 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
     for subpass, i in spec.subpasses {
         i := u32(i)
 
-        colors_ref := make([dynamic]vk.AttachmentReference, context.temp_allocator)
-        input_refs := make([dynamic]vk.AttachmentReference, context.temp_allocator)
+        colors_ref   := make([dynamic]vk.AttachmentReference, context.temp_allocator)
+        input_refs   := make([dynamic]vk.AttachmentReference, context.temp_allocator)
+        resolve_refs := make([dynamic]vk.AttachmentReference, context.temp_allocator)
 
         src_stage_mask, dst_stage_mask: vk.PipelineStageFlags
         src_access_mask, dst_access_mask: vk.AccessFlags
@@ -70,6 +71,16 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
                 dst_access_mask += {.COLOR_ATTACHMENT_WRITE}
             }
         }
+
+        for resolve in subpass.resolve_attachments {
+            fmt.printfln("%v", resolve)
+            if resolve.layout == .Undefined do panic("FUCK")
+            append(&resolve_refs, vk.AttachmentReference {
+                attachment = u32(resolve.attachment),
+                layout = image_layout_to_vulkan(resolve.layout),
+            })
+        }
+        fmt.printfln("%v resolve_ref aaa", len(resolve_refs))
 
         for input_ref in subpass.input_attachments {
             append(&input_refs, vk.AttachmentReference {
@@ -107,6 +118,7 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
             colorAttachmentCount = cast(u32) len(subpass.color_attachments),
             pColorAttachments = raw_data(colors_ref),
             pDepthStencilAttachment = vk_depth_ref,
+            pResolveAttachments = raw_data(resolve_refs) if len(resolve_refs) > 0 else nil,
         }
 
         dep := vk.SubpassDependency {
@@ -328,6 +340,8 @@ ImageFormat :: enum {
     B8G8R8A8_SRGB,
     R8G8B8A8_UNORM,
     B8G8R8A8_UNORM,
+    RED_SIGNED,
+    RED_UNSIGNED,
     R16G16B16A16_SFLOAT,
     D16_UNORM,
     D32_SFLOAT,
@@ -348,6 +362,10 @@ image_format_to_vulkan :: proc(format: ImageFormat, loc := #caller_location) -> 
         return .R8G8B8A8_UNORM
     case .B8G8R8A8_UNORM:
         return .B8G8R8A8_UNORM
+    case .RED_SIGNED:
+        return .R8_SINT
+    case .RED_UNSIGNED:
+        return .R8_UINT
     case .R16G16B16A16_SFLOAT:
         return .R16G16B16A16_SFLOAT
     case .D16_UNORM:

@@ -69,7 +69,13 @@ create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeli
     }
 
     config := default_pipeline_config() if spec.config == nil else spec.config.?
-    config.colorblend_info.pAttachments = &config.colorblend_attachment_info
+
+    blend_attachments := make([dynamic]vk.PipelineColorBlendAttachmentState)
+    for thing in spec.renderpass.spec.subpasses[0].color_attachments {
+        append(&blend_attachments, config.colorblend_attachment_info)
+    }
+    config.colorblend_info.attachmentCount = u32(len(blend_attachments))
+    config.colorblend_info.pAttachments = raw_data(blend_attachments)
 
     pipeline_create_info := vk.GraphicsPipelineCreateInfo {
         sType = .GRAPHICS_PIPELINE_CREATE_INFO,
@@ -112,7 +118,7 @@ PipelineLayoutSpecification :: struct {
     use_push: bool,
 }
 
-create_pipeline_layout :: proc(spec: PipelineLayoutSpecification) -> (layout: PipelineLayout) {
+create_pipeline_layout :: proc(spec: PipelineLayoutSpecification, T: Maybe(int) = {}) -> (layout: PipelineLayout) {
     layout.id = new_id()
     layout.spec = spec
 
@@ -122,10 +128,13 @@ create_pipeline_layout :: proc(spec: PipelineLayoutSpecification) -> (layout: Pi
         append(&layouts, l.handle)
     }
 
-    range := vk.PushConstantRange {
-        size = size_of(matrix[4, 4]f32),
-        offset = 0,
-        stageFlags = {.VERTEX},
+    range: vk.PushConstantRange
+    if t, ok := T.?; ok {
+        range = vk.PushConstantRange {
+            size = u32(t),
+            offset = 0,
+            stageFlags = {.VERTEX, .FRAGMENT},
+        }
     }
 
     pipeline_layout_create_info := vk.PipelineLayoutCreateInfo {
@@ -181,7 +190,7 @@ default_pipeline_config :: proc() -> (config: PipelineConfig) {
             vk.ColorComponentFlag.B,
             vk.ColorComponentFlag.A,
         },
-        blendEnable = true,
+        blendEnable = false,
         srcColorBlendFactor = vk.BlendFactor.SRC_ALPHA,
         dstColorBlendFactor = vk.BlendFactor.ONE_MINUS_SRC_ALPHA,
         colorBlendOp = vk.BlendOp.ADD,

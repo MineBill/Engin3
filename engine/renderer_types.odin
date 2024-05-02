@@ -1,6 +1,19 @@
 package engine
 import "gpu"
 
+when USE_EDITOR {
+    EditorPushConstants :: struct {
+        local_entity_id: int,
+    }
+} else {
+    EditorPushConstants :: struct {}
+}
+
+PushConstants :: struct {
+    model: mat4,
+    using _ : EditorPushConstants,
+}
+
 GlobalUniform :: struct {
     projection: mat4,
     view: mat4,

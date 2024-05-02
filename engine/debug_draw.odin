@@ -32,12 +32,12 @@ g_dbg_context: ^DebugDrawContext
 dbg_init :: proc(d: ^DebugDrawContext, render_pass: gpu.RenderPass) {
     shader, ok := shader_load_from_file("assets/shaders/new/debug.shader")
 
-    resource_layout := gpu.create_resource_layout(Renderer3DInstance.device, Renderer3DInstance.global_uniform_resource_usage)
-
     pipeline_layout_spec := gpu.PipelineLayoutSpecification {
         tag = "Debug Draw PL",
         device = &Renderer3DInstance.device,
-        layouts = gpu.make_list([]gpu.ResourceLayout{resource_layout}),
+        layouts = {
+            Renderer3DInstance.global_set.layout,
+        },
     }
     layout := gpu.create_pipeline_layout(pipeline_layout_spec)
 
@@ -55,6 +55,7 @@ dbg_init :: proc(d: ^DebugDrawContext, render_pass: gpu.RenderPass) {
     config := gpu.default_pipeline_config()
     config.input_assembly_info.topology = .LINE_LIST
     config.rasterization_info.lineWidth = 1.0
+    config.multisample_info.rasterizationSamples = {._8}
 
     pipeline_spec := gpu.PipelineSpecification {
         tag = "Debug Draw Pipeline",

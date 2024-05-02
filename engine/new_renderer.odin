@@ -331,7 +331,15 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer) {
 
         mat := go.transform.global_matrix
         // draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
-        vk.CmdPushConstants(cmd.handle, object_shader.pipeline.spec.layout.handle, {.VERTEX}, 0, size_of(mat4), &mat)
+        push := PushConstants {
+            model = mat,
+            local_entity_id = go.local_id,
+        }
+        vk.CmdPushConstants(
+            cmd.handle,
+            object_shader.pipeline.spec.layout.handle,
+            {.VERTEX, .FRAGMENT},
+            0, size_of(PushConstants), &push)
 
         gpu.bind_buffers(cmd, mesh.vertex_buffer)
         gpu.bind_buffers(cmd, mesh.index_buffer)
@@ -401,7 +409,7 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
             attachments = gpu.make_list([]gpu.RenderPassAttachment {
                 {
                     tag          = "Color",
-                    format       = .R8G8B8A8_UNORM,
+                    format       = .B8G8R8A8_UNORM,
                     load_op      = .Clear,
                     store_op     = .Store, // ?
                     final_layout = .PresentSrc,
@@ -442,23 +450,65 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                     load_op      = .Clear,
                     store_op     = .Store, // ?
                     final_layout = .ColorAttachmentOptimal,
+                    samples      = 8,
                     clear_color  = vec4{0.15, 0.15, 0.15, 1},
+                },
+                {
+                    tag          = "Entity Local ID",
+                    format       = .RED_SIGNED,
+                    load_op      = .Clear,
+                    store_op     = .Store, // ?
+                    final_layout = .ColorAttachmentOptimal,
+                    samples      = 8,
+                    clear_color  = vec4{0, 0, 0, 1},
+                },
+                {
+                    tag          = "Color Resolve Target",
+                    format       = .R8G8B8A8_SRGB,
+                    load_op      = .DontCare,
+                    store_op     = .Store, // ?
+                    final_layout = .ColorAttachmentOptimal,
+                    samples      = 1,
+                },
+                {
+                    tag          = "Entity Local ID Resolve Target",
+                    format       = .RED_SIGNED,
+                    load_op      = .DontCare,
+                    store_op     = .Store, // ?
+                    final_layout = .ColorAttachmentOptimal,
+                    samples      = 1,
                 },
                 {
                     tag          = "Depth",
                     format       = .D32_SFLOAT,
                     load_op      = .Clear,
+                    samples      = 8,
                     final_layout = .DepthStencilAttachmentOptimal,
                     clear_depth  = 1.0,
                 },
             }),
             subpasses = gpu.make_list([]gpu.RenderPassSubpass {
                 {
-                    color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {{
-                        attachment = 0, layout = .ColorAttachmentOptimal,
-                    }}),
+                    color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {
+                        {
+                            attachment = 0, layout = .ColorAttachmentOptimal,
+                        },
+                        {
+                            attachment = 1, layout = .ColorAttachmentOptimal,
+                        }
+                    }),
                     depth_stencil_attachment = gpu.RenderPassAttachmentRef {
-                        attachment = 1, layout = .DepthStencilAttachmentOptimal,
+                        attachment = 4, layout = .DepthStencilAttachmentOptimal,
+                    },
+                    resolve_attachments = {
+                        {
+                            attachment = 2,
+                            layout = .ColorAttachmentOptimal,
+                        },
+                        {
+                            attachment = 3,
+                            layout = .ColorAttachmentOptimal,
+                        },
                     },
                 },
             }),
@@ -469,17 +519,17 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
             fb_spec := gpu.FrameBufferSpecification {
                 device = &r.device,
                 width = 100, height = 100,
-                samples = 1,
+                samples = 8,
                 renderpass = r.world_renderpass,
-                attachments = gpu.make_list([]gpu.ImageFormat{.R8G8B8A8_SRGB, .D32_SFLOAT}),
+                attachments = gpu.make_list([]gpu.ImageFormat{.R8G8B8A8_SRGB, .RED_SIGNED, .R8G8B8A8_SRGB, .RED_SIGNED, .D32_SFLOAT}),
             }
 
             r.world_framebuffers[i] = gpu.create_framebuffer(fb_spec)
         }
 
         pipeline_layout_spec := gpu.PipelineLayoutSpecification {
-            device = &r.device,
             tag = "Object Pipeline Layout",
+            device = &r.device,
             layouts = {
                 r.global_set.layout,
                 r.scene_set.layout,
@@ -488,17 +538,20 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
             use_push = true,
         }
 
-        world_pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec)
+        world_pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec, size_of(PushConstants))
 
         // object_shader, ok := shader_load_from_file("assets/shaders/new/simple_3d.shader")
         // fmt.assertf(ok, "Failed to open/compile default object shader")
+        config := gpu.default_pipeline_config()
+        config.multisample_info.rasterizationSamples = {._8}
+        config.multisample_info.sampleShadingEnable = true
 
         pipeline_spec := gpu.PipelineSpecification {
             tag = "Object Pipeline",
             layout = world_pipeline_layout,
             attribute_layout = vertex_layout,
             renderpass = r.world_renderpass,
-            // shader = object_shader.shader,
+            config = config,
         }
 
         // object_shader, ok := shader_load_from_file("assets/shaders/new/simple_3d.shader", pipeline_spec)
@@ -593,39 +646,6 @@ initialize_imgui_for_vulkan :: proc(r: ^Renderer3D) {
             }
         },
     }
-
-    imgui_rp_spec := gpu.RenderPassSpecification {
-        tag         = "Dear ImGui Renderpass",
-        device      = &s.device,
-        attachments = gpu.make_list([]gpu.RenderPassAttachment {
-            {
-                tag          = "Color",
-                format       = .B8G8R8A8_UNORM,
-                load_op      = .Clear,
-                store_op     = .Store,
-                final_layout = .PresentSrc,
-                clear_color  = [4]f32{1, 0, 0, 1},
-            },
-            {
-                tag          = "Depth",
-                format       = .D32_SFLOAT,
-                load_op      = .Clear,
-                final_layout = .DepthStencilAttachmentOptimal,
-                clear_depth  = 1.0,
-            },
-        }),
-        subpasses = gpu.make_list([]gpu.RenderPassSubpass {
-            {
-                color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {
-                    { attachment = 0, layout = .ColorAttachmentOptimal, },
-                }),
-                depth_stencil_attachment = gpu.RenderPassAttachmentRef {
-                    attachment = 1, layout = .DepthStencilAttachmentOptimal,
-                },
-            },
-        }),
-    }
-    s.imgui_renderpass = gpu.create_render_pass(imgui_rp_spec)
 
     imgui.CHECKVERSION()
     imgui.CreateContext(nil)

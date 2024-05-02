@@ -82,6 +82,7 @@ Editor :: struct {
     was_asset_window_focused: bool,
     viewport_position: vec2,
     window_size: vec2,
+    viewport_maximized: bool,
 
     log_entries: [dynamic]LogEntry,
     clear_log_on_play: bool,
@@ -304,24 +305,26 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
     e.delta = _delta
     delta := f32(_delta)
 
-    // Check for shader changes
-    {
-        sync.mutex_lock(&e.shaders_watcher.mutex)
-        defer sync.mutex_unlock(&e.shaders_watcher.mutex)
+    // // Check for shader changes
+    // {
+    //     sync.mutex_lock(&e.shaders_watcher.mutex)
+    //     defer sync.mutex_unlock(&e.shaders_watcher.mutex)
 
-        if e.shaders_watcher.triggered {
-            file := &e.shaders_watcher.changed_file
-            log_debug(LC.Editor, "File changed: %v", file^)
-            for name, &shader in e.renderer.shaders {
-                if strings.contains(shader.vertex, file^) || strings.contains(shader.fragment, file^) {
-                    log_debug(LC.Editor, "pepe")
-                    shader_reload(&shader)
-                }
-            }
+    //     if e.shaders_watcher.triggered {
+    //         file := &e.shaders_watcher.changed_file
+    //         // log_debug(LC.Editor, "File changed: %v", file^)
+    //         for name, &shader in Renderer3DInstance._shaders {
+    //             metadata := get_asset_metadata(&EngineInstance.asset_manager, shader.base.asset_handle)
 
-            e.shaders_watcher.triggered = false
-        }
-    }
+    //             if strings.contains(metadata.path, file^) {
+    //                 log_debug(LC.Editor, "pepe")
+    //                 // shader_reload(shader)
+    //             }
+    //         }
+
+    //         e.shaders_watcher.triggered = false
+    //     }
+    // }
 
     for event in g_event_ctx.events {
         #partial switch ev in event {
@@ -352,8 +355,10 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 }
             } else if ev.button == .left {
                 if ev.state == .pressed && e.is_viewport_focused && (e.state == .Edit || e.is_detached) {
+                    tracy.ZoneNC("Mouse Picking", 0xff0000ff)
                     mouse := g_event_ctx.mouse + g_event_ctx.window_position - e.viewport_position
-                    color, ok := read_pixel(e.renderer.world_frame_buffer, int(mouse.x), int(e.viewport_size.y) - int(mouse.y), 2)
+                    x, y := int(mouse.x), int(e.viewport_size.y) - int(mouse.y)
+                    color, ok := gpu.read_pixel(Renderer3DInstance.world_framebuffers[0], x, y, 3)
                     if ok {
                         id := color[0]
                         handle := e.engine.world.local_id_to_uuid[int(id)]
@@ -387,6 +392,8 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                         undo_undo(&e.undo)
                     case .Y:
                         undo_redo(&e.undo)
+                    case .Space:
+                        e.viewport_maximized = !e.viewport_maximized
                     }
                 }
 
@@ -530,13 +537,16 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
     // editor_random_testing_window(e)
 
-    editor_env_panel(e)
-    editor_entidor(e)
-    editor_viewport(e)
-    editor_gameobjects(e)
-    editor_log_window(e)
-    editor_content_browser(e)
     editor_ui_toolstrip(e)
+    editor_viewport(e)
+
+    if !e.viewport_maximized {
+        editor_env_panel(e)
+        editor_entidor(e)
+        editor_gameobjects(e)
+        editor_log_window(e)
+        editor_content_browser(e)
+    }
 
     world_update(&e.engine.world, _delta, e.state == .Play)
     if e.state == .Play {
@@ -827,8 +837,9 @@ editor_viewport :: proc(e: ^Editor) {
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
 
-        // texture_handle := get_color_attachment(e.target_frame_buffer^, e.target_color_attachment)
-        imgui.Image(tex(Renderer3DInstance.world_framebuffers[0].color_attachments[0]), size, uv0, uv1)
+        imgui.Image(tex(gpu.get_color_attachment(Renderer3DInstance.world_framebuffers[0], 2)), size, uv0, uv1)
+        // white := get_asset(&EngineInstance.asset_manager, Renderer3DInstance.white_texture, Texture2D)
+        // imgui.Image(tex(white.handle), size, uv0, uv1)
 
         if imgui.BeginDragDropTarget() {
             if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Scene], {}); payload != nil {
@@ -2336,22 +2347,22 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
     return
 }
 
-editor_get_preview_texture :: proc(e: ^Editor, image: ^Image) -> Texture2D {
-    if image.id in e.texture_previews {
-        return e.texture_previews[image.id]
-    }
+// editor_get_preview_texture :: proc(e: ^Editor, image: ^Image) -> Texture2D {
+//     if image.id in e.texture_previews {
+//         return e.texture_previews[image.id]
+//     }
 
-    spec := TextureSpecification {
-        width = image.width,
-        height = image.height,
-        format = .RGBA8,
-        anisotropy = 4,
-    }
-    e.texture_previews[image.id] = create_texture2d(spec)
-    set_texture2d_data(&e.texture_previews[image.id], image.data)
+//     spec := TextureSpecification {
+//         width = image.width,
+//         height = image.height,
+//         format = .RGBA8,
+//         anisotropy = 4,
+//     }
+//     e.texture_previews[image.id] = create_texture2d(spec)
+//     set_texture2d_data(&e.texture_previews[image.id], image.data)
 
-    return e.texture_previews[image.id]
-}
+//     return e.texture_previews[image.id]
+// }
 
 import "core:intrinsics"
 

@@ -10,6 +10,7 @@ import "core:slice"
 import "core:mem"
 import "core:path/filepath"
 import "gpu"
+import tracy "packages:odin-tracy"
 
 @(importer=Image)
 import_image :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
@@ -44,6 +45,7 @@ import_image_from_path :: proc(path: string) -> (image: Image, error: AssetImpor
 
 @(importer=Texture2D)
 import_texture :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
+    tracy.Zone()
     texture := new(Texture2D)
     texture.type = .Texture2D
     path := filepath.join({EditorInstance.active_project.root, metadata.path})
@@ -53,6 +55,7 @@ import_texture :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetI
 }
 
 import_texture_from_path :: proc(path: string) -> (Texture2D, AssetImportError) {
+    tracy.Zone()
     if !os.exists(path) {
         return {}, AssetNotFoundError {
             path = path,
@@ -78,12 +81,13 @@ import_texture_from_path :: proc(path: string) -> (Texture2D, AssetImportError) 
 
     BYTES_PER_CHANNEL :: 1
     // TODO: What about floating point images?
-    size := w * h * c * BYTES_PER_CHANNEL
+    size := w * h * 4 * BYTES_PER_CHANNEL
     return create_texture2d(spec, raw_image[:size]), {}
 }
 
 @(importer=LuaScript)
 import_script :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
+    tracy.Zone()
     path := filepath.join({EditorInstance.active_project.root, metadata.path}, context.temp_allocator)
     if !os.exists(path) {
         return nil, AssetNotFoundError {

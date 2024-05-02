@@ -1,5 +1,6 @@
 package gpu
 import vk "vendor:vulkan"
+import tracy "packages:odin-tracy"
 
 CommandBuffer :: struct {
     id: UUID,
@@ -89,6 +90,7 @@ set_viewport :: proc(cmd: CommandBuffer, size: Vector2) {
 }
 
 set_scissor :: proc(cmd: CommandBuffer, x, y, width, height: u32) {
+    tracy.Zone()
     scissor := vk.Rect2D {
         offset = vk.Offset2D {
             i32(x), i32(y),
@@ -101,20 +103,23 @@ set_scissor :: proc(cmd: CommandBuffer, x, y, width, height: u32) {
 }
 
 draw :: proc(cmd: CommandBuffer, #any_int vertex_count, instance_count: u32, first_vertex: u32 = 0, first_instance: u32 = 0) {
+    tracy.Zone()
     vk.CmdDraw(cmd.handle, vertex_count, instance_count, first_vertex, first_instance)
 }
 
 draw_indexed :: proc(cmd: CommandBuffer, #any_int index_count, instance_count: u32, first_index := u32(0), vertex_offset := i32(0), vertex_count := u32(0)) {
+    tracy.Zone()
     vk.CmdDrawIndexed(cmd.handle, index_count, instance_count, first_index, vertex_offset, vertex_count)
 }
 
 bind_buffers :: proc(cmd: CommandBuffer, buffers: ..Buffer) {
+    tracy.Zone()
     if .Index in buffers[0].spec.usage {
         vk.CmdBindIndexBuffer(cmd.handle, buffers[0].handle, 0, .UINT16)
         return
     }
 
-    vk_buffer_handles := make([dynamic]vk.Buffer, len(buffers))
+    vk_buffer_handles := make([dynamic]vk.Buffer, len(buffers), context.temp_allocator)
     for buffer, i in buffers {
         vk_buffer_handles[i] = buffer.handle
     }
@@ -124,6 +129,7 @@ bind_buffers :: proc(cmd: CommandBuffer, buffers: ..Buffer) {
 }
 
 bind_resource :: proc(cmd: CommandBuffer, resource: Resource, pipeline: Pipeline, first_set: u32 = 0) {
+    tracy.Zone()
     sets := []vk.DescriptorSet {
         resource.handle,
     }

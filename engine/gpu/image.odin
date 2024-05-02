@@ -169,11 +169,11 @@ destroy_image_view :: proc(view: ^ImageView) {
     vk.DestroyImageView(view.spec.device.handle, view.handle, nil)
 }
 
-image_transition_layout :: proc(image: ^Image, new_layout: ImageLayout) {
+image_transition_layout :: proc(image: ^Image, new_layout: ImageLayout, old: Maybe(ImageLayout) = nil) {
     command_buffer := device_begin_single_time_command(image.spec.device^)
     defer device_end_single_time_command(image.spec.device^, command_buffer)
 
-    old := image.spec.layout
+    old := image.spec.layout if old == nil else old.?
     if old == new_layout {
         return
     }
@@ -218,6 +218,16 @@ image_transition_layout :: proc(image: ^Image, new_layout: ImageLayout) {
         barrier.dstAccessMask = {.SHADER_READ}
         srcStage = {.COLOR_ATTACHMENT_OUTPUT}
         dstStage = {.FRAGMENT_SHADER}
+    } else if old == .ColorAttachmentOptimal && new_layout == .TransferSrcOptimal {
+        barrier.srcAccessMask = {.COLOR_ATTACHMENT_WRITE}
+        barrier.dstAccessMask = {.TRANSFER_READ}
+        srcStage = {.COLOR_ATTACHMENT_OUTPUT}
+        dstStage = {.TRANSFER}
+    } else if old == .TransferSrcOptimal && new_layout == .ColorAttachmentOptimal {
+        barrier.srcAccessMask = {.TRANSFER_READ}
+        barrier.dstAccessMask = {.COLOR_ATTACHMENT_WRITE}
+        srcStage = {.TRANSFER}
+        dstStage = {.COLOR_ATTACHMENT_OUTPUT}
     } else if old == .TransferDstOptimal && new_layout == .ColorAttachmentOptimal {
         // Complete this
     } else {
