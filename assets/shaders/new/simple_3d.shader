@@ -99,9 +99,9 @@ void Vertex() {
 #pragma type: fragment
 
 layout(location = 0) out vec4 o_Color;
-#ifdef EDITOR
-layout(location = 1) out int o_ID;
-#endif
+// #ifdef EDITOR
+//     layout(location = 1) out int o_ID;
+// #endif
 
 layout(location = 0) in VertexOutput In;
 /* layout(location = 1) out vec4 o_BrightColor; */
@@ -214,9 +214,9 @@ void Fragment() {
     }
     */
 
-#ifdef EDITOR
-    o_ID = u_PushConstants.local_id;
-#endif
+// #ifdef EDITOR
+//     o_ID = u_PushConstants.local_id;
+// #endif
 }
 
 // vim:ft=glsl

@@ -837,7 +837,7 @@ editor_viewport :: proc(e: ^Editor) {
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
 
-        imgui.Image(tex(gpu.get_color_attachment(Renderer3DInstance.world_framebuffers[0], 2)), size, uv0, uv1)
+        imgui.Image(tex(gpu.get_color_attachment(Renderer3DInstance.world_framebuffers[0], 1)), size, uv0, uv1)
         // white := get_asset(&EngineInstance.asset_manager, Renderer3DInstance.white_texture, Texture2D)
         // imgui.Image(tex(white.handle), size, uv0, uv1)
 

@@ -448,19 +448,10 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                     tag          = "Color",
                     format       = .R8G8B8A8_SRGB,
                     load_op      = .Clear,
-                    store_op     = .Store, // ?
+                    store_op     = .DontCare, // ?
                     final_layout = .ColorAttachmentOptimal,
                     samples      = 8,
                     clear_color  = vec4{0.15, 0.15, 0.15, 1},
-                },
-                {
-                    tag          = "Entity Local ID",
-                    format       = .RED_SIGNED,
-                    load_op      = .Clear,
-                    store_op     = .Store, // ?
-                    final_layout = .ColorAttachmentOptimal,
-                    samples      = 8,
-                    clear_color  = vec4{0, 0, 0, 1},
                 },
                 {
                     tag          = "Color Resolve Target",
@@ -471,17 +462,10 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                     samples      = 1,
                 },
                 {
-                    tag          = "Entity Local ID Resolve Target",
-                    format       = .RED_SIGNED,
-                    load_op      = .DontCare,
-                    store_op     = .Store, // ?
-                    final_layout = .ColorAttachmentOptimal,
-                    samples      = 1,
-                },
-                {
                     tag          = "Depth",
                     format       = .D32_SFLOAT,
                     load_op      = .Clear,
+                    store_op     = .Store,
                     samples      = 8,
                     final_layout = .DepthStencilAttachmentOptimal,
                     clear_depth  = 1.0,
@@ -493,22 +477,22 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                         {
                             attachment = 0, layout = .ColorAttachmentOptimal,
                         },
-                        {
-                            attachment = 1, layout = .ColorAttachmentOptimal,
-                        }
+                        // {
+                        //     attachment = 1, layout = .ColorAttachmentOptimal,
+                        // }
                     }),
                     depth_stencil_attachment = gpu.RenderPassAttachmentRef {
-                        attachment = 4, layout = .DepthStencilAttachmentOptimal,
+                        attachment = 2, layout = .DepthStencilAttachmentOptimal,
                     },
                     resolve_attachments = {
                         {
-                            attachment = 2,
+                            attachment = 1,
                             layout = .ColorAttachmentOptimal,
                         },
-                        {
-                            attachment = 3,
-                            layout = .ColorAttachmentOptimal,
-                        },
+                        // {
+                        //     attachment = 3,
+                        //     layout = .ColorAttachmentOptimal,
+                        // },
                     },
                 },
             }),
@@ -521,7 +505,24 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                 width = 100, height = 100,
                 samples = 8,
                 renderpass = r.world_renderpass,
-                attachments = gpu.make_list([]gpu.ImageFormat{.R8G8B8A8_SRGB, .RED_SIGNED, .R8G8B8A8_SRGB, .RED_SIGNED, .D32_SFLOAT}),
+                attachments = {
+                    {
+                        format = .R8G8B8A8_SRGB,
+                        usage = {.Transient, .ColorAttachment},
+                        samples = 8,
+                    },
+                    {
+                        format = .R8G8B8A8_SRGB,
+                        usage = {.ColorAttachment, .Sampled},
+                        samples = 1,
+                    },
+                    {
+                        format = .D32_SFLOAT,
+                        usage = {.Transient, .DepthStencilAttachment},
+                        samples = 8,
+                    }
+                },
+                // attachments = gpu.make_list([]gpu.ImageFormat{.R8G8B8A8_SRGB, .D32_SFLOAT}),
             }
 
             r.world_framebuffers[i] = gpu.create_framebuffer(fb_spec)

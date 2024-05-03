@@ -64,11 +64,13 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
             case .ColorAttachmentOptimal:
                 flags := vk.PipelineStageFlags{.COLOR_ATTACHMENT_OUTPUT}
                 src_stage_mask += flags
-                dst_stage_mask += flags
+                dst_stage_mask += {.FRAGMENT_SHADER}
             }
 
             if color_ref.layout == .ColorAttachmentOptimal {
                 dst_access_mask += {.COLOR_ATTACHMENT_WRITE}
+            } else {
+                dst_access_mask += {.SHADER_READ}
             }
         }
 
@@ -134,8 +136,26 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
         log.debugf("Configured a subpass dependency: %#v", dep)
 
         append(&subpasses, vk_subpass)
-        append(&dependencies, dep)
+        // append(&dependencies, dep)
     }
+
+    append(&dependencies, vk.SubpassDependency {
+        srcSubpass    = vk.SUBPASS_EXTERNAL,
+        dstSubpass    = 0,
+        srcStageMask  = {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
+        srcAccessMask = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
+        dstStageMask  = {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
+        dstAccessMask = {.DEPTH_STENCIL_ATTACHMENT_READ, .DEPTH_STENCIL_ATTACHMENT_WRITE},
+    })
+
+    append(&dependencies, vk.SubpassDependency {
+        srcSubpass    = vk.SUBPASS_EXTERNAL,
+        dstSubpass    = 0,
+        srcStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+        srcAccessMask = {},
+        dstStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+        dstAccessMask = {.COLOR_ATTACHMENT_WRITE, .COLOR_ATTACHMENT_READ},
+    })
 
     renderpass_create_info := vk.RenderPassCreateInfo {
         sType           = .RENDER_PASS_CREATE_INFO,

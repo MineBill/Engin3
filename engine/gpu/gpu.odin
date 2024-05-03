@@ -7,14 +7,20 @@ import vma "packages:odin-vma"
 
 MAX_FRAMEBUFFER_ATTACHMENTS :: 5
 
+FrameBufferAttachmentInfo :: struct {
+    format: ImageFormat,
+    usage: ImageUsageFlags,
+    samples: int,
+}
+
 FrameBuffer :: struct {
     handle: vk.Framebuffer,
 
     color_attachments: [dynamic]Image,
-    color_formats: [dynamic]ImageFormat,
+    color_formats: [dynamic]FrameBufferAttachmentInfo,
 
     depth_attachment: Image,
-    depth_format: ImageFormat,
+    depth_format: FrameBufferAttachmentInfo,
 
     spec: FrameBufferSpecification,
 }
@@ -24,7 +30,7 @@ FrameBufferSpecification :: struct {
     renderpass: RenderPass,
     width, height: int,
     samples: int,
-    attachments: [dynamic]ImageFormat,
+    attachments: [dynamic]FrameBufferAttachmentInfo,
     dont_create_images: bool,
 }
 
@@ -42,11 +48,11 @@ create_framebuffer :: proc(spec: FrameBufferSpecification) -> (framebuffer: Fram
     framebuffer.spec = spec
 
     // Sort through the spec attachements and figure which is which.
-    for format in spec.attachments {
-        if is_depth_format(format) {
-            framebuffer.depth_format = format
+    for attachment in spec.attachments {
+        if is_depth_format(attachment.format) {
+            framebuffer.depth_format = attachment
         } else {
-            append(&framebuffer.color_formats, format)
+            append(&framebuffer.color_formats, attachment)
         }
     }
 
@@ -66,7 +72,7 @@ destroy_framebuffer :: proc(fb: ^FrameBuffer) {
 }
 
 get_color_attachment :: proc(fb: FrameBuffer, #any_int index: int) -> Image {
-    fmt.assertf(index >= 0 && index < len(fb.color_attachments), "Invalid color attachment `index` for framebuffer.")
+    fmt.assertf(index >= 0 && index < len(fb.color_attachments), "Invalid color attachment index:(%v) for framebuffer.", index)
     return fb.color_attachments[index]
 }
 
@@ -151,14 +157,15 @@ framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
         if len(fb.color_formats) > 0 {
             fb.color_attachments = make([dynamic]Image, 0, len(fb.color_formats))
 
-            for format, i in fb.color_formats {
+            for info, i in fb.color_formats {
                 spec := ImageSpecification {
                     device = fb.spec.device,
-                    format = format,
+                    format = info.format,
                     width = fb.spec.width,
                     height = fb.spec.height,
-                    samples = 1 if i == 2 || i == 3 else fb.spec.samples,
-                    usage = {.Sampled, .TransferSrc, .TransferDst, .ColorAttachment},
+                    samples = info.samples if info.samples >= 1 else fb.spec.samples,
+                    // usage = {.Sampled, .TransferSrc, .TransferDst, .ColorAttachment},
+                    usage = info.usage,
                     final_layout = .ColorAttachmentOptimal,
                 }
 
@@ -191,14 +198,15 @@ framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
             }
         }
 
-        if fb.depth_format != .None {
+        if fb.depth_format != {} {
             spec := ImageSpecification {
                 device = fb.spec.device,
                 width = fb.spec.width,
                 height = fb.spec.height,
-                samples = fb.spec.samples,
-                format = fb.depth_format,
-                usage = {.Sampled, .TransferSrc, .TransferDst, .DepthStencilAttachment},
+                samples = fb.depth_format.samples if fb.depth_format.samples >= 1 else fb.spec.samples,
+                format = fb.depth_format.format,
+                // usage = {.Sampled, .TransferSrc, .TransferDst, .DepthStencilAttachment},
+                usage = fb.depth_format.usage,
             }
             fb.depth_attachment = create_image(spec)
         }

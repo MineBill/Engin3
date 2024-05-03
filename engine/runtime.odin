@@ -341,7 +341,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
             width = 100, height = 100,
             samples = 1,
             renderpass = depth_renderpass,
-            attachments = gpu.make_list([]gpu.ImageFormat{.D32_SFLOAT}),
+            // attachments = gpu.make_list([]gpu.ImageFormat{.D32_SFLOAT}),
         }
         fb := gpu.create_framebuffer(fb_spec)
         renderer.framebuffers["depth"] = fb
@@ -425,7 +425,7 @@ world_renderer_init :: proc(renderer: ^WorldRenderer) {
             width = 100, height = 100,
             samples = 1,
             renderpass = world_renderpass,
-            attachments = gpu.make_list([]gpu.ImageFormat{.R8G8B8A8_SRGB, .D32_SFLOAT}),
+            // attachments = gpu.make_list([]gpu.ImageFormat{.R8G8B8A8_SRGB, .D32_SFLOAT}),
         }
         fb := gpu.create_framebuffer(fb_spec)
         renderer.framebuffers["world"] = fb
