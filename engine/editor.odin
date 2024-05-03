@@ -876,12 +876,21 @@ editor_viewport :: proc(e: ^Editor) {
             if do_window("Render Stats", flags = flags) {
                 imgui.TextUnformatted(fmt.ctprintf("MSAA Level: %v", g_msaa_level))
                 imgui.TextUnformatted(fmt.ctprintf("Viewport Size: %v", e.viewport_size))
-                imgui.TextUnformatted(fmt.ctprintf("Viewport Position: %v", e.viewport_position))
                 global_mouse := g_event_ctx.mouse + g_event_ctx.window_position
-                imgui.TextUnformatted(fmt.ctprintf("Mouse Position(global): %v", global_mouse))
                 imgui.TextUnformatted(fmt.ctprintf("Editor State: %v", e.state))
-                imgui.TextUnformatted(fmt.ctprintf("Draw calls: %v", g_render_stats.draw_calls))
-                imgui.TextUnformatted(fmt.ctprintf("Debug lines: %v", len(g_dbg_context.lines)))
+                stats := &Renderer3DInstance.stats
+                gpu_time := f64(stats.time_end - stats.time_begin) * f64(stats._time_period) * f64(1e-6)
+                imgui.TextUnformatted(fmt.ctprintf("GPU Time: %.2vms", gpu_time))
+
+                @(static)
+                previous_frame_times: [50]f32
+                for i in 0..<len(previous_frame_times) - 1 {
+                    previous_frame_times[i] = previous_frame_times[i + 1]
+                }
+
+                previous_frame_times[len(previous_frame_times) - 1] = f32(gpu_time)
+
+                imgui.PlotLines(cstr("Pepe"), raw_data(previous_frame_times[:]), cast(i32) len(previous_frame_times), graph_size = {0, 30})
                 imgui.Separator()
                 @(static) show_camera_stats := false
                 do_checkbox("Editor Camera Stats", &show_camera_stats)

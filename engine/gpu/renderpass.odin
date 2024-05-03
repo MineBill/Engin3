@@ -178,8 +178,6 @@ do_render_pass :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, frameb
 }
 
 render_pass_begin :: proc(cmd_buffer: CommandBuffer, renderpass: RenderPass, framebuffer: FrameBuffer) {
-    g_stats.renderpasses[renderpass.id] = {}
-
     clear_values := make([dynamic]vk.ClearValue, context.temp_allocator)
     for attachment in renderpass.spec.attachments {
         if is_depth_format(attachment.format) {

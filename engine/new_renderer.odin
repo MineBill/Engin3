@@ -18,6 +18,7 @@ Renderer3DInstance: ^Renderer3D
 Renderer3D :: struct {
     instance: gpu.Instance,
     device: gpu.Device,
+    stats: gpu.RenderStats,
     swapchain: gpu.Swapchain,
 
     image_index: u32,
@@ -103,6 +104,8 @@ r3d_setup :: proc(r: ^Renderer3D) {
             }
         },
     })
+    r.stats = gpu.create_render_stats(&r.device)
+    gpu.set_global_stats(&r.stats)
 
     pool_spec := gpu.ResourcePoolSpecification {
         device = &r.device,
@@ -217,16 +220,20 @@ r3d_begin_frame :: proc(r: ^Renderer3D) -> (cmd: gpu.CommandBuffer, ok: bool) {
     cmd = r.command_buffers[r.image_index]
     gpu.reset(cmd)
     gpu.cmd_begin(cmd)
+    gpu.stats_begin_frame(cmd)
     return cmd, true
 }
 
 r3d_end_frame :: proc(r: ^Renderer3D, cmd: gpu.CommandBuffer) {
     if cmd.handle != nil {
+        gpu.stats_end_frame(cmd)
         gpu.cmd_end(cmd, {})
         gpu.swapchain_cmd_submit(&r.swapchain, {cmd})
     }
 
     gpu.swapchain_present(&r.swapchain, r.image_index)
+
+    gpu.stats_collect()
 }
 
 r3d_on_resize :: proc(r: ^Renderer3D, size: vec2) {
@@ -423,7 +430,7 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                     clear_depth  = 1.0,
                 },
             }),
-            subpasses = gpu.make_list([]gpu.RenderPassSubpass {
+            subpasses = {
                 {
                     color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {{
                         attachment = 0, layout = .ColorAttachmentOptimal,
@@ -432,7 +439,7 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                         attachment = 1, layout = .DepthStencilAttachmentOptimal,
                     },
                 },
-            }),
+            },
         }
 
         r.imgui_renderpass = gpu.create_render_pass(renderpass_spec)
@@ -453,6 +460,14 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                     samples      = 8,
                     clear_color  = vec4{0.15, 0.15, 0.15, 1},
                 },
+                // {
+                //     tag          = "Entity ID",
+                //     format       = .RED_SIGNED,
+                //     load_op      = .Clear,
+                //     // store_op     = .Store, // ?
+                //     final_layout = .ColorAttachmentOptimal,
+                //     samples      = 1,
+                // },
                 {
                     tag          = "Color Resolve Target",
                     format       = .R8G8B8A8_SRGB,
@@ -471,7 +486,8 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                     clear_depth  = 1.0,
                 },
             }),
-            subpasses = gpu.make_list([]gpu.RenderPassSubpass {
+
+            subpasses = {
                 {
                     color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {
                         {
@@ -495,7 +511,7 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                         // },
                     },
                 },
-            }),
+            },
         }
 
         r.world_renderpass = gpu.create_render_pass(renderpass_spec)
@@ -511,6 +527,11 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
                         usage = {.Transient, .ColorAttachment},
                         samples = 8,
                     },
+                    // {
+                    //     format = .RED_SIGNED,
+                    //     usage = {.ColorAttachment, .Sampled},
+                    //     samples = 1,
+                    // },
                     {
                         format = .R8G8B8A8_SRGB,
                         usage = {.ColorAttachment, .Sampled},

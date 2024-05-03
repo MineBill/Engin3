@@ -31,14 +31,6 @@ layout(push_constant) uniform PushConstants {
 #endif
 } u_PushConstants;
 
-/* layout(std140, set = 1, binding = 0) uniform PerObjectData {
-    mat4 model;
-
-#ifdef EDITOR
-    int entity_id;
-#endif
-} u_PerObjectData; */
-
 struct VertexOutput {
     vec3 frag_color;
     vec2 frag_uv;
@@ -58,7 +50,6 @@ layout(location = 1) in vec3 a_Normal;
 layout(location = 2) in vec3 a_Tangent;
 layout(location = 3) in vec2 a_UV;
 layout(location = 4) in vec3 a_Color;
-
 
 const mat4 biasMat = mat4(
     0.5, 0.0, 0.0, 0.0,
@@ -99,9 +90,9 @@ void Vertex() {
 #pragma type: fragment
 
 layout(location = 0) out vec4 o_Color;
-// #ifdef EDITOR
-//     layout(location = 1) out int o_ID;
-// #endif
+/* #ifdef EDITOR
+    layout(location = 1) out int o_ID;
+#endif */
 
 layout(location = 0) in VertexOutput In;
 /* layout(location = 1) out vec4 o_BrightColor; */
@@ -214,9 +205,9 @@ void Fragment() {
     }
     */
 
-// #ifdef EDITOR
-//     o_ID = u_PushConstants.local_id;
-// #endif
+/* #ifdef EDITOR
+    o_ID = u_PushConstants.local_id;
+#endif */
 }
 
 // vim:ft=glsl
