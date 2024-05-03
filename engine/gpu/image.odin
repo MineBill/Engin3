@@ -51,7 +51,7 @@ create_image :: proc(spec: ImageSpecification) -> (image: Image) {
 
     allocation_create_info := vma.AllocationCreateInfo {
         usage = .AUTO,
-        flags = {.HOST_ACCESS_SEQUENTIAL_WRITE},
+        flags = {.DEDICATED_MEMORY},
     }
 
     check(vma.CreateImage(
@@ -319,6 +319,7 @@ ImageUsage :: enum {
     TransferSrc,
     TransferDst,
     Input,
+    Transient,
 }
 
 ImageUsageFlags :: bit_set[ImageUsage]
@@ -343,6 +344,8 @@ image_usage_to_vulkan :: proc(image_usage: ImageUsageFlags) -> (usage: vk.ImageU
             usage += {.TRANSFER_DST}
         case .Input:
             usage += {.INPUT_ATTACHMENT}
+        case .Transient:
+            usage += {.TRANSIENT_ATTACHMENT}
         }
     }
     return usage
