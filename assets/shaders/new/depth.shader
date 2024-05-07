@@ -1,13 +1,14 @@
 #version 450 core
 
-#pragma type: vertex
-
-layout(std140, binding = 0) uniform PerObjectData {
+layout(push_constant) uniform DepthPassPushConstants {
     mat4 model;
     mat4 light_space;
 } u_PerObjectData;
 
+#pragma type: vertex
+
 layout(location = 0) in vec3 position;
+
 void Vertex() {
     gl_Position = u_PerObjectData.light_space * u_PerObjectData.model * vec4(position, 1.0);
 }

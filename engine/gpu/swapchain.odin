@@ -323,6 +323,7 @@ swapchain_create_framebuffers :: proc(swapchain: ^Swapchain) {
 
 SwapchainPresentMode :: enum {
     Fifo,
+    Immediate,
     Mailbox,
 }
 
@@ -331,6 +332,8 @@ present_mode_to_vulkan :: proc(mode: SwapchainPresentMode) -> vk.PresentModeKHR 
     switch mode {
     case .Fifo:
         return .FIFO
+    case .Immediate:
+        return .IMMEDIATE
     case .Mailbox:
         return .MAILBOX
     }

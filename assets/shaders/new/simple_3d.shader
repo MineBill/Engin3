@@ -1,28 +1,6 @@
 #version 450 core
 #include "new/common.glsl"
 #include "new/lighting.glsl"
-const float PI = 3.14159265359;
-
-layout(std140, set = GLOBAL_SET, binding = 0) uniform ViewData {
-    mat4 projection;
-    mat4 view;
-    vec2 screen_size;
-} u_ViewData;
-
-layout(std140, set = SCENE_SET, binding = 0) uniform SceneData {
-    vec4 view_position;
-    vec4 view_direction;
-    vec4 ambient_color;
-} u_SceneData;
-
-layout(std140, set = OBJECT_SET, binding = 0) uniform Material {
-    vec4 albedo_color;
-    float metallic;
-    float roughness;
-} u_Material;
-
-layout(set = OBJECT_SET, binding = 1) uniform sampler2D albedo_map;
-layout(set = OBJECT_SET, binding = 2) uniform sampler2D normal_map;
 
 layout(push_constant) uniform PushConstants {
     mat4 model;
@@ -41,6 +19,8 @@ struct VertexOutput {
     vec3 tangent_view_pos;
     vec3 tangent_frag_pos;
     mat3 TBN;
+
+    vec4 pos_light_space[4];
 };
 
 #pragma type: vertex
@@ -77,6 +57,10 @@ void Vertex() {
     Out.tangent_light_dir = tbn * u_LightData.directional.direction.xyz;
     Out.tangent_view_pos  = tbn * u_SceneData.view_position.xyz;
     Out.tangent_frag_pos  = tbn * Out.frag_pos;
+
+    for (int i = 0; i < 4; i++) {
+        Out.pos_light_space[i] = biasMat * u_LightData.directional.light_space_matrix[i] * vec4(Out.frag_pos, 1.0);
+    }
     /* mat3 normal_matrix = transpose(inverse(mat3(u_PerObjectData.model)));
 
     vec3 N = normalize(normal_matrix * a_Normal);
@@ -95,6 +79,52 @@ layout(location = 0) out vec4 o_Color;
 #endif */
 
 layout(location = 0) in VertexOutput In;
+
+float SampleShadow(float index, vec2 coords, float compare) {
+    return step(compare, texture(shadow_map, vec3(coords, index)).r);
+}
+
+float SampleShadowLinear(float index, vec2 coords, float compare, vec2 texel_size) {
+    vec2 pp = coords / texel_size + vec2(0.5);
+    vec2 fraction = fract(pp);
+    vec2 texel = (pp - fraction) * texel_size;
+
+    float a = SampleShadow(index, texel + vec2(0.0, 0.0), compare);
+    float b = SampleShadow(index, texel + vec2(1.0, 0.0) * texel_size, compare);
+    float c = SampleShadow(index, texel + vec2(0.0, 1.0) * texel_size, compare);
+    float d = SampleShadow(index, texel + vec2(1.0, 1.0) * texel_size, compare);
+
+    float aa = mix(a, c, fraction.y);
+    float bb = mix(b, d, fraction.y);
+
+    return mix(aa, bb, fraction.x);
+}
+
+float ShadowCalculation(int index) {
+    float shadow = 0.0;
+    vec4 fragPosLightSpace = In.pos_light_space[index];
+    vec3 shadowCoords = (fragPosLightSpace.xyz / fragPosLightSpace.w);
+    // shadowCoords = shadowCoords * 2 - 1.0;
+    if (shadowCoords.z > 1.0  || shadowCoords.x > 1.0 || shadowCoords.x < 0.0)
+    // if (shadowCoords.z > 1.0 || shadowCoords.z <= 0.0)
+        return 1.0;
+    float bias = max((1.0/4096.0) * (1.0 - dot(In.normal, normalize(u_LightData.directional.direction.xyz))), 0.003);
+    // vec2 texel_size = 1.0 / textureSize(shadow_map, 0).xy;
+    ivec3 textureSize = textureSize(shadow_map, 0); // Get the size of the texture at level 0
+    vec2 texel_size = vec2(1.0) / vec2(textureSize.xy);
+
+    const float SAMPLES = 1;
+    const float SAMPLES_START = (SAMPLES - 1) / 2;
+    const float SAMPLES_SQUARED = SAMPLES * SAMPLES;
+    for (float x = -SAMPLES_START; x <= SAMPLES_START; x++) {
+        for (float y = -SAMPLES_START; y <= SAMPLES_START; y++) {
+            shadow += SampleShadowLinear(index, shadowCoords.xy + vec2(x, y) * texel_size, shadowCoords.z - bias, texel_size);
+        }
+    }
+
+    return shadow / SAMPLES_SQUARED;
+}
+
 /* layout(location = 1) out vec4 o_BrightColor; */
 // f0:  Surface reflection at zero iradiance, when looking at the fragment directly.
 //      Usually hardcoded as vec3(0.04) for non-metallic surfaces.
@@ -171,8 +201,17 @@ vec3 do_directional_light() {
 
     float NdotL = max(dot(N, L), 0.0);
 
-    // float shadow = ShadowCalculation();
-    float shadow = 1.0;
+    float index = 0.0;
+    if (1.0 - gl_FragCoord.z < u_LightData.shadow_split_distances.x) {
+        index = 3;
+    } else if (1.0 - gl_FragCoord.z < u_LightData.shadow_split_distances.y) {
+        index = 2;
+    } else if (1.0 - gl_FragCoord.z < u_LightData.shadow_split_distances.z) {
+        index = 1;
+    }
+    float shadow = ShadowCalculation(int(index));
+
+    // float shadow = 1.0;
 
     /* vec2 frag_coords = In.frag_pos.xy / In.frag_pos.w;
     vec2 screen_uv = frag_color * 0.5 + 0.5; */
@@ -181,7 +220,24 @@ vec3 do_directional_light() {
 
     vec3 ambient = u_SceneData.ambient_color.rgb * albedo * u_Material.albedo_color.rgb * 0.1;
     ambient *= occlusion;
-    return ambient + (kd * u_Material.albedo_color.rgb * albedo / PI + specular + reflection * u_Material.metallic * ks) * radiance * NdotL * shadow * occlusion;
+    vec3 ret = ambient + (kd * u_Material.albedo_color.rgb * albedo / PI + specular + reflection * u_Material.metallic * ks) * radiance * NdotL * shadow * occlusion;
+    if (u_DebugOptions.shadow_cascade_colors) {
+        switch(int(index)) {
+            case 0 :
+                ret *= vec3(1.0f, 0.25f, 0.25f);
+                break;
+            case 1 :
+                ret *= vec3(0.25f, 1.0f, 0.25f);
+                break;
+            case 2 :
+                ret *= vec3(0.25f, 0.25f, 1.0f);
+                break;
+            case 3 :
+                ret *= vec3(1.0f, 1.0f, 0.25f);
+                break;
+        }
+    }
+    return ret;
 }
 
 void Fragment() {

@@ -355,15 +355,15 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 }
             } else if ev.button == .left {
                 if ev.state == .pressed && e.is_viewport_focused && (e.state == .Edit || e.is_detached) {
-                    tracy.ZoneNC("Mouse Picking", 0xff0000ff)
-                    mouse := g_event_ctx.mouse + g_event_ctx.window_position - e.viewport_position
-                    x, y := int(mouse.x), int(e.viewport_size.y) - int(mouse.y)
-                    color, ok := gpu.read_pixel(Renderer3DInstance.world_framebuffers[0], x, y, 3)
-                    if ok {
-                        id := color[0]
-                        handle := e.engine.world.local_id_to_uuid[int(id)]
-                        select_entity(e, handle, !is_key_pressed(.LeftShift))
-                    }
+                    // tracy.ZoneNC("Mouse Picking", 0xff0000ff)
+                    // mouse := g_event_ctx.mouse + g_event_ctx.window_position - e.viewport_position
+                    // x, y := int(mouse.x), int(e.viewport_size.y) - int(mouse.y)
+                    // color, ok := gpu.read_pixel(Renderer3DInstance.world_framebuffers[0], x, y, 3)
+                    // if ok {
+                    //     id := color[0]
+                    //     handle := e.engine.world.local_id_to_uuid[int(id)]
+                    //     select_entity(e, handle, !is_key_pressed(.LeftShift))
+                    // }
                 }
             }
         case MouseWheelEvent:
@@ -519,21 +519,21 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
     imgui.DockSpaceOverViewport(imgui.GetMainViewport(), {.PassthruCentralNode})
 
-    // if show_depth_buffer {
-    //     if do_window("Shadow Map", &show_depth_buffer) {
-    //         @(static) active_image := i32(0)
-    //         if imgui.SliderInt("ShadowMap Layer", &active_image, 0, 3) {
-    //             destroy_texture_view(e.shadow_map_texture_view)
-    //             e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map, u32(active_image))
-    //         }
+    if show_depth_buffer {
+        if do_window("Shadow Map", &show_depth_buffer) {
+            @(static) active_image := i32(0)
+            if imgui.SliderInt("ShadowMap Layer", &active_image, 0, 3) {
+                // destroy_texture_view(e.shadow_map_texture_view)
+                // e.shadow_map_texture_view = create_texture_view(e.renderer.shadow_map, u32(active_image))
+            }
 
-    //         size := imgui.GetContentRegionAvail()
+            size := imgui.GetContentRegionAvail()
 
-    //         uv0 := vec2{0, 1}
-    //         uv1 := vec2{1, 0}
-    //         imgui.Image(transmute(rawptr)u64(e.shadow_map_texture_view.handle), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
-    //     }
-    // }
+            uv0 := vec2{0, 1}
+            uv1 := vec2{1, 0}
+            imgui.Image(transmute(rawptr)u64(Renderer3DInstance.shadow_framebuffers[0].depth_attachment.view.handle), size, uv0, uv1, vec4{1, 1, 1, 1}, vec4{})
+        }
+    }
 
     // editor_random_testing_window(e)
 
@@ -815,6 +815,8 @@ editor_viewport :: proc(e: ^Editor) {
                 }
             }
 
+            imgui_flags_box("Visualization", &Renderer3DInstance.visualization_options)
+
             imgui.EndMenuBar()
         }
 
@@ -837,7 +839,7 @@ editor_viewport :: proc(e: ^Editor) {
         uv0 := vec2{0, 1}
         uv1 := vec2{1, 0}
 
-        imgui.Image(tex(gpu.get_color_attachment(Renderer3DInstance.world_framebuffers[0], 1)), size, uv0, uv1)
+        imgui.Image(tex(gpu.get_color_attachment(Renderer3DInstance.world_framebuffers[0], 1)), size)
         // white := get_asset(&EngineInstance.asset_manager, Renderer3DInstance.white_texture, Texture2D)
         // imgui.Image(tex(white.handle), size, uv0, uv1)
 
@@ -890,7 +892,7 @@ editor_viewport :: proc(e: ^Editor) {
 
                 previous_frame_times[len(previous_frame_times) - 1] = f32(gpu_time)
 
-                imgui.PlotLines(cstr("Pepe"), raw_data(previous_frame_times[:]), cast(i32) len(previous_frame_times), graph_size = {0, 30})
+                imgui.PlotLines(cstr("##gpu_time_window"), raw_data(previous_frame_times[:]), cast(i32) len(previous_frame_times), graph_size = {0, 30})
                 imgui.Separator()
                 @(static) show_camera_stats := false
                 do_checkbox("Editor Camera Stats", &show_camera_stats)
@@ -3020,83 +3022,3 @@ editor_render_notifications :: proc(e: ^Editor) {
 
 import "gpu"
 import vk "vendor:vulkan"
-
-// editor_create_imgui_renderpass :: proc(e: ^Editor) {
-//     IMGUI_MAX :: 100
-//     imgui_descriptor_pool := gpu._vk_device_create_descriptor_pool(RendererInstance.device, IMGUI_MAX, {
-//         { .COMBINED_IMAGE_SAMPLER, IMGUI_MAX},
-//         { .SAMPLER, IMGUI_MAX},
-//         { .SAMPLED_IMAGE, IMGUI_MAX },
-//         { .STORAGE_IMAGE, IMGUI_MAX },
-//         { .UNIFORM_TEXEL_BUFFER, IMGUI_MAX },
-//         { .STORAGE_TEXEL_BUFFER, IMGUI_MAX },
-//         { .UNIFORM_BUFFER, IMGUI_MAX },
-//         { .STORAGE_BUFFER, IMGUI_MAX },
-//         { .UNIFORM_BUFFER_DYNAMIC, IMGUI_MAX },
-//         { .STORAGE_BUFFER_DYNAMIC, IMGUI_MAX },
-//         { .INPUT_ATTACHMENT, IMGUI_MAX },
-//     }, {.FREE_DESCRIPTOR_SET})
-
-//     imgui_init := imgui_impl_vulkan.InitInfo {
-//         Instance = RendererInstance.instance.handle,
-//         PhysicalDevice = RendererInstance.device.physical_device,
-//         Device = RendererInstance.device.handle,
-//         QueueFamily = u32(0), // TODO: This is wrong. It just happens to line up for now.
-//         Queue = RendererInstance.device.graphics_queue,
-//         PipelineCache = 0, // NOTE(minebill): We don't use pipeline caches right now.
-//         DescriptorPool = imgui_descriptor_pool,
-//         Subpass = 0,
-//         MinImageCount = 2,
-//         ImageCount = 2,
-//         MSAASamples = {._1},
-
-//         // Dynamic Rendering (Optional)
-//         UseDynamicRendering = false,
-
-//         // Allocation, Debugging
-//         Allocator = nil,
-//         CheckVkResultFn = proc "c" (result: vk.Result) {
-//             if result != .SUCCESS {
-//                 context = runtime.default_context()
-//                 fmt.eprintln("Vulkan error from imgui", result)
-//             }
-//         },
-//     }
-
-//     imgui_rp_spec := gpu.RenderPassSpecification {
-//         tag         = "Dear ImGui Renderpass",
-//         device      = &RendererInstance.device,
-//         attachments = gpu.make_list([]gpu.RenderPassAttachment {
-//             {
-//                 tag          = "Color",
-//                 format       = .B8G8R8A8_UNORM,
-//                 load_op      = .Clear,
-//                 store_op     = .Store,
-//                 final_layout = .PresentSrc,
-//                 clear_color  = [4]f32{0.125, 0.45, 0.2, 1},
-//             },
-//             {
-//                 tag          = "Depth",
-//                 format       = .D32_SFLOAT,
-//                 load_op      = .Clear,
-//                 final_layout = .DepthStencilAttachmentOptimal,
-//                 clear_depth  = 1.0,
-//             },
-//         }),
-//         subpasses = gpu.make_list([]gpu.RenderPassSubpass {
-//             {
-//                 color_attachments = gpu.make_list([]gpu.RenderPassAttachmentRef {
-//                     { attachment = 0, layout = .ColorAttachmentOptimal, },
-//                 }),
-//                 depth_stencil_attachment = gpu.RenderPassAttachmentRef {
-//                     attachment = 1, layout = .DepthStencilAttachmentOptimal,
-//                 },
-//             },
-//         }),
-//     }
-//     rp := gpu.create_render_pass(imgui_rp_spec)
-
-//     imgui_impl_vulkan.Init(&imgui_init, rp.handle)
-
-//     renderer_set_main_renderpass(RendererInstance, rp)
-// }

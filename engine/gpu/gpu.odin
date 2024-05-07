@@ -121,7 +121,6 @@ read_pixel :: proc(fb: FrameBuffer, x, y: int, attachment := 0) -> (pixel: [4]by
 }
 
 // This constructor is used to create a framebuffer from an existing image.
-@(private)
 create_framebuffer_from_images :: proc(spec: FrameBufferSpecification, images: []Image) -> (framebuffer: FrameBuffer) {
     assert_spec(spec)
     framebuffer.spec = spec
@@ -255,4 +254,15 @@ is_depth_format :: proc(format: ImageFormat) -> bool {
         return true
     }
     return false
+}
+
+@(private)
+set_handle_name :: proc(device: ^Device, #any_int handle: u64, type: vk.ObjectType, name: cstring) {
+    name_info := vk.DebugUtilsObjectNameInfoEXT {
+        sType = .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        objectHandle = handle,
+        objectType = .BUFFER,
+        pObjectName = name,
+    }
+    check(vk.SetDebugUtilsObjectNameEXT(device.handle, &name_info))
 }

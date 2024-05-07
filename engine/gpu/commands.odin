@@ -79,7 +79,7 @@ reset :: proc {
 set_viewport :: proc(cmd: CommandBuffer, size: Vector2) {
     viewport := vk.Viewport {
         x = 0,
-        y = 0,
+        y = 0 if size.y > 0 else -size.y,
         width = size.x,
         height = size.y,
         minDepth = 0,

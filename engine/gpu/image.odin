@@ -24,10 +24,14 @@ ImageSpecification :: struct {
     usage: ImageUsageFlags,
     layout, final_layout: ImageLayout,
     sampler: SamplerSpecification,
+    layer_count: int,
 }
 
 create_image :: proc(spec: ImageSpecification) -> (image: Image) {
     image.id = new_id()
+    spec := spec
+    spec.samples = spec.samples if spec.samples > 0 else 1
+
     image.spec = spec
     image._destroy_handle = true
 
@@ -41,7 +45,7 @@ create_image :: proc(spec: ImageSpecification) -> (image: Image) {
             depth  = 1,
         },
         mipLevels = 1,
-        arrayLayers = 1,
+        arrayLayers = cast(u32) spec.layer_count if spec.layer_count > 0 else 1,
         samples = samples_to_vulkan(spec.samples),
         tiling = .OPTIMAL,
         usage = image_usage_to_vulkan(spec.usage),
@@ -61,12 +65,20 @@ create_image :: proc(spec: ImageSpecification) -> (image: Image) {
         &image.handle,
         &image.allocation,
         nil))
-
-    image.view = create_image_view(image, ImageViewSpecification {
+    image_view_spec := ImageViewSpecification {
         device = spec.device,
         format = spec.format,
-        view_type = .D2,
-    })
+        layer_count = spec.layer_count,
+        base_layer_index = 0,
+    }
+
+    if image_create_info.arrayLayers > 1 {
+        image_view_spec.view_type = .D2_Array
+    } else {
+        image_view_spec.view_type = .D2
+    }
+
+    image.view = create_image_view(image, image_view_spec)
 
     image.sampler = create_sampler(spec.device^, spec.sampler)
 
@@ -135,6 +147,8 @@ ImageViewSpecification :: struct {
 
     view_type: TextureViewType,
     format: ImageFormat,
+    base_layer_index: int,
+    layer_count: int,
 }
 
 create_image_view :: proc(image: Image, spec: ImageViewSpecification) -> (view: ImageView) {
@@ -156,8 +170,8 @@ create_image_view :: proc(image: Image, spec: ImageViewSpecification) -> (view: 
             aspectMask     = {aspect_mask},
             baseMipLevel   = 0,
             levelCount     = 1,
-            baseArrayLayer = 0,
-            layerCount     = 1,
+            baseArrayLayer = cast(u32) spec.base_layer_index,
+            layerCount     = cast(u32) spec.layer_count if spec.layer_count > 0 else 1,
         },
     }
 
@@ -255,6 +269,7 @@ texture_type_to_vulkan :: proc(texture_type: TextureType) -> (view_type: vk.Imag
 
 TextureViewType :: enum {
     D2,
+    D2_Array,
     D3,
     CubeMap,
 }
@@ -264,6 +279,8 @@ texture_view_type_to_vulkan :: proc(texture_view_type: TextureViewType) -> (view
     switch texture_view_type {
     case .D2:
         return .D2
+    case .D2_Array:
+        return .D2_ARRAY
     case .D3:
         return .D3
     case .CubeMap:

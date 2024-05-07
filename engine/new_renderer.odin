@@ -14,6 +14,7 @@ import "core:fmt"
 import tracy "packages:odin-tracy"
 
 Renderer3DInstance: ^Renderer3D
+SHADOW_CASCADES :: 4
 
 Renderer3D :: struct {
     instance: gpu.Instance,
@@ -29,12 +30,15 @@ Renderer3D :: struct {
     scene_set: SceneSet,
     object_set: ObjectSet,
 
+    shadow_renderpass: gpu.RenderPass,
     world_renderpass: gpu.RenderPass,
-    object_shader: AssetHandle,
+    object_shader, depth_shader: AssetHandle,
     // world_pipeline: gpu.Pipeline,
     ui_renderpass:    gpu.RenderPass,
     ui_pipeline: gpu.Pipeline,
 
+    depth_image: gpu.Image,
+    shadow_framebuffers: [SHADOW_CASCADES]gpu.FrameBuffer,
     world_framebuffers: [3]gpu.FrameBuffer,
 
     global_pool: gpu.ResourcePool,
@@ -56,6 +60,8 @@ Renderer3D :: struct {
     _shaders: map[AssetHandle]^Shader,
 
     white_texture, normal_texture: AssetHandle,
+
+    visualization_options: VisualizationOptions,
 }
 
 tex :: proc(image: gpu.Image) -> imgui.TextureID {
@@ -112,6 +118,9 @@ r3d_setup :: proc(r: ^Renderer3D) {
         max_sets = 3,
         resource_limits = gpu.make_list([]gpu.ResourceLimit{{
             resource = .UniformBuffer,
+            limit    = 5,
+        }, {
+            resource = .CombinedImageSampler,
             limit    = 5,
         }}),
     }
@@ -180,21 +189,47 @@ r3d_draw_frame :: proc(r: ^Renderer3D, packet: RPacket, cmd: gpu.CommandBuffer) 
     tracy.Zone()
 
     packet := packet
+
+    object_shader := get_asset(&EngineInstance.asset_manager, r.object_shader, Shader)
+
     r.global_set.uniform_buffer.data.projection = packet.camera.projection
     r.global_set.uniform_buffer.data.view = packet.camera.view
     uniform_buffer_flush(&r.global_set.uniform_buffer)
 
-    object_shader := get_asset(&EngineInstance.asset_manager, r.object_shader, Shader)
+    r.global_set.debug_options.data = visualization_options_to_shader(r.visualization_options)
+    uniform_buffer_flush(&r.global_set.debug_options)
+
     gpu.bind_resource(cmd, r.global_set.resource, object_shader.pipeline)
 
+    mesh_components := make([dynamic]^MeshRenderer, allocator = context.temp_allocator)
+    {
+        tracy.ZoneN("Mesh Collection")
+        for handle, &go in packet.scene.objects do if go.enabled && has_component(packet.scene, handle, MeshRenderer) {
+            mr := get_component(packet.scene, handle, MeshRenderer)
+            if is_asset_handle_valid(&EngineInstance.asset_manager, mr.mesh) {
+                append(&mesh_components, mr)
+            }
+        }
+    }
+
+    // if gpu.do_render_pass(cmd, r.shadow_renderpass, r.shadow_framebuffers[0]) {
+    //     tracy.ZoneN("Depth Pass")
+    //     size := vec2{SHADOW_MAP_RES, SHADOW_MAP_RES}
+    //     gpu.set_viewport(cmd, size)
+    //     gpu.set_scissor(cmd, 0, 0, u32(size.x), u32(size.y))
+
+    // }
+    splits := do_depth_pass(r, &packet, cmd, mesh_components[:])
+    r.scene_set.light_data.shadow_split_distances = splits
+
+    size := EngineInstance.screen_size
     if gpu.do_render_pass(cmd, r.world_renderpass, r.world_framebuffers[0]) {
-        tracy.Zone()
-        size := EngineInstance.screen_size
-        gpu.set_viewport(cmd, size)
+        tracy.ZoneN("World Pass")
+        gpu.set_viewport(cmd, {size.x, -size.y})
         gpu.set_scissor(cmd, 0, 0, u32(size.x), u32(size.y))
         gpu.pipeline_bind(cmd, object_shader.pipeline)
 
-        render_scene(r, &packet, cmd)
+        render_scene(r, &packet, cmd, mesh_components[:])
 
         gpu.bind_resource(cmd, r.global_set.resource, g_dbg_context.pipeline)
         // NOTE(minebill): Is this the correct place for this?
@@ -252,19 +287,9 @@ r3d_resize_swapchain :: proc(r: ^Renderer3D, size: vec2) {
 }
 
 @(private = "file")
-render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer) {
+render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, mesh_components: []^MeshRenderer) {
     tracy.Zone()
     asset_manager := &EngineInstance.asset_manager
-    mesh_components := make([dynamic]^MeshRenderer, allocator = context.temp_allocator)
-    {
-        tracy.ZoneN("Mesh Collection")
-        for handle, &go in packet.scene.objects do if go.enabled && has_component(packet.scene, handle, MeshRenderer) {
-            mr := get_component(packet.scene, handle, MeshRenderer)
-            if is_asset_handle_valid(asset_manager, mr.mesh) {
-                append(&mesh_components, mr)
-            }
-        }
-    }
 
     for handle, &go in packet.scene.objects do if go.enabled && has_component(packet.scene, handle, DirectionalLight) {
         dir_light := get_component(packet.scene, handle, DirectionalLight)
@@ -293,6 +318,8 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer) {
     r.scene_set.scene_data.view_position = packet.camera.position
     r.scene_set.scene_data.ambient_color = packet.scene.ambient_color
     uniform_buffer_flush(&r.scene_set.scene_data)
+
+    gpu.resource_bind_image(r.scene_set.resource, r.depth_image, .CombinedImageSampler, 2)
 
     object_shader := get_asset(&EngineInstance.asset_manager, r.object_shader, Shader)
     gpu.bind_resource(cmd, r.scene_set.resource, object_shader.pipeline, 1)
@@ -354,6 +381,171 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer) {
     }
 }
 
+do_depth_pass :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, mesh_components: []^MeshRenderer) -> (distances: [4]f32) {
+    for split in 0..<SHADOW_CASCADES {
+        if gpu.do_render_pass(cmd, r.shadow_renderpass, r.shadow_framebuffers[split]) {
+            size := vec2{SHADOW_MAP_RES, SHADOW_MAP_RES}
+            gpu.set_viewport(cmd, {size.x, -size.y})
+            gpu.set_scissor(cmd, 0, 0, u32(size.x), u32(size.y))
+
+            scene := packet.scene
+            view_data := &r.global_set.uniform_buffer
+
+            depth_shader := get_asset(&EngineInstance.asset_manager, r.depth_shader, Shader)
+            assert(depth_shader != nil)
+
+            gpu.pipeline_bind(cmd, depth_shader.pipeline)
+            // gpu.bind_resource(cmd, r.scene_set.resource, object_shader.pipeline, 1)
+
+            // Depth Pass, for lighting
+            {
+                for handle, &go in scene.objects do if go.enabled && has_component(scene, handle, DirectionalLight) {
+                    dir_light := get_component(scene, handle, DirectionalLight)
+                    rot := go.transform.local_rotation
+                    dir_light_quat := linalg.quaternion_from_euler_angles(
+                        rot.x * math.RAD_PER_DEG,
+                        rot.y * math.RAD_PER_DEG,
+                        rot.z * math.RAD_PER_DEG,
+                        .XYZ)
+                    dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, -1})
+
+                        // gl.NamedFramebufferTextureLayer(
+                        //     depth_fb.handle,
+                        //     gl.DEPTH_ATTACHMENT,
+                        //     world_renderer.shadow_map.handle,
+                        //     0,
+                        //     i32(split),
+                        // )
+                        // gl.Clear(gl.DEPTH_BUFFER_BIT)
+                        near := packet.camera.near
+
+                        z := get_split_depth(split + 1, SHADOW_CASCADES, near, packet.camera.far, dir_light.shadow.correction)
+                        // z := dir_light.shadow.distances[split]
+                        distances[split] = z / packet.camera.far
+
+                        // camera_view := linalg.matrix4_from_quaternion(packet.camera.rotation) * linalg.inverse(linalg.matrix4_translate(packet.camera.position))
+                        proj := linalg.matrix4_perspective_f32(math.to_radians(f32(50)), f32(packet.size.x) / f32(packet.size.y), distances[split - 1] if split > 0 else near, z)
+                        corners := get_frustum_corners_world_space(
+                            proj,
+                            packet.camera.view)
+
+                        center := vec3{}
+
+                        for corner in corners {
+                            center += corner.xyz
+                        }
+
+                        center /= len(corners)
+
+                        r.global_set.uniform_buffer.view = linalg.matrix4_look_at_f32(center + dir, center, vec3{0, 1, 0})
+
+                        min_f :: min(f32)
+                        max_f :: max(f32)
+
+                        min, max := vec3{max_f, max_f, max_f}, vec3{min_f, min_f, min_f}
+
+                        for corner in corners {
+                            hm := (view_data.view * corner).xyz
+                            if hm.x < min.x do min.x = hm.x
+                            if hm.y < min.y do min.y = hm.y
+                            if hm.z < min.z do min.z = hm.z
+                            if hm.x > max.x do max.x = hm.x
+                            if hm.y > max.y do max.y = hm.y
+                            if hm.z > max.z do max.z = hm.z
+                        }
+
+                        view_data.projection = linalg.matrix_ortho3d_f32(
+                            left = min.x, 
+                            right = max.x,
+                            bottom = min.y,
+                            top = max.y,
+                            near = min.z,
+                            far = max.z)
+
+                        if .ShadowCascadeBoxes in r.visualization_options {
+                            light_corners := get_frustum_corners_world_space(view_data.projection, view_data.view)
+                            r := f32(split) / f32(dir_light.shadow.splits)
+                            color := Color{r, r, r, 1.0}
+                            switch split {
+                            case 0:
+                                color = COLOR_RED
+                            case 1:
+                                color = COLOR_BLUE
+                            case 2:
+                                color = COLOR_GREEN
+                            case 3:
+                                color = COLOR_YELLOW
+                            }
+                            dbg_draw_line(g_dbg_context, light_corners[0].xyz, light_corners[1].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[2].xyz, light_corners[3].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[4].xyz, light_corners[5].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[6].xyz, light_corners[7].xyz, 2.0, color)
+
+                            dbg_draw_line(g_dbg_context, light_corners[0].xyz, light_corners[2].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[2].xyz, light_corners[6].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[6].xyz, light_corners[4].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[4].xyz, light_corners[0].xyz, 2.0, color)
+
+                            dbg_draw_line(g_dbg_context, light_corners[1].xyz, light_corners[3].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[3].xyz, light_corners[7].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[7].xyz, light_corners[5].xyz, 2.0, color)
+                            dbg_draw_line(g_dbg_context, light_corners[5].xyz, light_corners[1].xyz, 2.0, color)
+                        }
+
+                        // uniform_buffer_flush(&r.global_set.uniform_buffer)
+                        // gpu.bind_resource(cmd, r.global_set.resource, depth_shader.pipeline)
+
+                        light_data := &r.scene_set.light_data
+                        light_space := view_data.projection * view_data.view
+                        light_data.directional.light_space_matrix[split] = light_space
+
+                        // uniform_buffer_set_data(light_data,
+                        //     offset_of(light_data.data.directional),
+                        //     size_of(light_data.data.directional))
+
+                        // gl.UseProgram(world_renderer.shaders["depth"].program)
+
+                        // per_object.light_space = light_data.directional.light_space_matrix[split]
+                        // uniform_buffer_set_data(per_object, offset_of(per_object.data.light_space), size_of(per_object.data.light_space))
+                        for mr in mesh_components {
+                            mesh := get_asset(&EngineInstance.asset_manager, mr.mesh, Mesh)
+                            if mesh == nil do continue
+
+                            // gl.BindVertexArray(mesh.vertex_array)
+
+                            go := get_object(scene, mr.owner)
+
+                            // per_object.model = go.transform.global_matrix
+                            // uniform_buffer_set_data(
+                            //     per_object,
+                            //     offset_of(per_object.data.model),
+                            //     size_of(per_object.data.model))
+                            mat := go.transform.global_matrix
+                            push := DepthPassPushConstants {
+                                model = mat,
+                                light_space = light_space,
+                            }
+                            a :: size_of(DepthPassPushConstants)
+                            #assert(a == 128)
+
+                            vk.CmdPushConstants(
+                                cmd.handle,
+                                depth_shader.pipeline.spec.layout.handle,
+                                {.VERTEX, .FRAGMENT},
+                                0, size_of(DepthPassPushConstants), &push)
+
+                            gpu.bind_buffers(cmd, mesh.vertex_buffer)
+                            gpu.bind_buffers(cmd, mesh.index_buffer)
+                            gpu.draw_indexed(cmd, mesh.num_indices, 1, 0)
+                            // draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
+                        }
+                }
+            }
+        }
+    }
+    return
+}
+
 UniformBuffer :: struct($T: typeid) {
     using data: T,
 
@@ -409,9 +601,13 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
         type = .Float3,
     })
 
+    // ==============================
+    // === Dear ImGui Render Pass ===
+    // ==============================
+
     imgui: {
         renderpass_spec := gpu.RenderPassSpecification {
-            tag         = "Dear ImGui RenderPass",
+            tag         = "Dear ImGui Render Pass",
             device      = &r.device,
             attachments = gpu.make_list([]gpu.RenderPassAttachment {
                 {
@@ -445,6 +641,123 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
         r.imgui_renderpass = gpu.create_render_pass(renderpass_spec)
         initialize_imgui_for_vulkan(r)
     }
+
+    // =========================
+    // === Depth Render Pass ===
+    // =========================
+
+    depth: {
+        renderpass_spec := gpu.RenderPassSpecification {
+            tag = "ShadowPass",
+            device = &r.device,
+            attachments = {
+                {
+                    tag          = "Depth",
+                    format       = .D32_SFLOAT,
+                    load_op      = .Clear,
+                    store_op     = .Store,
+                    samples      = 1,
+                    final_layout = .DepthStencilReadOnlyOptimal,
+                    clear_depth  = 1.0,
+                },
+            },
+            subpasses = {
+                {
+                    depth_stencil_attachment = gpu.RenderPassAttachmentRef {
+                        attachment = 0, layout = .DepthStencilAttachmentOptimal,
+                    },
+                }
+            }
+        }
+
+        r.shadow_renderpass = gpu.create_render_pass(renderpass_spec, true)
+
+        pipeline_layout_spec := gpu.PipelineLayoutSpecification {
+            tag = "Depth Pipeline Layout",
+            device = &r.device,
+            layouts = {
+                // r.global_set.layout,
+                // r.scene_set.layout,
+                // r.object_set.layout,
+            },
+            use_push = true,
+        }
+
+        depth_pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec, size_of(DepthPassPushConstants))
+
+        // object_shader, ok := shader_load_from_file("assets/shaders/new/simple_3d.shader")
+        // fmt.assertf(ok, "Failed to open/compile default object shader")
+        config := gpu.default_pipeline_config()
+        config.multisample_info.rasterizationSamples = {._1}
+        config.multisample_info.sampleShadingEnable = false
+        // config.rasterization_info.cullMode = {.FRONT}
+        config.rasterization_info.depthBiasEnable = false
+        config.rasterization_info.frontFace = .CLOCKWISE
+
+        pipeline_spec := gpu.PipelineSpecification {
+            tag = "Depth Pipeline",
+            layout = depth_pipeline_layout,
+            attribute_layout = vertex_layout,
+            renderpass = r.shadow_renderpass,
+            config = config,
+        }
+
+        manager := &EngineInstance.asset_manager
+        id := AssetHandle(generate_uuid())
+        manager.registry[id] = AssetMetadata {
+            path = "assets/shaders/new/depth.shader",
+            type = .Shader,
+            dont_serialize = true,
+        }
+        manager.loaded_assets[id] = new_shader(manager.registry[id].path, pipeline_spec) or_return
+
+        r.depth_shader = id
+
+        // Create depth image
+        depth_image_spec := gpu.ImageSpecification {
+            device = &r.device,
+            width = SHADOW_MAP_RES,
+            height = SHADOW_MAP_RES,
+            layer_count = SHADOW_CASCADES,
+            format = renderpass_spec.attachments[0].format,
+            usage = {.DepthStencilAttachment, .Sampled},
+            sampler = {},
+            layout = .Undefined,
+            final_layout = .DepthStencilReadOnlyOptimal,
+        }
+        r.depth_image = gpu.create_image(depth_image_spec)
+
+        for i in 0..<SHADOW_CASCADES {
+
+            spec := gpu.FrameBufferSpecification {
+                device = &r.device,
+                width = SHADOW_MAP_RES,
+                height = SHADOW_MAP_RES,
+                renderpass = r.shadow_renderpass,
+            }
+            // Create view
+            image_view_spec := gpu.ImageViewSpecification {
+                device = &r.device,
+                format = depth_image_spec.format,
+                view_type = .D2_Array,
+                base_layer_index = i,
+                layer_count = 1,
+            }
+            view := gpu.create_image_view(r.depth_image, image_view_spec)
+
+            // NOTE(minebill): The framebuffer only really cares about the view, so we
+            // just create a dumb struct here with just a view.
+            image := gpu.Image {
+                view = view,
+            }
+
+            r.shadow_framebuffers[i] = gpu.create_framebuffer_from_images(spec, []gpu.Image {image})
+        }
+    }
+
+    // =========================
+    // === World Render Pass ===
+    // =========================
 
     world: {
         renderpass_spec := gpu.RenderPassSpecification {
@@ -567,6 +880,7 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
         config := gpu.default_pipeline_config()
         config.multisample_info.rasterizationSamples = {._8}
         config.multisample_info.sampleShadingEnable = true
+        config.rasterization_info.cullMode = {.FRONT}
 
         pipeline_spec := gpu.PipelineSpecification {
             tag = "Object Pipeline",
@@ -623,6 +937,7 @@ create_default_resources :: proc(r: ^Renderer3D) {
     gpu.image_transition_layout(&normal.handle, .ShaderReadOnlyOptimal)
 }
 
+// NOTE(minebill): Remember to factor this out, somehow.
 @(private = "file")
 initialize_imgui_for_vulkan :: proc(r: ^Renderer3D) {
     s := r
@@ -749,14 +1064,21 @@ build_global_set :: proc(r: ^Renderer3D) -> (set: GlobalSet) {
         type = .UniformBuffer,
         count = 1,
         stage = {.Vertex, .Fragment},
+    }, {
+        type = .UniformBuffer,
+        count = 1,
+        stage = {.Vertex, .Fragment},
     })
 
     alloc_error: gpu.ResourceAllocationError
-    set.resource, alloc_error = gpu.allocate_resource(r.global_pool, set.layout)
+    set.resource, alloc_error = gpu.allocate_resource(r.global_pool, set.layout, "Global Set")
     fmt.assertf(alloc_error == nil, "Error allocating resource for global set: %v", alloc_error)
 
     set.uniform_buffer = create_uniform_buffer(&r.device, GlobalUniform, "Global Uniform")
-    gpu.resource_bind_buffer(set.resource, set.uniform_buffer.handle, .UniformBuffer)
+    gpu.resource_bind_buffer(set.resource, set.uniform_buffer.handle, .UniformBuffer, 0)
+
+    set.debug_options = create_uniform_buffer(&r.device, ShaderVisualizationOptions, "Debug Options - Shader Visualizations")
+    gpu.resource_bind_buffer(set.resource, set.debug_options.handle, .UniformBuffer, 1)
     return
 }
 
@@ -769,10 +1091,15 @@ build_scene_set :: proc(r: ^Renderer3D) -> (set: SceneSet) {
         type = .UniformBuffer,
         count = 1,
         stage = {.Vertex, .Fragment},
+    }, {
+        tag = "Shadow Map",
+        type = .CombinedImageSampler,
+        count = 1,
+        stage = {.Fragment},
     })
 
     alloc_error: gpu.ResourceAllocationError
-    set.resource, alloc_error = gpu.allocate_resource(r.global_pool, set.layout)
+    set.resource, alloc_error = gpu.allocate_resource(r.global_pool, set.layout, "Scene Set")
     fmt.assertf(alloc_error == nil, "Error allocating resource for scene set: %v", alloc_error)
 
     set.scene_data = create_uniform_buffer(&r.device, SceneData, "Scene Data")

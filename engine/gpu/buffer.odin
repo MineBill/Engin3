@@ -54,6 +54,8 @@ create_buffer :: proc(spec: BufferSpecification) -> (buffer: Buffer) {
     check(vma.CreateBuffer(spec.device.allocator, &buffer_create_info, &allocation_info, &buffer.handle, &buffer.allocation, &buffer.alloc_info))
     vma.SetAllocationName(spec.device.allocator, buffer.allocation, spec.name)
 
+    set_handle_name(spec.device, buffer.handle, .BUFFER, spec.name)
+
     return
 }
 

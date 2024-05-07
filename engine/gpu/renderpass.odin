@@ -18,7 +18,7 @@ RenderPassSpecification :: struct {
     subpasses:   [dynamic]RenderPassSubpass,
 }
 
-create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: RenderPass) {
+create_render_pass :: proc(spec: RenderPassSpecification, is_shadow_map: bool = false) -> (renderpass: RenderPass) {
     renderpass.id = new_id()
     renderpass.spec = spec
 
@@ -139,23 +139,43 @@ create_render_pass :: proc(spec: RenderPassSpecification) -> (renderpass: Render
         // append(&dependencies, dep)
     }
 
-    append(&dependencies, vk.SubpassDependency {
-        srcSubpass    = vk.SUBPASS_EXTERNAL,
-        dstSubpass    = 0,
-        srcStageMask  = {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
-        srcAccessMask = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
-        dstStageMask  = {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
-        dstAccessMask = {.DEPTH_STENCIL_ATTACHMENT_READ, .DEPTH_STENCIL_ATTACHMENT_WRITE},
-    })
+    if is_shadow_map {
+        append(&dependencies, vk.SubpassDependency {
+            srcSubpass    = vk.SUBPASS_EXTERNAL,
+            dstSubpass    = 0,
+            srcStageMask  = {.FRAGMENT_SHADER},
+            srcAccessMask = {.SHADER_READ},
+            dstStageMask  = {.EARLY_FRAGMENT_TESTS},
+            dstAccessMask = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
+        })
 
-    append(&dependencies, vk.SubpassDependency {
-        srcSubpass    = vk.SUBPASS_EXTERNAL,
-        dstSubpass    = 0,
-        srcStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
-        srcAccessMask = {},
-        dstStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
-        dstAccessMask = {.COLOR_ATTACHMENT_WRITE, .COLOR_ATTACHMENT_READ},
-    })
+        append(&dependencies, vk.SubpassDependency {
+            srcSubpass    = 0,
+            dstSubpass    = vk.SUBPASS_EXTERNAL,
+            srcStageMask  = {.LATE_FRAGMENT_TESTS},
+            srcAccessMask = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
+            dstStageMask  = {.FRAGMENT_SHADER},
+            dstAccessMask = {.SHADER_READ},
+        })
+    } else {
+        append(&dependencies, vk.SubpassDependency {
+            srcSubpass    = vk.SUBPASS_EXTERNAL,
+            dstSubpass    = 0,
+            srcStageMask  = {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
+            srcAccessMask = {.DEPTH_STENCIL_ATTACHMENT_WRITE},
+            dstStageMask  = {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
+            dstAccessMask = {.DEPTH_STENCIL_ATTACHMENT_READ, .DEPTH_STENCIL_ATTACHMENT_WRITE},
+        })
+
+        append(&dependencies, vk.SubpassDependency {
+            srcSubpass    = vk.SUBPASS_EXTERNAL,
+            dstSubpass    = 0,
+            srcStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+            srcAccessMask = {},
+            dstStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+            dstAccessMask = {.COLOR_ATTACHMENT_WRITE, .COLOR_ATTACHMENT_READ},
+        })
+    }
 
     renderpass_create_info := vk.RenderPassCreateInfo {
         sType           = .RENDER_PASS_CREATE_INFO,

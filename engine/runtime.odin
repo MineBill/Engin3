@@ -773,7 +773,7 @@ render_world :: proc(world_renderer: ^WorldRenderer, packet: RenderPacket) {
     */
 }
 
-do_depth_pass :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRenderer, packet: RenderPacket) -> (distances: [4]f32) {
+do_depth_pass_ :: proc(world_renderer: ^WorldRenderer, mesh_components: []^MeshRenderer, packet: RenderPacket) -> (distances: [4]f32) {
     /*
     world := world_renderer.world
     view_data := &world_renderer.view_data

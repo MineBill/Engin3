@@ -64,7 +64,7 @@ ResourceSpecification :: struct {
 
 }
 
-allocate_resource :: proc(pool: ResourcePool, layout: ResourceLayout) -> (resource: Resource, error: ResourceAllocationError) {
+allocate_resource :: proc(pool: ResourcePool, layout: ResourceLayout, name: cstring = "") -> (resource: Resource, error: ResourceAllocationError) {
     // descriptorPool:     DescriptorPool,
     // descriptorSetCount: u32,
     // pSetLayouts:        [^]DescriptorSetLayout,
@@ -86,6 +86,13 @@ allocate_resource :: proc(pool: ResourcePool, layout: ResourceLayout) -> (resour
     case:
         check(result)
     }
+
+    if name != "" {
+        set_handle_name(pool.spec.device, resource.handle, .DESCRIPTOR_SET, name)
+
+        set_handle_name(pool.spec.device, layout.handle, .DESCRIPTOR_SET_LAYOUT, fmt.ctprintf("%v - Layout", name))
+    }
+
     return
 }
 
@@ -93,7 +100,7 @@ resource_bind_image :: proc(resource: Resource, image: Image, type: ResourceType
     image_info := vk.DescriptorImageInfo {
         sampler = image.sampler.handle,
         imageView = image.view.handle,
-        imageLayout = image_layout_to_vulkan(image.spec.layout),
+        imageLayout = image_layout_to_vulkan(image.spec.layout if image.spec.layout != .Undefined else image.spec.final_layout),
     }
 
     a := vk.WriteDescriptorSet {

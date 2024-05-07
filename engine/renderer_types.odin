@@ -14,6 +14,11 @@ PushConstants :: struct {
     using _ : EditorPushConstants,
 }
 
+DepthPassPushConstants :: struct {
+    model: mat4,
+    light_space: mat4,
+}
+
 GlobalUniform :: struct {
     projection: mat4,
     view: mat4,
@@ -86,6 +91,7 @@ GlobalSet :: struct {
     // pool: gpu.ResourcePool,
 
     uniform_buffer: UniformBuffer(GlobalUniform),
+    debug_options: UniformBuffer(ShaderVisualizationOptions),
 }
 
 SceneSet :: struct {
@@ -95,6 +101,7 @@ SceneSet :: struct {
 
     scene_data: UniformBuffer(SceneData),
     light_data: UniformBuffer(LightData),
+    shadow_map: gpu.Image,
 }
 
 ObjectSet :: struct {
@@ -108,3 +115,22 @@ ObjectSet :: struct {
     normal_image: gpu.Image,
 }
 
+ShaderVisualizationOptions :: struct {
+    shadow_cascade_boxes: b32,
+    shadow_cascade_colors: b32,
+}
+
+VisualizationOption :: enum {
+    None,
+
+    ShadowCascadeBoxes,
+    ShadowCascadeColors,
+}
+
+VisualizationOptions :: bit_set[VisualizationOption]
+
+visualization_options_to_shader :: proc(options: VisualizationOptions) -> (s: ShaderVisualizationOptions) {
+    if .ShadowCascadeBoxes in options do s.shadow_cascade_boxes = true
+    if .ShadowCascadeColors in options do s.shadow_cascade_colors = true
+    return
+}
