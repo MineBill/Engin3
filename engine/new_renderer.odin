@@ -299,7 +299,7 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, m
             rot.y * math.RAD_PER_DEG,
             rot.z * math.RAD_PER_DEG,
             .XYZ)
-        dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, -1})
+        dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, 1})
 
         light_data := &r.scene_set.light_data
         light_data.directional.direction = vec4{dir.x, dir.y, dir.z, 0}
@@ -313,7 +313,7 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, m
     }
 
     r.scene_set.scene_data.view_direction = linalg.quaternion_mul_vector3(
-        packet.camera.rotation, vec3{0, 0, -1},
+        packet.camera.rotation, vec3{0, 0, 1},
     )
     r.scene_set.scene_data.view_position = packet.camera.position
     r.scene_set.scene_data.ambient_color = packet.scene.ambient_color
@@ -407,7 +407,7 @@ do_depth_pass :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, 
                         rot.y * math.RAD_PER_DEG,
                         rot.z * math.RAD_PER_DEG,
                         .XYZ)
-                    dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, -1})
+                    dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, 1})
 
                         // gl.NamedFramebufferTextureLayer(
                         //     depth_fb.handle,

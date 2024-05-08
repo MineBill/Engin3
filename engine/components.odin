@@ -337,6 +337,19 @@ make_directional_light :: proc() -> rawptr {
 
 directional_light_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {
     this := cast(^DirectionalLight)this
+    go := get_object(this.world, this.owner)
+
+    rot := go.transform.local_rotation
+    dir_light_quat := linalg.quaternion_from_euler_angles(
+        rot.x * math.RAD_PER_DEG,
+        rot.y * math.RAD_PER_DEG,
+        rot.z * math.RAD_PER_DEG,
+        .XYZ)
+    dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, -1})
+
+    end := go.transform.position + dir
+    dbg_draw_line(g_dbg_context, go.transform.position, end)
+    dbg_draw_cube(g_dbg_context, end, {}, VEC3_ONE * 0.125)
 }
 
 @(serializer=DirectionalLight)
