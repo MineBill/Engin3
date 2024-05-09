@@ -119,7 +119,11 @@ write_lua_struct_init :: proc(config: ^GeneratorConfig, sb: ^strings.Builder, ex
             write_string(sb, "refMeta.methods = make(map[cstring]lua.CFunction)")
             write_string(sb, "\n    ")
             methods := metaAttrib.(Attributes)
-            for name, val in methods {
+
+            names, _ := slice.map_keys(methods)
+            slice.sort(names)
+            for name in names {
+                val := methods[name]
                 odinProc := val.(Identifier)
                 fmt.sbprintf(sb, "refMeta.methods[\"%s\"] = _mani_%s", name, cast(String)odinProc)
                 write_string(sb, "\n    ")
@@ -127,7 +131,10 @@ write_lua_struct_init :: proc(config: ^GeneratorConfig, sb: ^strings.Builder, ex
         }
 
         if fields, ok := exportAttribs["Fields"].(Attributes); ok {
-            for odin_name, field in s.fields {
+            odin_names, _ := slice.map_keys(s.fields)
+            slice.sort(odin_names)
+            for odin_name in odin_names {
+                field := s.fields[odin_name]
                 if name, ok := fields[odin_name]; ok {
                     write_string(sb, 
                         fmt.tprintf("expStruct.fields[\"%v\"] = mani.StructFieldExport{{\"%v\", \"%v\", typeid_of(%v)}}\n", 
@@ -156,6 +163,7 @@ write_lua_struct_init :: proc(config: ^GeneratorConfig, sb: ^strings.Builder, ex
         write_string(sb, s.name)
         write_string(sb, "\n    ")
 
+
         write_string(sb, "copyMeta.index = ")
         write_string(sb, "_mani_index_")
         write_string(sb, s.name)
@@ -170,7 +178,11 @@ write_lua_struct_init :: proc(config: ^GeneratorConfig, sb: ^strings.Builder, ex
             write_string(sb, "copyMeta.methods = make(map[cstring]lua.CFunction)")
             write_string(sb, "\n    ")
             methods := metaAttrib.(Attributes)
-            for name, val in methods {
+
+            names, _ := slice.map_keys(methods)
+            slice.sort(names)
+            for name in names {
+                val := methods[name]
                 odinProc := val.(Identifier)
                 fmt.sbprintf(sb, "copyMeta.methods[\"%s\"] = _mani_%s", name, cast(String)odinProc)
                 write_string(sb, "\n    ")
@@ -237,7 +249,11 @@ _mani_index_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
         }
 
         if luaFields != nil {
-            for k, field in s.fields {
+
+            keys, _ := slice.map_keys(s.fields)
+            slice.sort(keys)
+            for k in keys {
+                field := s.fields[k]
                 shouldExport := false
                 name: string
                 if luaField, ok := luaFields[field.name]; ok {
@@ -307,7 +323,11 @@ _mani_index_{0:s}_ref :: proc "c" (L: ^lua.State) -> c.int {{
         }
 
         if luaFields != nil {
-            for k, field in s.fields {
+
+            keys, _ := slice.map_keys(s.fields)
+            slice.sort(keys)
+            for k in keys {
+                field := s.fields[k]
                 shouldExport := false
                 name: string
                 if luaField, ok := luaFields[field.name]; ok {
@@ -368,7 +388,10 @@ _mani_newindex_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
         }}
 `       , s.name, s.name)
         if luaFields != nil {
-            for k, field in s.fields {
+            keys, _ := slice.map_keys(s.fields)
+            slice.sort(keys)
+            for k in keys {
+                field := s.fields[k]
                 shouldExport := false
                 name: string
                 if luaField, ok := luaFields[field.name]; ok {
@@ -377,15 +400,14 @@ _mani_newindex_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
                         name = luaName
                     } else {
                         name = field.name
-                    }  
+                    }
                 } else {
                     shouldExport = false
                 }
-                
 
                 if shouldExport {
-                    fmt.sbprintf(sb, 
-`        
+                    fmt.sbprintf(sb,
+`
         case "{0:s}": {{
             mani.to_value(L, 3, &udata.{1:s})
             return 1
@@ -395,7 +417,7 @@ _mani_newindex_{0:s} :: proc "c" (L: ^lua.State) -> c.int {{
             }
         }
 
-        fmt.sbprintf(sb, 
+        fmt.sbprintf(sb,
 `
     }}
     return 0
@@ -417,7 +439,10 @@ _mani_newindex_{0:s}_ref :: proc "c" (L: ^lua.State) -> c.int {{
         }}
 `       , s.name, s.name)
         if luaFields != nil {
-            for k, field in s.fields {
+            keys, _ := slice.map_keys(s.fields)
+            slice.sort(keys)
+            for k in keys {
+                field := s.fields[k]
                 shouldExport := false
                 name: string
                 if luaField, ok := luaFields[field.name]; ok {

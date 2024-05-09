@@ -2,6 +2,7 @@ package mani_generator
 
 import "core:fmt"
 import "core:strings"
+import "core:slice"
 import codew "code_writer"
 
 write_lua_array_index :: proc(sb: ^strings.Builder, exports: FileExports, arr: ArrayExport) {
@@ -481,7 +482,11 @@ write_lua_array_init :: proc(sb: ^strings.Builder, exports: FileExports, arr: Ar
             write_string(sb, "refMeta.methods = make(map[cstring]lua.CFunction)")
             write_string(sb, "\n    ")
             methods := metaAttrib.(Attributes)
-            for name, val in methods {
+
+            names, _ := slice.map_keys(methods)
+            slice.sort(names)
+            for name in names {
+                val := methods[name]
                 odinProc := val.(Identifier)
                 fmt.sbprintf(sb, "refMeta.methods[\"%s\"] = _mani_%s", name, cast(String)odinProc)
                 write_string(sb, "\n    ")
@@ -520,7 +525,10 @@ write_lua_array_init :: proc(sb: ^strings.Builder, exports: FileExports, arr: Ar
             write_string(sb, "copyMeta.methods = make(map[cstring]lua.CFunction)")
             write_string(sb, "\n    ")
             methods := metaAttrib.(Attributes)
-            for name, val in methods {
+            names, _ := slice.map_keys(methods)
+            slice.sort(names)
+            for name in names {
+                val := methods[name]
                 odinProc := val.(Identifier)
                 fmt.sbprintf(sb, "copyMeta.methods[\"%s\"] = _mani_%s", name, cast(String)odinProc)
                 write_string(sb, "\n    ")

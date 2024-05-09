@@ -73,7 +73,7 @@ create_config_from_args :: proc() -> (result: GeneratorConfig) {
 config_from_json :: proc(config: ^GeneratorConfig, file: string) {
     data, ok := os.read_entire_file(file, context.temp_allocator)
     if !ok {
-        fmt.printf("Failed to read config file\n")
+        fmt.printfln("Failed to read config file: %v", file)
         return
     }
     str := strings.clone_from_bytes(data, context.temp_allocator)
@@ -150,7 +150,10 @@ config_package :: proc(config: ^GeneratorConfig, pkg: string, filename: string) 
             text = `import strings "core:strings"`,
         }
 
-        for _, imp in file.imports {
+        keys, _ := slice.map_keys(file.imports)
+        slice.sort(keys)
+        for key in keys {
+            imp := file.imports[key]
             write_string(sb, imp.text)
             write_string(sb, "\n")
         }
@@ -256,8 +259,10 @@ generate_lua_exports :: proc(config: ^GeneratorConfig, exports: FileExports, pac
     config_package(config, exports.symbols_package, exports.relpath)
     file := &config.files[exports.symbols_package]
 
-    for _, imp in exports.imports {
-        add_import(file, imp)
+    import_names, _ := slice.map_keys(exports.imports)
+    slice.sort(import_names)
+    for name in import_names {
+        add_import(file, exports.imports[name])
     }
 
     keys, _ := slice.map_keys(exports.symbols)
