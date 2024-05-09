@@ -104,7 +104,10 @@ run_target :: proc(target: ^build.Target, run_mode: build.Run_Mode, args: []buil
     using filepath
     target := cast(^RunTarget) target
     for dep in target.dependencies {
-        build.run_target(dep, run_mode, args, loc)
+        if !build.run_target(dep, run_mode, args, loc) {
+            log.errorf("[ERROR] TARGET '%v' FAILED. ABORTING!", dep.name)
+            return false
+        }
     }
 
     to_run := target.target_to_run
