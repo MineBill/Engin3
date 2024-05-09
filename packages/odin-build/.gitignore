@@ -1,0 +1,9 @@
+# Ignore everything
+*
+# But descend into directories
+!*/
+
+!.gitignore
+!README.md
+
+!build/**
