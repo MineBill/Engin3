@@ -21,6 +21,10 @@ PFN_vmaFreeDeviceMemoryFunction :: proc "c" (
 when ODIN_OS == .Windows {
     @(extra_linker_flags = "/NODEFAULTLIB:libcmt")
     foreign import VulkanMemoryAllocator "external/VulkanMemoryAllocator.lib"
+} else when ODIN_OS == .Linux {
+    foreign import VulkanMemoryAllocator "external/libVulkanMemoryAllocator.a"
+} else {
+	#panic("Support for MacOS is not yet available.")
 }
 
 create_vulkan_functions :: proc() -> VulkanFunctions {

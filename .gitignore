@@ -14,4 +14,5 @@ lua*.dll
 scratch/
 **/__pycache__/
 build.exe
+build.bin
 .obuild

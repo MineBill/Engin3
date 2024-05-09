@@ -8,6 +8,7 @@ build_all() {
     build_nuklear
     build_jolt
     build_lua
+    build_vma
 }
 
 build_tracy() {
@@ -61,6 +62,22 @@ build_lua() {
     popd
 }
 
+build_vma() {
+    echo "Building VMA..."
+    pushd odin-vma/VulkanMemoryAllocator
+        rm -rf build
+        mkdir build
+        cp src/VmaUsage.cpp build/
+        cp src/VmaUsage.h build/
+        pushd build
+            cc -c -o vma.o VmaUsage.cpp
+            ar rcvs libVulkanMemoryAllocator.a vma.o
+            cp libVulkanMemoryAllocator.a ../../external
+        popd
+        rm -rf build
+    popd
+}
+
 # Check if an argument is provided
 if [ -z "$1" ]; then
     # If no argument is provided, build all
@@ -83,8 +100,11 @@ else
         "lua")
             build_lua
             ;;
+        "vma")
+            build_vma
+            ;;
         *)
-            echo "Invalid argument. Valid options are: tracy, imgui, nuklear, jolt, lua"
+            echo "Invalid argument. Valid options are: tracy, imgui, nuklear, jolt, lua, vma"
             ;;
     esac
 fi
