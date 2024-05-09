@@ -82,6 +82,7 @@ Cli_Flags_Error :: enum {
 }
 
 builtin_flags := [?]Flag_Desc {
+	{.Build, {"-force", "", ""}, "Forces a build and ignores cached hashes."},
 	{.Help, {"-help", "", ""}, "Displays information about the build system or the target specified."},
 	{.Dev, {"-ols", "", ""}, "Generates an ols.json for the configuration."},
 	{.Dev, {"-vscode", "", ""}, "Generates .vscode folder for debugging."},

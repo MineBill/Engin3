@@ -11,6 +11,7 @@ import "core:slice"
 import "core:unicode/utf8"
 import "core:unicode"
 import "core:strconv"
+import "core:log"
 
 Project :: struct {
 	name: string,
@@ -75,6 +76,17 @@ run_target :: proc(target: ^Target, mode: Run_Mode, args: []Arg, loc := #caller_
 	assert(target.run_proc != nil, "Target run proc not found.")
 
 	hash := hash_target(target)
+	defer {
+		_build_cache.checksums[target.name] = hash
+	}
+
+	for arg in args {
+		if flat, ok := arg.(Flag_Arg); ok && flat.flag == "-force" {
+			log.infof("[BUILD] RUNNING TARGET '%v'", target.name)
+			target.run_proc(target, mode, args, loc) or_return
+			return true
+		}
+	}
 
 	outputs_ok := true
 	for output in target.outputs {
@@ -86,11 +98,11 @@ run_target :: proc(target: ^Target, mode: Run_Mode, args: []Arg, loc := #caller_
 	}
 
 	if !outputs_ok || target.name not_in _build_cache.checksums || _build_cache.checksums[target.name] != hash {
-		ok = target.run_proc(target, mode, args, loc)
+		log.infof("[BUILD] RUNNING TARGET '%v'", target.name)
+		target.run_proc(target, mode, args, loc) or_return
 	}
 
-	_build_cache.checksums[target.name] = hash
-	return ok
+	return true
 }
 
 // Returns a path relative to the target root dir. Tries to return the shortest relative path before returning the absolute path
