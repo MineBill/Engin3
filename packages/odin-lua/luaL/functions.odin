@@ -10,9 +10,9 @@ when JIT_ENABLED {
 	when ODIN_OS == .Linux do foreign import liblua "system:luajit"
 	when ODIN_OS == .Darwin do foreign import liblua "system:luajit"
 } else {
-	when ODIN_OS == .Windows do foreign import liblua "../lua/windows/lua542.lib"
-	when ODIN_OS == .Linux do foreign import liblua "system:lua"
-	when ODIN_OS == .Darwin do foreign import liblua "system:lua"
+	when ODIN_OS == .Windows do foreign import liblua "../bin/windows/lua546.lib"
+	when ODIN_OS == .Linux do foreign import liblua "../bin/linux/lua546.a"
+	when ODIN_OS == .Darwin do foreign import liblua "../bin/linux/lua546.a"
 }
 
 @(default_calling_convention = "c")
