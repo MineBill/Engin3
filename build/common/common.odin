@@ -113,9 +113,10 @@ run_target :: proc(target: ^build.Target, run_mode: build.Run_Mode, args: []buil
     for arg in args {
         #partial switch v in arg {
         case build.Flag_Arg:
-            for builtin in build.builtin_flags {
+            b: for builtin in build.builtin_flags {
                 if builtin.flag.flag != v.flag {
                     append(&target.args, fmt.aprintf("%v:%v", v.flag, v.key))
+                    break b
                 }
             }
         }
