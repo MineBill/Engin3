@@ -20,17 +20,16 @@ ArgParseError :: enum {
 parse_args :: proc(os_args: []string) -> (args: Args, err: ArgParseError) {
     for arg_string in os_args {
         if arg_string[0] == '-' {
-            colon_count := strings.count(arg_string[1:], ":")
-            if colon_count >= 2 {
-                return {}, .InvalidKey
-            }
-
-            colon := strings.index(arg_string[1:], ":")
-            switch colon {
-                case -1:
-                    args[arg_string[1:]] = nil
+            max_splits :: 2
+            colon_splits := strings.split_n(arg_string[1:], ":", max_splits)
+            log.infof("color_splits: %v", colon_splits)
+            switch len(colon_splits) {
+                case 1:
+                    args[colon_splits[0]] = nil
+                case 2:
+                    args[colon_splits[0]] = parse_value(colon_splits[1])
                 case:
-                    args[arg_string[1:colon + 1]] = parse_value(arg_string[colon + 2:])
+                    unreachable()
             }
         }
     }
