@@ -41,7 +41,7 @@ parse_args :: proc(os_args: []string, allocator := context.allocator) -> (args: 
 			switch len(colon_slice) {
 			case 1: // only the flag found, no key-val
 				flag_arg.flag = colon_slice[0]
-				
+
 			case 2: // key and/or value found
 				flag_arg.flag = colon_slice[0]
 				equal_slice := strings.split(colon_slice[1], "=", context.temp_allocator)
@@ -52,7 +52,7 @@ parse_args :: proc(os_args: []string, allocator := context.allocator) -> (args: 
 					flag_arg.key = equal_slice[0]
 					flag_arg.val = equal_slice[1]
 				}
-			
+
 			case: // more than 1 colon found. Invalid syntax
 				err = .Invalid_Format
 				return
@@ -132,7 +132,7 @@ run_cli :: proc(info: Cli_Info, cli_args: []string, loc := #caller_location) -> 
 	last_flag: Flag_Arg
 	for arg in args {
 		switch v in arg {
-		case string: 
+		case string:
 			append(&target_names_from_args, v)
 		case Flag_Arg:
 			flag_found := false
@@ -142,17 +142,18 @@ run_cli :: proc(info: Cli_Info, cli_args: []string, loc := #caller_location) -> 
 					current_mode = flag_desc.mode
 				}
 				if current_mode != flag_desc.mode {
-					fmt.eprintf("Mode %s set by %s is incompatible with previous mode %s set by previous flag %s. Run `%s -help`` for more details.\n", mode_strings[flag_desc.mode], flag_desc.flag, current_mode.?, last_flag, cli_args[0])
+					fmt.eprintf("Mode %s set by %s is incompatible with previous mode %s set by previous flag %s. Run `%s -help`` for more details.\n", mode_strings[flag_desc.mode], flag_desc.flag, current_mode.?, last_flag.flag, cli_args[0])
 					return false
 				}
 				last_flag = v
 				append(&filtered_args_by_mode, v)
 				break
 			}
-			if !flag_found {
-				fmt.eprintf("Flag %s does not exist. Run `%s -help` for a list of available flags.\n", v, cli_args[0])
-				return false
-			}
+
+			// if !flag_found {
+			// 	fmt.eprintf("Flag %s does not exist. Run `%s -help` for a list of available flags.\n", v.flag, cli_args[0])
+			// 	return false
+			// }
 		}
 	}
 
