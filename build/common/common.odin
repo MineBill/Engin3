@@ -23,7 +23,7 @@ Target :: struct {
 RunTarget :: struct {
     using target: Target,
     target_to_run: ^Target,
-    args: []string,
+    args: [dynamic]string,
 }
 
 CopyTarget :: struct {
@@ -110,6 +110,17 @@ run_target :: proc(target: ^build.Target, run_mode: build.Run_Mode, args: []buil
         }
     }
 
+    for arg in args {
+        #partial switch v in arg {
+        case build.Flag_Arg:
+            for builtin in build.builtin_flags {
+                if builtin.flag.flag != v.flag {
+                    append(&target.args, fmt.aprintf("%v:%v", v.flag, v.key))
+                }
+            }
+        }
+    }
+
     to_run := target.target_to_run
 
     out_dir := to_run.out_dir
@@ -117,7 +128,7 @@ run_target :: proc(target: ^build.Target, run_mode: build.Run_Mode, args: []buil
     path, _ := rel(build._project_directory, t)
 
     log.infof("[RUNNING '%v']", target.name)
-    build.exec(path, target.args)
+    build.exec(path, target.args[:])
     return true
 }
 
