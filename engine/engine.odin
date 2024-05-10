@@ -85,10 +85,6 @@ engine_init :: proc(e: ^Engine) -> Engine_Error {
 
     e.run_mode = .Editor
 
-    if !deserialize_world(&e.world, "assets/scenes/New World.world") {
-        log_debug(LC.Engine, "Failed to deserialize 'New World.world")
-    }
-
     return {}
 }
 

@@ -187,6 +187,7 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     context.logger = e.logger
 
     e.content_browser.root_dir = project_get_assets_folder(e.active_project)
+    log_info(LC.Editor, "e.content_browser.root_dir = %w", e.content_browser.root_dir)
     cb_navigate_to_folder(&e.content_browser, e.content_browser.root_dir)
 
     // NOTE(minebill):  Since this is the editor, it's OK to not go through an asset manager and just
@@ -1317,16 +1318,22 @@ cb_refresh :: proc(cb: ^ContentBrowser) {
 }
 
 editor_content_browser :: proc(e: ^Editor) {
-    new_asset_menu :: proc(e: ^Editor) {
+    NewAssetAction :: enum {
+        None,
+        NewFolder,
+        NewScene,
+    }
+
+    new_asset_menu :: proc(e: ^Editor) -> (actions: bit_set[NewAssetAction]) {
         if imgui.BeginMenu("New") {
-            if imgui.MenuItem("Folder") {
-                cb_refresh(&e.content_browser)
+            if imgui.MenuItem("Folder [Does nothing]") {
+                actions += {.NewFolder}
             }
 
             imgui.Separator()
 
-            if imgui.MenuItem("Scene") {
-                cb_refresh(&e.content_browser)
+            if imgui.MenuItem("Scene [Does nothing]") {
+                actions += {.NewScene}
             }
 
             if imgui.MenuItem("PBR Material") {
@@ -1388,6 +1395,8 @@ return NewScript
         if imgui.MenuItem("Open in Explorer") {
             fs.open_file_explorer(e.content_browser.current_dir)
         }
+
+        return
     }
 
     browser := &e.content_browser
@@ -1470,8 +1479,44 @@ return NewScript
 
                 {
                     with_popup_style()
+                    actions: bit_set[NewAssetAction] = {}
                     if imgui.BeginPopupContextWindow() {
-                        new_asset_menu(e)
+                        actions = new_asset_menu(e)
+                        imgui.EndPopup()
+                    }
+
+                    center := imgui.Viewport_GetCenter(imgui.GetMainViewport())
+                    imgui.SetNextWindowPos(center, .Appearing, {0.5, 0.5})
+
+                    if .NewFolder in actions {
+                        imgui.OpenPopup("new_folder_popup")
+                    }
+
+                    if imgui.BeginPopupModal("new_folder_popup", nil, {.AlwaysAutoResize}) {
+                        imgui.TextUnformatted("Enter a new for the new folder")
+                        imgui.Separator()
+
+                        @(static)
+                        buffer: [512]byte
+                        imgui.InputText("Folder Name", transmute(cstring) &buffer, len(buffer))
+
+                        if imgui.Button("OK", {120, 0}) {
+                            // Create the folder
+                            new_folder_path := filepath.join({e.content_browser.current_dir, string(buffer[:])})
+                            log_info(LC.Editor, "Creating new folder at %v", new_folder_path)
+                            log_info(LC.Editor, "%v", e.content_browser.current_dir)
+                            fs.make_directory_recursive(new_folder_path)
+                            cb_refresh(&e.content_browser)
+
+                            mem.zero_slice(buffer[:])
+                            imgui.CloseCurrentPopup()
+                        }
+                        imgui.SetItemDefaultFocus()
+                        imgui.SameLine()
+                        if imgui.Button("Cancel", {120, 0}) {
+                            mem.zero_slice(buffer[:])
+                            imgui.CloseCurrentPopup()
+                        }
                         imgui.EndPopup()
                     }
                 }
@@ -1780,38 +1825,43 @@ editor_gameobjects :: proc(e: ^Editor) {
         flags += {.UnsavedDocument}
     }
     if do_window("Entities", flags = flags) {
-        imgui.TextUnformatted(cstr(e.engine.world.name))
-        imgui.Separator()
+        if e.engine.world.objects == nil {
+            imgui.TextUnformatted("No scene is currently loaded")
+            imgui.Separator()
+        } else {
+            imgui.TextUnformatted(cstr(e.engine.world.name))
+            imgui.Separator()
 
-        go := e.engine.world.root
+            go := e.engine.world.root
 
-        children := &get_object(&e.engine.world, go).children
+            children := &get_object(&e.engine.world, go).children
 
-        {
-            with_popup_style()
-            if imgui.BeginPopupContextWindow() {
-                entity_create_menu(e, 0)
-                imgui.EndPopup()
+            {
+                with_popup_style()
+                if imgui.BeginPopupContextWindow() {
+                    entity_create_menu(e, 0)
+                    imgui.EndPopup()
+                }
             }
-        }
 
-        imgui.PushStyleVar(.IndentSpacing, 20)
-        for child in children {
-            tree_node_gameobject(e, child)
-        }
-        imgui.PopStyleVar()
-
-        if len(children) == 0 {
-            imgui.TextWrapped("No entities. Right click to create a new one.")
-        }
-
-        imgui.Dummy(imgui.GetContentRegionAvail())
-        if imgui.BeginDragDropTarget() {
-            if payload := imgui.AcceptDragDropPayload("WORLD_TREENODE"); payload != nil {
-                id := (cast(^EntityHandle)payload.Data)^
-                reparent_entity(&e.engine.world, id, 0)
+            imgui.PushStyleVar(.IndentSpacing, 20)
+            for child in children {
+                tree_node_gameobject(e, child)
             }
-            imgui.EndDragDropTarget()
+            imgui.PopStyleVar()
+
+            if len(children) == 0 {
+                imgui.TextWrapped("No entities. Right click to create a new one.")
+            }
+
+            imgui.Dummy(imgui.GetContentRegionAvail())
+            if imgui.BeginDragDropTarget() {
+                if payload := imgui.AcceptDragDropPayload("WORLD_TREENODE"); payload != nil {
+                    id := (cast(^EntityHandle)payload.Data)^
+                    reparent_entity(&e.engine.world, id, 0)
+                }
+                imgui.EndDragDropTarget()
+            }
         }
     }
 }

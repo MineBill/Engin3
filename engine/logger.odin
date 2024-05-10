@@ -103,6 +103,8 @@ log_actual :: proc(category: $T, level: log.Level, text: string, location := #ca
 
         category_logger := cast(^CategoryLogger(T)) raw_logger.typed_category_logger
         cat_logger_proc(raw_logger, category, level, text, context.logger.options, location)
+    } else {
+        log.log(level, text, location = location)
     }
 }
 

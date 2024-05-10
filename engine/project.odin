@@ -25,12 +25,12 @@ free_project :: proc(project: ^Project) {
 
 new_project :: proc(name: string, location: string) -> (project: Project, ok: bool) {
     if !filepath.is_abs(location) {
-        log_error(LC.Engine, "New project location must be an absolute path.")
+        log_error(LC.Editor, "New project location must be an absolute path.")
         return {}, false
     }
 
     if os.exists(location) {
-        log_error(LC.Engine, "Folder already exists at %v", location)
+        log_error(LC.Editor, "Folder already exists at %v", location)
         return {}, false
     }
     project.name = strings.clone(name)
@@ -38,17 +38,18 @@ new_project :: proc(name: string, location: string) -> (project: Project, ok: bo
     err := os.make_directory(location)
     assert(err == 0)
 
-    project.assets_folder = filepath.join({location, "Assets"})
-    os.make_directory(project.assets_folder)
+    project.assets_folder = "Assets"
+    os.make_directory(filepath.join({location, "Assets"}))
 
-    project.cache_folder = filepath.join({location, "Cache"})
-    os.make_directory(project.cache_folder)
+    project.cache_folder = "Cache"
+    os.make_directory(filepath.join({location, "Cache"}))
 
-    project.asset_registry_location = filepath.join({location, "AssetRegistry.r3gistry"})
+    project.asset_registry_location = "AssetRegistry.r3gistry"
 
     s: SerializeContext
     serialize_init(&s)
     serialize_project(project, &s)
+    serialize_dump_to_file(&s, filepath.join({location, "Project.engin3"}))
 
     return project, true
 }
@@ -85,7 +86,7 @@ serialize_project :: proc(project: Project, s: ^SerializeContext) {
     serialize_do_field(s, "AssetsFolder", project.assets_folder)
     serialize_do_field(s, "AssetRegistryLocation", project.asset_registry_location)
 
-    if is_asset_handle_valid(&EngineInstance.asset_manager, project.default_scene) {
+    if EngineInstance != nil && is_asset_handle_valid(&EngineInstance.asset_manager, project.default_scene) {
         serialize_do_field(s, "DefaultScene", project.default_scene)
     }
 

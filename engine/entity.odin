@@ -333,6 +333,9 @@ world_update :: proc(world: ^World, delta: f64, update_components := true) {
             }
         }
     }
+    if world.objects == nil || len(world.objects) == 0 {
+        return
+    }
 
     root := &world.objects[world.root]
     update_object(root, world.root, delta, update_components)

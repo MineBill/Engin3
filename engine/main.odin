@@ -39,6 +39,23 @@ main :: proc() {
     context.allocator = back.tracking_allocator(&track)
     // defer back.tracking_allocator_print_results(&track)
 
+    args, arg_parse_error := parse_args(os.args)
+    if arg_parse_error != nil {
+        log.infof("Failed to parse CLI args, reason: %v", arg_parse_error, os.args)
+        return
+    }
+
+    if "new-project" in args {
+        path := args["new-project"]
+        if path == nil {
+            log.errorf("new-project expects a path: eg. -new-project:\"path/to/folder\"")
+            return
+        }
+
+        new_project("New Project", path.(string))
+        return
+    }
+
     engine: Engine
     engine.ctx = context
     err := engine_init(&engine)
@@ -47,6 +64,10 @@ main :: proc() {
         return
     }
     defer engine_deinit(&engine)
+
+    // if !deserialize_world(&engine.world, "assets/scenes/New World.world") {
+    //     log_debug(LC.Engine, "Failed to deserialize 'New World.world")
+    // }
 
     start_time := time.now()
     for !engine_should_close(&engine) {
