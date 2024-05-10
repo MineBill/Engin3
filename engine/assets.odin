@@ -121,31 +121,33 @@ when USE_EDITOR {
                 }
             })
 
-        BUILTIN_ASSETS_DIR :: "W:\\source\\projects\\Engin3\\assets"
-        fs.watcher_init_with_callback(
-            &manager.assets_watcher,
-            BUILTIN_ASSETS_DIR,
-            manager,
-            proc(data: rawptr, file: string) {
-                context.logger = EditorInstance.logger
-                manager := cast(^EditorAssetManager) data
-                temp := context.temp_allocator
+        ENGINE_ASSET_DIR :: #config(ENGINE_ASSET_DIR, "")
+        when ENGINE_ASSET_DIR != "" {
+            fs.watcher_init_with_callback(
+                &manager.assets_watcher,
+                ENGINE_ASSET_DIR,
+                manager,
+                proc(data: rawptr, file: string) {
+                    context.logger = EditorInstance.logger
+                    manager := cast(^EditorAssetManager) data
+                    temp := context.temp_allocator
 
-                path, _ := filepath.to_slash(filepath.join({"assets", file}, temp), context.temp_allocator)
-                handle := get_asset_handle_from_path(manager, path)
+                    path, _ := filepath.to_slash(filepath.join({"assets", file}, temp), context.temp_allocator)
+                    handle := get_asset_handle_from_path(manager, path)
 
-                metadata := get_asset_metadata(manager, handle)
-                #partial switch metadata.type {
-                case .LuaScript:
-                    log_debug(LC.AssetSystem, "Attemping to re-import lua script '%v'", path)
-                    reimport_asset(manager, handle)
-                case .Shader:
-                    log_debug(LC.AssetSystem, "Starting shader reload..")
-                    shader := get_asset(manager, handle, Shader)
-                    shader_reload(shader, metadata.path)
-                    log_debug(LC.AssetSystem, "Shader reload finished.")
-                }
-            })
+                    metadata := get_asset_metadata(manager, handle)
+                    #partial switch metadata.type {
+                    case .LuaScript:
+                        log_debug(LC.AssetSystem, "Attemping to re-import lua script '%v'", path)
+                        reimport_asset(manager, handle)
+                    case .Shader:
+                        log_debug(LC.AssetSystem, "Starting shader reload..")
+                        shader := get_asset(manager, handle, Shader)
+                        shader_reload(shader, metadata.path)
+                        log_debug(LC.AssetSystem, "Shader reload finished.")
+                    }
+                })
+        }
 
         s: SerializeContext
         serialize_init_file(&s, project_get_asset_registry_location(EditorInstance.active_project))
