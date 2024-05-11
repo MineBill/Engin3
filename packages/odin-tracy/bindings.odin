@@ -2,9 +2,15 @@ package tracy
 
 import "core:c"
 
-when ODIN_OS == .Darwin  do foreign import tracy "tracy.dylib"
-when ODIN_OS == .Windows do foreign import tracy "tracy.lib"
-when ODIN_OS == .Linux   do foreign import tracy "libtracy.a"
+when ODIN_DEBUG {
+	when ODIN_OS == .Darwin  do foreign import tracy "lib/TracyClientd.dylib"
+	when ODIN_OS == .Windows do foreign import tracy "lib/TracyClientd.lib"
+	when ODIN_OS == .Linux   do foreign import tracy "lib/TracyClientd.a"
+} else {
+	when ODIN_OS == .Darwin  do foreign import tracy "lib/TracyClient.dylib"
+	when ODIN_OS == .Windows do foreign import tracy "lib/TracyClient.lib"
+	when ODIN_OS == .Linux   do foreign import tracy "lib/TracyClient.a"
+}
 
 TracyPlotFormatEnum :: enum i32
 {

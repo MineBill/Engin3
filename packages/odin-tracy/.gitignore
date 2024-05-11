@@ -1,2 +1,5 @@
 zig-out/
 zig-cache/
+lib/**/*.lib
+lib/**/*.dll
+lib/**/*.a

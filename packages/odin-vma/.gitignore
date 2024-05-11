@@ -1,2 +1,5 @@
 .exe
 ols.json
+lib/**/*.lib
+lib/**/*.dll
+lib/**/*.a

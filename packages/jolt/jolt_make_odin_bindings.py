@@ -318,23 +318,50 @@ jolt_odin_output += ("package jolt\n")
 jolt_odin_output += ('import "core:c"\n')
 
 jolt_odin_output += """
-when ODIN_OS == .Windows {
-\t@(extra_linker_flags="/IGNORE:4075")
-\tforeign import Jolt {
-\t\t"system:Kernel32.lib",
-\t\t"system:Gdi32.lib",
-\t\t"build/jolt_bind.lib",
-\t}
-} else when ODIN_OS == .Linux {
-\t@(extra_linker_flags="-lstdc++")
-\tforeign import Jolt {
-\t\t"build/jolt_bind.a",
-\t}
-}else when ODIN_OS == .Darwin{
-\t@(extra_linker_flags="-lstdc++")
-\tforeign import Jolt {
-\t\t"build/jolt_bind.a",
-\t}
+when ODIN_DEBUG {
+	when ODIN_OS == .Windows {
+		@(extra_linker_flags="/IGNORE:4075")
+		foreign import Jolt {
+			"system:Kernel32.lib",
+			"system:Gdi32.lib",
+			"lib/JoltCBindingd.lib",
+			"lib/Joltd.lib",
+		}
+	} else when ODIN_OS == .Linux {
+		@(extra_linker_flags="-lstdc++")
+		foreign import Jolt {
+			"lib/JoltCBindingd.a",
+			"lib/Joltd.a",
+		}
+	} else when ODIN_OS == .Darwin {
+		@(extra_linker_flags="-lstdc++")
+		foreign import Jolt {
+			"lib/JoltCBindingd.a",
+			"lib/Joltd.a",
+		}
+	}
+} else {
+	when ODIN_OS == .Windows {
+		@(extra_linker_flags="/IGNORE:4075")
+		foreign import Jolt {
+			"system:Kernel32.lib",
+			"system:Gdi32.lib",
+			"lib/JoltCBinding.lib",
+			"lib/Jolt.lib",
+		}
+	} else when ODIN_OS == .Linux {
+		@(extra_linker_flags="-lstdc++")
+		foreign import Jolt {
+			"lib/JoltCBinding.a",
+			"lib/Jolt.a",
+		}
+	} else when ODIN_OS == .Darwin {
+		@(extra_linker_flags="-lstdc++")
+		foreign import Jolt {
+			"lib/JoltCBinding.a",
+			"lib/Jolt.a",
+		}
+	}
 }
 """
 

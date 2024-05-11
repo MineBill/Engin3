@@ -10,8 +10,20 @@ when ODIN_OS == .Windows {
     EXE :: ""
 }
 
+when ODIN_OS == .Windows {
+    LIB :: ".lib"
+} else when ODIN_OS == .Linux {
+    LIB :: ".a"
+}
+
+BuildType :: enum {
+    Debug,
+    Release,
+}
+
 Target :: struct {
     using base: build.Target,
+    type: BuildType,
 
     dependencies: []^build.Target,
 
@@ -73,19 +85,27 @@ execute_target :: proc(target: ^build.Target, run_mode: build.Run_Mode, args: []
 
     odin_build.opt = .None
     odin_build.flags += {
-        .Debug,
         .Use_Separate_Modules,
         .Ignore_Unknown_Attributes,
+    }
+
+    defines := make([dynamic]build.Define)
+    append(&defines, build.Define{"TRACY_ENABLE", true})
+    append(&defines, build.Define{"VALIDATION", true})
+
+    switch target.type {
+    case .Debug:
+        odin_build.flags += {.Debug}
+    case .Release:
+        append(&defines, build.Define{"MB_RELEASE", true})
     }
 
 	odin_build.timings.mode = .Disabled
     odin_build.collections = {
         { "packages", "packages" },
     }
-    odin_build.defines = {
-        {"TRACY_ENABLE", true},
-        {"VALIDATION", true},
-    }
+
+    odin_build.defines = defines[:]
 
 	switch run_mode {
 	case .Build:

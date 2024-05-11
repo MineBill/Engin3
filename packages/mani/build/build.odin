@@ -2,7 +2,7 @@ package mani_build
 import "packages:odin-build/build"
 import "../../../build/common"
 
-mani_build_target := common.Target {
+build_t := common.Target {
     base = {
         name = "mani-build",
         platform = common.CURRENT_PLATFORM,
@@ -19,15 +19,15 @@ mani_build_target := common.Target {
     exe_name = "mani",
 }
 
-mani_run_target := common.RunTarget {
+run := common.RunTarget {
     base = {
         name = "mani-run",
         platform = common.CURRENT_PLATFORM,
     },
     dependencies = {
-        &mani_build_target,
+        &build_t,
     },
-    target_to_run = &mani_build_target,
+    target_to_run = &build_t,
     args = {
         "mani_config.json",
         "-show-timings"
@@ -36,6 +36,6 @@ mani_run_target := common.RunTarget {
 
 @(init)
 _ :: proc() {
-    build.add_target(&common.project, &mani_build_target, common.execute_target)
-    build.add_target(&common.project, &mani_run_target, common.run_target)
+    build.add_target(&common.project, &build_t, common.execute_target)
+    build.add_target(&common.project, &run, common.run_target)
 }

@@ -1,7 +1,26 @@
 package vma
-
 import c "core:c"
 import vk "vendor:vulkan"
+
+when ODIN_DEBUG {
+	when ODIN_OS == .Windows {
+		@(extra_linker_flags = "/NODEFAULTLIB:libcmt")
+		foreign import VulkanMemoryAllocator "lib/VulkanMemoryAllocatord.lib"
+	} else when ODIN_OS == .Linux {
+		foreign import VulkanMemoryAllocator "lib/libVulkanMemoryAllocatord.a"
+	} else {
+		#panic("Support for MacOS is not yet available.")
+	}
+} else {
+	when ODIN_OS == .Windows {
+		@(extra_linker_flags = "/NODEFAULTLIB:libcmt")
+		foreign import VulkanMemoryAllocator "lib/VulkanMemoryAllocator.lib"
+	} else when ODIN_OS == .Linux {
+		foreign import VulkanMemoryAllocator "lib/libVulkanMemoryAllocator.a"
+	} else {
+		#panic("Support for MacOS is not yet available.")
+	}
+}
 
 PFN_vmaAllocateDeviceMemoryFunction :: proc "c" (
 	allocator: Allocator,
@@ -17,15 +36,6 @@ PFN_vmaFreeDeviceMemoryFunction :: proc "c" (
 	size: vk.DeviceSize,
 	pUserData: rawptr,
 )
-
-when ODIN_OS == .Windows {
-    @(extra_linker_flags = "/NODEFAULTLIB:libcmt")
-    foreign import VulkanMemoryAllocator "external/VulkanMemoryAllocator.lib"
-} else when ODIN_OS == .Linux {
-    foreign import VulkanMemoryAllocator "external/libVulkanMemoryAllocator.a"
-} else {
-	#panic("Support for MacOS is not yet available.")
-}
 
 create_vulkan_functions :: proc() -> VulkanFunctions {
 	return(
@@ -52,6 +62,8 @@ create_vulkan_functions :: proc() -> VulkanFunctions {
 			InvalidateMappedMemoryRanges = vk.InvalidateMappedMemoryRanges,
 			MapMemory = vk.MapMemory,
 			UnmapMemory = vk.UnmapMemory,
+			GetDeviceBufferMemoryRequirements = vk.GetDeviceBufferMemoryRequirements,
+			GetDeviceImageMemoryRequirements = vk.GetDeviceImageMemoryRequirements,
 		} \
 	)
 }

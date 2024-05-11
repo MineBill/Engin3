@@ -1,28 +1,55 @@
 package spirv_cross
 import c "core:c"
 
-when ODIN_OS == .Windows {
-    @(extra_linker_flags="/NODEFAULTLIB:libcmt")
-    foreign import lib {
-        "bin/spirv-cross-c.lib",
-        "bin/spirv-cross-core.lib",
-        "bin/spirv-cross-cpp.lib",
-        "bin/spirv-cross-glsl.lib",
-        "bin/spirv-cross-msl.lib",
-        "bin/spirv-cross-hlsl.lib",
-        "bin/spirv-cross-reflect.lib",
-        "bin/spirv-cross-util.lib",
+when ODIN_DEBUG {
+    when ODIN_OS == .Windows {
+        @(extra_linker_flags="/NODEFAULTLIB:libcmt")
+        foreign import lib {
+            "bin/spirv-cross-cd.lib",
+            "bin/spirv-cross-cored.lib",
+            "bin/spirv-cross-cppd.lib",
+            "bin/spirv-cross-glsld.lib",
+            "bin/spirv-cross-msld.lib",
+            "bin/spirv-cross-hlsld.lib",
+            "bin/spirv-cross-reflectd.lib",
+            "bin/spirv-cross-utild.lib",
+        }
+    } else when ODIN_OS == .Linux {
+        foreign import lib {
+            "bin/libspirv-cross-cd.a",
+            "bin/libspirv-cross-cored.a",
+            "bin/libspirv-cross-cppd.a",
+            "bin/libspirv-cross-glsld.a",
+            "bin/libspirv-cross-msld.a",
+            "bin/libspirv-cross-hlsld.a",
+            "bin/libspirv-cross-reflectd.a",
+            "bin/libspirv-cross-utild.a",
+        }
     }
-} else when ODIN_OS == .Linux {
-    foreign import lib {
-        "bin/linux/libspirv-cross-c.a",
-        "bin/linux/libspirv-cross-core.a",
-        "bin/linux/libspirv-cross-cpp.a",
-        "bin/linux/libspirv-cross-glsl.a",
-        "bin/linux/libspirv-cross-msl.a",
-        "bin/linux/libspirv-cross-hlsl.a",
-        "bin/linux/libspirv-cross-reflect.a",
-        "bin/linux/libspirv-cross-util.a",
+} else {
+    when ODIN_OS == .Windows {
+        @(extra_linker_flags="/NODEFAULTLIB:libcmt")
+        foreign import lib {
+            "bin/spirv-cross-c.lib",
+            "bin/spirv-cross-core.lib",
+            "bin/spirv-cross-cpp.lib",
+            "bin/spirv-cross-glsl.lib",
+            "bin/spirv-cross-msl.lib",
+            "bin/spirv-cross-hlsl.lib",
+            "bin/spirv-cross-reflect.lib",
+            "bin/spirv-cross-util.lib",
+        }
+    } else when ODIN_OS == .Linux {
+        foreign import lib {
+            "bin/libspirv-cross-c.a",
+            "bin/libspirv-cross-core.a",
+            "bin/libspirv-cross-cpp.a",
+            "bin/libspirv-cross-glsl.a",
+            "bin/libspirv-cross-msl.a",
+            "bin/libspirv-cross-hlsl.a",
+            "bin/libspirv-cross-reflect.a",
+            "bin/libspirv-cross-util.a",
+        }
     }
 }
 

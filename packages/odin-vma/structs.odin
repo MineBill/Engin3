@@ -33,6 +33,8 @@ VulkanFunctions :: struct {
 	BindBufferMemory2KHR:                  vk.ProcBindBufferMemory2KHR,
 	BindImageMemory2KHR:                   vk.ProcBindImageMemory2KHR,
 	GetPhysicalDeviceMemoryProperties2KHR: vk.ProcGetPhysicalDeviceMemoryProperties2KHR,
+	GetDeviceBufferMemoryRequirements:     vk.ProcGetDeviceBufferMemoryRequirements,
+	GetDeviceImageMemoryRequirements:      vk.ProcGetDeviceImageMemoryRequirements,
 }
 
 AllocatorCreateInfo :: struct {

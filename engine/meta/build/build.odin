@@ -2,11 +2,12 @@ package meta_build
 import "packages:odin-build/build"
 import "../../../build/common"
 
-meta_build_target := common.Target {
+build_t := common.Target {
     base = {
         name = "meta-build",
         platform = common.CURRENT_PLATFORM,
     },
+    type = .Release,
     sources = {
         "main.odin"
     },
@@ -17,15 +18,15 @@ meta_build_target := common.Target {
     exe_name = "meta",
 }
 
-meta_run_target := common.RunTarget {
+run := common.RunTarget {
     base = {
         name = "meta-run",
         platform = common.CURRENT_PLATFORM,
     },
     dependencies = {
-        &meta_build_target,
+        &build_t,
     },
-    target_to_run = &meta_build_target,
+    target_to_run = &build_t,
     args = {
         "engine"
     },
@@ -33,6 +34,6 @@ meta_run_target := common.RunTarget {
 
 @(init)
 _ :: proc() {
-    build.add_target(&common.project, &meta_build_target, common.execute_target)
-    build.add_target(&common.project, &meta_run_target, common.run_target)
+    build.add_target(&common.project, &build_t, common.execute_target)
+    build.add_target(&common.project, &run, common.run_target)
 }

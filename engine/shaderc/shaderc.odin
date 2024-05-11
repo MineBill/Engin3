@@ -16,11 +16,20 @@ package shaderc
 
 import c "core:c"
 
-when ODIN_OS == .Windows {
-	@(extra_linker_flags = "/IGNORE:4099")
-	foreign import libshaderc "bin/shaderc_combined.lib"
-} else when ODIN_OS == .Linux {
-	foreign import libshaderc "bin/libshaderc_combined.a"
+when ODIN_DEBUG {
+	when ODIN_OS == .Windows {
+		@(extra_linker_flags = "/IGNORE:4099")
+		foreign import libshaderc "bin/shaderc_combinedd.lib"
+	} else when ODIN_OS == .Linux {
+		foreign import libshaderc "bin/libshaderc_combinedd.a"
+	}
+} else {
+	when ODIN_OS == .Windows {
+		@(extra_linker_flags = "/IGNORE:4099")
+		foreign import libshaderc "bin/shaderc_combined.lib"
+	} else when ODIN_OS == .Linux {
+		foreign import libshaderc "bin/libshaderc_combined.a"
+	}
 }
 
 @(default_calling_convention = "c")

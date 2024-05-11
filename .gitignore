@@ -16,3 +16,5 @@ scratch/
 build.exe
 build.bin
 .obuild
+temp/
+tmp/
