@@ -63,10 +63,6 @@ destroy_buffer :: proc(buffer: Buffer) {
     info: vma.AllocationInfo
     vma.GetAllocationInfo(buffer.spec.device.allocator, buffer.allocation, &info)
 
-    if info.pMappedData != nil {
-        buffer_unmap(buffer)
-    }
-
     vma.DestroyBuffer(buffer.spec.device.allocator, buffer.handle, buffer.allocation)
 }
 
