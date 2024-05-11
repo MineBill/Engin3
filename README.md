@@ -18,6 +18,12 @@ The reason for this is that i just feel more comfortable working with this type 
 > The project is highly volatile and there is a chance you won't be able to compile vendor libraries and/or get linking errors.
 > If you do encounter such issues, please open in issue, i would love to help you get it working!
 
+### Requirements
+- Odin
+- Vulkan SDK
+  - You __MUST__ make sure the SDK is installed with the debug versions of the shader libraries!
+- CMake (I'm sorry)
+
 ### Odin
 First, you need to [install](https://odin-lang.org/docs/install/) Odin and make sure the `odin` executable is in your PATH.
 
@@ -44,7 +50,12 @@ At the root of the repository, run:
 odin build build -collection:packages=packages
 ```
 
-This command will create a `build.exe/build` binary which you can then use to build and run the project:
+This command will create a `build.(exe|bin)` binary which you can then use to build and run the project. However, before doing so, we need to copy some neccesary libraries from the Vulkan SDK. This step only needs to be run once:
+```shell
+./build.exe setup-vulkan
+```
+
+Now we are ready to run the project:
 ```shell
 ./build.exe default-debug # This should launch the engine in debug configuration.
 ```
