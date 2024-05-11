@@ -21,22 +21,33 @@ The reason for this is that i just feel more comfortable working with this type 
 ### Odin
 First, you need to [install](https://odin-lang.org/docs/install/) Odin and make sure the `odin` executable is in your PATH.
 
-### Building third party libraries
-- Linux
-  - Run `./packages/build.sh` to build the necessary libraries.
 - Windows
   - Make sure you have the MSVC build tools installed. If not, consider using [this](https://github.com/Data-Oriented-House/PortableBuildTools).
-  - Run `packages/build.bat` to build the necessary libraries.
 
-### Task
-This project uses [Task](https://taskfile.dev), a simple task runner.
-Task is used to run multiple meta programs to generate compile time information and bindings for lua scripts.
+### Building third party libraries
+The project (sadly) has to use CMake to build the third party libraries, so you must have it installed. Then:
 
-Task is a single binary and can easily be installed:
-- On Windows: `winget install Task.Task`
-- On Linux: `Use your package manager`
+```shell
+cmake -S packages/ -B temp # Put all the cmake generate stuff in temp, which is ignored in this repo
+cmake --build temp --config Debug --target copy_libs
+```
 
-Once installed, execute `task run` at the project root.
+> Additionally, if you want to use the engine in release mode, you also have to build
+> the release version of the 3rd party libs:
+> ```shell
+> cmake --build temp --config Release --target copy_libs
+> ```
+
+### Building Engin3
+At the root of the repository, run:
+```odin
+odin build build -collection:packages=packages
+```
+
+This command will create a `build.exe/build` binary which you can then use to build and run the project:
+```shell
+./build.exe default-debug # This should launch the engine in debug configuration.
+```
 
 ### Discord
 Everybody and their mum has a discord server, so why not me? :)
