@@ -3,3 +3,6 @@ __pycache__
 **/*.exe
 jolt_bind_pp.h
 **/*.pdb
+lib/*.dll
+lib/*.lib
+lib/*.a
