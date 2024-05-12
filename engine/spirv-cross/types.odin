@@ -37,7 +37,7 @@ reflected_resource :: struct {
     id: TypeId,
     base_type_id: TypeId,
     type_id: TypeId,
-    name: string,
+    name: cstring,
 }
 
 reflected_builtin_resource :: struct {
