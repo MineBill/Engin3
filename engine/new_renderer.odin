@@ -33,6 +33,7 @@ Renderer3D :: struct {
     shadow_renderpass: gpu.RenderPass,
     world_renderpass: gpu.RenderPass,
     object_shader, depth_shader: AssetHandle,
+    grid_shader: AssetHandle,
     // world_pipeline: gpu.Pipeline,
     ui_renderpass:    gpu.RenderPass,
     ui_pipeline: gpu.Pipeline,
@@ -59,9 +60,11 @@ Renderer3D :: struct {
     _editor_images: map[gpu.UUID]vk.DescriptorSet,
     _shaders: map[AssetHandle]^Shader,
 
-    white_texture, normal_texture: AssetHandle,
-
     visualization_options: VisualizationOptions,
+
+    white_texture, normal_texture: AssetHandle,
+    primitive_cube: AssetHandle,
+    default_material: AssetHandle,
 }
 
 tex :: proc(image: gpu.Image) -> imgui.TextureID {
@@ -212,13 +215,6 @@ r3d_draw_frame :: proc(r: ^Renderer3D, packet: RPacket, cmd: gpu.CommandBuffer) 
         }
     }
 
-    // if gpu.do_render_pass(cmd, r.shadow_renderpass, r.shadow_framebuffers[0]) {
-    //     tracy.ZoneN("Depth Pass")
-    //     size := vec2{SHADOW_MAP_RES, SHADOW_MAP_RES}
-    //     gpu.set_viewport(cmd, size)
-    //     gpu.set_scissor(cmd, 0, 0, u32(size.x), u32(size.y))
-
-    // }
     splits := do_depth_pass(r, &packet, cmd, mesh_components[:])
     r.scene_set.light_data.shadow_split_distances = splits
 
@@ -234,6 +230,14 @@ r3d_draw_frame :: proc(r: ^Renderer3D, packet: RPacket, cmd: gpu.CommandBuffer) 
         gpu.bind_resource(cmd, r.global_set.resource, g_dbg_context.pipeline)
         // NOTE(minebill): Is this the correct place for this?
         dbg_render(g_dbg_context, cmd)
+
+        {
+            grid_shader := get_asset(&EngineInstance.asset_manager, r.grid_shader, Shader)
+            gpu.bind_resource(cmd, r.global_set.resource, grid_shader.pipeline)
+            gpu.bind_resource(cmd, r.scene_set.resource, grid_shader.pipeline, 1)
+            gpu.pipeline_bind(cmd, grid_shader.pipeline)
+            gpu.draw(cmd, 6, 1)
+        }
     }
 }
 
@@ -408,7 +412,6 @@ do_depth_pass :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, 
                         rot.z * math.RAD_PER_DEG,
                         .XYZ)
                     dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, 1})
-
                         // gl.NamedFramebufferTextureLayer(
                         //     depth_fb.handle,
                         //     gl.DEPTH_ATTACHMENT,
@@ -430,7 +433,6 @@ do_depth_pass :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, 
                             packet.camera.view)
 
                         center := vec3{}
-
                         for corner in corners {
                             center += corner.xyz
                         }
@@ -676,9 +678,6 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
             tag = "Depth Pipeline Layout",
             device = &r.device,
             layouts = {
-                // r.global_set.layout,
-                // r.scene_set.layout,
-                // r.object_set.layout,
             },
             use_push = true,
         }
@@ -912,6 +911,43 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
         // r.world_pipeline = world_pipeline
     }
 
+    pipeline_layout_spec := gpu.PipelineLayoutSpecification {
+        tag = "Grid Pipeline Layout",
+        device = &r.device,
+        layouts = {
+            r.global_set.layout,
+            r.scene_set.layout,
+        },
+        use_push = true,
+    }
+
+    pipeline_layout := gpu.create_pipeline_layout(pipeline_layout_spec, size_of(PushConstants))
+
+    config := gpu.default_pipeline_config()
+    config.multisample_info.rasterizationSamples = {._8}
+    config.multisample_info.sampleShadingEnable = true
+    config.rasterization_info.cullMode = {.FRONT}
+    config.colorblend_attachment_info.blendEnable = true
+
+    pipeline_spec := gpu.PipelineSpecification {
+        tag = "Grid Pipeline",
+        layout = pipeline_layout,
+        renderpass = r.world_renderpass,
+        // attribute_layout = gpu.vertex_layout(),
+        config = config,
+    }
+
+    manager := &EngineInstance.asset_manager
+    id := AssetHandle(generate_uuid())
+
+    manager.registry[id] = AssetMetadata {
+        path = "assets/shaders/new/grid.shader",
+        type = .Shader,
+        dont_serialize = true,
+    }
+    manager.loaded_assets[id] = new_shader(manager.registry[id].path, pipeline_spec) or_return
+    r.grid_shader = id
+
     return true
 }
 
@@ -935,6 +971,19 @@ create_default_resources :: proc(r: ^Renderer3D) {
     normal := new_texture2d(spec, normal_data, "Normal Texture")
     r.normal_texture = create_virtual_asset(&EngineInstance.asset_manager, normal, "Default Normal Texture")
     gpu.image_transition_layout(&normal.handle, .ShaderReadOnlyOptimal)
+
+    cube := new_mesh_from_file("assets/models/primitives/cube.glb")
+    assert(cube != nil, "Failed to load cube primitive")
+    r.primitive_cube = create_virtual_asset(&EngineInstance.asset_manager, cube, "Primitive Cube")
+
+    material := cast(^PbrMaterial) new_pbr_material()
+    material.albedo_texture = r.white_texture
+    material.normal_texture = r.normal_texture
+    material.block.albedo_color = Color{1, 1, 1, 1}
+    material.block.metallic_factor = 0.5
+    material.block.roughness_factor = 0.5
+
+    r.default_material = create_virtual_asset(&EngineInstance.asset_manager, &material.base, "Default Material")
 }
 
 // NOTE(minebill): Remember to factor this out, somehow.

@@ -266,7 +266,12 @@ when USE_EDITOR {
     WorldEditorData :: struct {}
 }
 
+@(asset = {
+    ImportFormats = ".scene",
+})
 World :: struct {
+    using base: Asset,
+
     // The name of this world/level.
     name: string,
 
@@ -284,6 +289,11 @@ World :: struct {
 
     using editor_data: WorldEditorData,
 }
+
+// @(constructor=World)
+// new_world :: proc() -> ^Asset {
+//     // world: 
+// }
 
 create_world :: proc(world: ^World, name: string = "World") {
     tracy.Zone()

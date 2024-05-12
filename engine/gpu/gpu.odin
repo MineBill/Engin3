@@ -261,7 +261,7 @@ set_handle_name :: proc(device: ^Device, #any_int handle: u64, type: vk.ObjectTy
     name_info := vk.DebugUtilsObjectNameInfoEXT {
         sType = .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
         objectHandle = handle,
-        objectType = .BUFFER,
+        objectType = type,
         pObjectName = name,
     }
     check(vk.SetDebugUtilsObjectNameEXT(device.handle, &name_info))

@@ -18,6 +18,7 @@ PipelineSpecification :: struct {
 
     shader:           Shader,
 }
+import "core:fmt"
 
 create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeline: Pipeline, error: PipelineCreationError) {
     pipeline.id = new_id()
@@ -46,9 +47,9 @@ create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeli
     vertex_input_state := vk.PipelineVertexInputStateCreateInfo {
         sType = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         vertexBindingDescriptionCount = 1 if len(spec.attribute_layout.attributes) > 0 else 0,
-        pVertexBindingDescriptions = &binding_desc,
+        pVertexBindingDescriptions = &binding_desc if len(spec.attribute_layout.attributes) > 0 else nil,
         vertexAttributeDescriptionCount = cast(u32) len(attribute_desc),
-        pVertexAttributeDescriptions = raw_data(attribute_desc),
+        pVertexAttributeDescriptions = raw_data(attribute_desc) if len(attribute_desc) > 0 else nil,
     }
 
     viewport:= vk.Viewport {}
@@ -96,6 +97,8 @@ create_pipeline :: proc(device: ^Device, spec: PipelineSpecification) -> (pipeli
         basePipelineIndex   = -1,
     }
     check(vk.CreateGraphicsPipelines(device.handle, 0, 1, &pipeline_create_info, nil, &pipeline.handle))
+
+    set_handle_name(device, pipeline.handle, .PIPELINE, spec.tag)
     return
 }
 
@@ -146,6 +149,8 @@ create_pipeline_layout :: proc(spec: PipelineLayoutSpecification, T: Maybe(int) 
     }
 
     check(vk.CreatePipelineLayout(spec.device.handle, &pipeline_layout_create_info, nil, &layout.handle))
+
+    set_handle_name(spec.device, layout.handle, .PIPELINE_LAYOUT, spec.tag)
     return
 }
 
@@ -194,8 +199,8 @@ default_pipeline_config :: proc() -> (config: PipelineConfig) {
         srcColorBlendFactor = vk.BlendFactor.SRC_ALPHA,
         dstColorBlendFactor = vk.BlendFactor.ONE_MINUS_SRC_ALPHA,
         colorBlendOp = vk.BlendOp.ADD,
-        srcAlphaBlendFactor = vk.BlendFactor.ONE,
-        dstAlphaBlendFactor = vk.BlendFactor.ZERO,
+        srcAlphaBlendFactor = vk.BlendFactor.SRC_ALPHA,
+        dstAlphaBlendFactor = vk.BlendFactor.ONE_MINUS_SRC_ALPHA,
         alphaBlendOp = vk.BlendOp.ADD,
     }
 
@@ -299,6 +304,7 @@ VertexAttributeLayout :: struct {
 }
 
 vertex_layout :: proc(attributes: ..VertexAttribute) -> (layout: VertexAttributeLayout) {
+    layout.attributes = make([dynamic]VertexAttribute)
     attributes := attributes
 
     offset := 0

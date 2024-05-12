@@ -201,6 +201,11 @@ serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^SerializeCont
     switch s.mode {
     case .Serialize:
     case .Deserialize:
+        if this.material == 0 {
+            log_info(LC.EntitySystem, "MeshRenderer: Deserialized material is nil, using default material")
+            this.material = Renderer3DInstance.default_material
+        }
+
         mesh_renderer_update_material(this)
     }
 }

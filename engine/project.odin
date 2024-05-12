@@ -79,6 +79,10 @@ project_get_asset_registry_location :: proc(project: Project, allocator := conte
     return filepath.join({project.root, project.asset_registry_location}, allocator)
 }
 
+project_get_abs_path :: proc(project: Project, path: string, allocator := context.allocator) -> string {
+    return filepath.join({project.root, path}, allocator)
+}
+
 serialize_project :: proc(project: Project, s: ^SerializeContext) {
     serialize_begin_table(s, "Project")
     serialize_do_field(s, "Name", project.name)

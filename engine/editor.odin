@@ -24,6 +24,8 @@ import "core:io"
 import "core:thread"
 import "core:container/small_array"
 
+PRIMITIVE_CUBE :: #load("../assets/models/primitives/cube.glb")
+
 DEFAULT_EDITOR_CAMERA_POSITION :: vec3{0, 3, 5}
 USE_EDITOR :: #config(USE_EDITOR, true)
 
@@ -249,8 +251,6 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     ok: bool
     e.outline_shader, ok = shader_load_from_file("assets/shaders/new/outline.shader")
     assert(ok == true, "Failed to read outline shader.")
-    e.grid_shader, ok = shader_load_from_file("assets/shaders/new/grid.shader")
-    assert(ok == true, "Failed to read grid shader.")
 
     io := imgui.GetIO()
     io.IniFilename = nil
@@ -845,6 +845,16 @@ editor_viewport :: proc(e: ^Editor) {
         // imgui.Image(tex(white.handle), size, uv0, uv1)
 
         if imgui.BeginDragDropTarget() {
+            if payload := imgui.AcceptDragDropPayload("CONTENT_ITEM_ASSET"); payload != nil {
+                asset_handle := (cast(^AssetHandle)payload.Data)^
+
+                #partial switch get_asset_type(&EngineInstance.asset_manager, asset_handle) {
+                case .World:
+                    world := get_asset(&EngineInstance.asset_manager, asset_handle, World)
+                    EngineInstance.world = world^
+                }
+            }
+
             if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Scene], {}); payload != nil {
                 data := transmute(^byte)payload.Data
                 path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
@@ -1297,7 +1307,11 @@ cb_refresh :: proc(cb: ^ContentBrowser) {
             assert(is_asset_handle_valid(&EngineInstance.asset_manager, asset))
             name := filepath.stem(relative_to_content_browser)
 
+            log_debug(LC.Editor, "CB: name: %v", name)
+
             type := get_asset_type(&EngineInstance.asset_manager, asset)
+
+            log_debug(LC.Editor, "CB: type: %v", type)
 
             item := ContentItem {
                 absolute_path = strings.clone(imported.fullpath),
@@ -1324,16 +1338,16 @@ editor_content_browser :: proc(e: ^Editor) {
         NewScene,
     }
 
-    new_asset_menu :: proc(e: ^Editor) -> (actions: bit_set[NewAssetAction]) {
+    new_asset_menu :: proc(e: ^Editor) -> (action: NewAssetAction) {
         if imgui.BeginMenu("New") {
-            if imgui.MenuItem("Folder [Does nothing]") {
-                actions += {.NewFolder}
+            if imgui.MenuItem("Folder") {
+                action = .NewFolder
             }
 
             imgui.Separator()
 
-            if imgui.MenuItem("Scene [Does nothing]") {
-                actions += {.NewScene}
+            if imgui.MenuItem("Scene") {
+                action = .NewScene
             }
 
             if imgui.MenuItem("PBR Material") {
@@ -1385,7 +1399,7 @@ return NewScript
                     os.flush(handle)
                 }
 
-                register_asset(&EngineInstance.asset_manager, path)
+                register_existing_asset(&EngineInstance.asset_manager, path)
 
                 cb_refresh(&e.content_browser)
             }
@@ -1424,7 +1438,7 @@ return NewScript
             if do_button("Import") {
                 file := open_file_dialog("Any supported asset file", "*.png;*.glb;*.jpg")
                 if file != "" {
-                    register_asset(&EngineInstance.asset_manager, file)
+                    import_external_asset(&EngineInstance.asset_manager, file)
                     cb_refresh(&e.content_browser)
                 }
             }
@@ -1479,43 +1493,72 @@ return NewScript
 
                 {
                     with_popup_style()
-                    actions: bit_set[NewAssetAction] = {}
+
+                    // TODO(minebill): Is there a better way to store this? Besides making it static?
+                    @static
+                    action: NewAssetAction = {}
                     if imgui.BeginPopupContextWindow() {
-                        actions = new_asset_menu(e)
+                        action = new_asset_menu(e)
                         imgui.EndPopup()
                     }
 
                     center := imgui.Viewport_GetCenter(imgui.GetMainViewport())
                     imgui.SetNextWindowPos(center, .Appearing, {0.5, 0.5})
 
-                    if .NewFolder in actions {
+                    switch action {
+                    case .None:
+                    case .NewFolder:
+                        imgui.OpenPopup("new_folder_popup")
+                    case .NewScene:
                         imgui.OpenPopup("new_folder_popup")
                     }
 
                     if imgui.BeginPopupModal("new_folder_popup", nil, {.AlwaysAutoResize}) {
-                        imgui.TextUnformatted("Enter a new for the new folder")
+                        imgui.TextUnformatted("Enter a name:")
                         imgui.Separator()
 
                         @(static)
                         buffer: [512]byte
-                        imgui.InputText("Folder Name", transmute(cstring) &buffer, len(buffer))
+                        imgui.InputText("Name", transmute(cstring) &buffer, len(buffer))
 
                         if imgui.Button("OK", {120, 0}) {
-                            // Create the folder
-                            new_folder_path := filepath.join({e.content_browser.current_dir, string(buffer[:])})
-                            log_info(LC.Editor, "Creating new folder at %v", new_folder_path)
-                            log_info(LC.Editor, "%v", e.content_browser.current_dir)
-                            fs.make_directory_recursive(new_folder_path)
-                            cb_refresh(&e.content_browser)
+                            log_debug(LC.Editor, "action %v", action)
+                            switch action {
+                            case .None:
+                            case .NewFolder:
+                                // Create the folder
+                                new_folder_path := filepath.join({e.content_browser.current_dir, string(buffer[:])}, context.temp_allocator)
+                                log_info(LC.Editor, "Creating new folder at %v", new_folder_path)
+                                fs.make_directory_recursive(new_folder_path)
+                                cb_refresh(&e.content_browser)
+                            case .NewScene:
+                                // Create the folder
+                                name := string(buffer[:])
+                                new_scene_path := strings.concatenate({
+                                        filepath.join({e.content_browser.current_dir, name}, context.temp_allocator),
+                                        ".scene"
+                                    }, context.temp_allocator)
+
+                                log_info(LC.Editor, "Creating new scene at %v", new_scene_path)
+
+                                world: World
+                                create_world(&world, name)
+                                serialize_world(world, new_scene_path)
+
+                                register_existing_asset(&EngineInstance.asset_manager, new_scene_path)
+                                cb_refresh(&e.content_browser)
+                            }
 
                             mem.zero_slice(buffer[:])
                             imgui.CloseCurrentPopup()
+                            action = .None
                         }
                         imgui.SetItemDefaultFocus()
                         imgui.SameLine()
                         if imgui.Button("Cancel", {120, 0}) {
                             mem.zero_slice(buffer[:])
                             imgui.CloseCurrentPopup()
+                            action = .None
                         }
                         imgui.EndPopup()
                     }
@@ -1535,6 +1578,8 @@ return NewScript
                             texture = e.content_browser.textures[.Script]
                         case .PbrMaterial:
                             texture = e.content_browser.textures[.Material]
+                        case .World:
+                            texture = e.content_browser.textures[.Scene]
                         case .Texture2D:
                             texture = get_asset(&EngineInstance.asset_manager, item.asset, Texture2D)^
                         }
@@ -1567,7 +1612,12 @@ return NewScript
                             if item.is_folder {
                                 cb_navigate_to_folder(browser, item.relative_path, relative = true)
                             } else {
-                                e.asset_windows[item.asset] = create_asset_window(item.asset)
+                                #partial switch item.type {
+                                case .PbrMaterial:
+                                    e.asset_windows[item.asset] = create_asset_window(item.asset)
+                                case .World:
+                                    // Load the world
+                                }
                             }
                         }
 
@@ -1739,6 +1789,45 @@ editor_gameobjects :: proc(e: ^Editor) {
             if imgui.MenuItem("Sky") {
                 go := new_object(&e.engine.world, "Sky", parent)
                 add_component(&e.engine.world, go, CubemapComponent)
+            }
+            if imgui.MenuItem("Directional Light") {
+                go := new_object(&e.engine.world, "Directional Light", parent)
+                add_component(&e.engine.world, go, DirectionalLight)
+            }
+            if imgui.BeginMenu("Primitives") {
+                cube: if imgui.MenuItem("Cube") {
+                    path := filepath.join({project_get_assets_folder(e.active_project), "_Generated", "Primitives", "Cube.glb"}, context.temp_allocator)
+                    base := filepath.dir(path, context.temp_allocator)
+
+                    log_debug(LC.Editor, "Path: %v", path)
+                    log_debug(LC.Editor, "Base: %v", base)
+                    log_debug(LC.Editor, "exists(Path): %v", os.exists(path))
+                    log_debug(LC.Editor, "exists(Base): %v", os.exists(base))
+
+                    handle: AssetHandle
+                    if !os.exists(path) {
+                        if !os.exists(base) {
+                            fs.make_directory_recursive(base)
+                        }
+                        if !os.write_entire_file(path, PRIMITIVE_CUBE) {
+                            break cube
+                        }
+
+                        handle = register_existing_asset(&EngineInstance.asset_manager, path)
+                        cb_refresh(&e.content_browser)
+                    } else {
+                        rel, _ := filepath.rel(e.active_project.root, path, context.temp_allocator)
+                        handle = get_asset_handle_from_path(&EngineInstance.asset_manager, rel)
+                    }
+
+
+                    go := new_object(&e.engine.world, "Cube", parent)
+                    add_component(&e.engine.world, go, MeshRenderer)
+                    mr := get_component(&e.engine.world, go, MeshRenderer)
+                    mr.mesh = handle
+                    mr.material = Renderer3DInstance.default_material
+                }
+                imgui.EndMenu()
             }
             imgui.EndMenu()
         }

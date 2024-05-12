@@ -106,6 +106,12 @@ shader_reload :: proc(shader: ^Shader, path: string) {
 // Editor-Only
 compile_shader_source :: proc(file: string, source: string, shader_kind: ShaderKind) -> (bytecode: []byte, ok: bool) {
     bytecode = compile_to_spirv_vulkan(transmute([]byte) source, shader_kind, file) or_return
+
+    log_info(LC.Engine, "Shader Reflection for %v:", file)
+    if !reflect_shader(bytecode, file, shader_kind) {
+        log_error(LC.Engine, "Shader reflection failed")
+    }
+
     return bytecode, true
 }
 
@@ -217,7 +223,7 @@ compile_to_spirv_opengl :: proc(source: []byte, shader_kind: ShaderKind, name: s
     return
 }
 
-compile_to_glsl :: proc(spirv_bytecode: []byte) -> (glsl_source: []byte, ok: bool) {
+reflect_shader :: proc(spirv_bytecode: []byte, name: string, stage: ShaderKind) -> (ok: bool) {
     glsl_ctx: spvc.Context
     res := spvc.context_create(&glsl_ctx)
     assert(res == .SUCCESS, "Failed to create spvc context.")
@@ -229,39 +235,72 @@ compile_to_glsl :: proc(spirv_bytecode: []byte) -> (glsl_source: []byte, ok: boo
         return
     }
 
-    glsl_compiler: spvc.Compiler
-    res = spvc.context_create_compiler(glsl_ctx, .GLSL, parsed_ir, .TAKE_OWNERSHIP, &glsl_compiler)
-    assert(res == .SUCCESS, "Error creating GLSL compiler")
+    compiler: spvc.Compiler
+    res = spvc.context_create_compiler(glsl_ctx, .NONE, parsed_ir, .COPY, &compiler)
+    assert(res == .SUCCESS, "Error creating NONE compiler")
 
-    options: spvc.CompilerOptions
-    spvc.compiler_create_compiler_options(glsl_compiler, &options)
-    spvc.compiler_options_set_uint(options, .GLSL_VERSION, 450)
-    spvc.compiler_options_set_bool(options, .GLSL_ES, false)
-    spvc.compiler_options_set_bool(options, .GLSL_ENABLE_ROW_MAJOR_LOAD_WORKAROUND, true)
-    spvc.compiler_options_set_bool(options, .ENABLE_STORAGE_IMAGE_QUALIFIER_DEDUCTION, true)
-    spvc.compiler_options_set_bool(options, .GLSL_SUPPORT_NONZERO_BASE_INSTANCE, true)
+    // options: spvc.CompilerOptions
+    // spvc.compiler_create_compiler_options(compiler, &options)
+    // spvc.compiler_options_set_uint(options, .GLSL_VERSION, 450)
+    // spvc.compiler_options_set_bool(options, .GLSL_ES, false)
+    // spvc.compiler_options_set_bool(options, .GLSL_ENABLE_ROW_MAJOR_LOAD_WORKAROUND, true)
+    // spvc.compiler_options_set_bool(options, .ENABLE_STORAGE_IMAGE_QUALIFIER_DEDUCTION, true)
+    // spvc.compiler_options_set_bool(options, .GLSL_SUPPORT_NONZERO_BASE_INSTANCE, true)
 
-    spvc.compiler_options_set_bool(options, .GLSL_VULKAN_SEMANTICS, false)
-    spvc.compiler_options_set_bool(options, .GLSL_SEPARATE_SHADER_OBJECTS, false)
-    spvc.compiler_options_set_bool(options, .FLATTEN_MULTIDIMENSIONAL_ARRAYS, false)
-    spvc.compiler_options_set_bool(options, .GLSL_ENABLE_420PACK_EXTENSION, true)
-    spvc.compiler_options_set_bool(options, .GLSL_EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER, false)
-    spvc.compiler_options_set_bool(options, .GLSL_EMIT_UNIFORM_BUFFER_AS_PLAIN_UNIFORMS, false)
+    // spvc.compiler_options_set_bool(options, .GLSL_VULKAN_SEMANTICS, false)
+    // spvc.compiler_options_set_bool(options, .GLSL_SEPARATE_SHADER_OBJECTS, false)
+    // spvc.compiler_options_set_bool(options, .FLATTEN_MULTIDIMENSIONAL_ARRAYS, false)
+    // spvc.compiler_options_set_bool(options, .GLSL_ENABLE_420PACK_EXTENSION, true)
+    // spvc.compiler_options_set_bool(options, .GLSL_EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER, false)
+    // spvc.compiler_options_set_bool(options, .GLSL_EMIT_UNIFORM_BUFFER_AS_PLAIN_UNIFORMS, false)
 
-    res = spvc.compiler_install_compiler_options(glsl_compiler, options)
-    if res != .SUCCESS {
-        log.error("Error setting compiler options: %v", res)
-        return 
+    // res = spvc.compiler_install_compiler_options(compiler, options)
+    // if res != .SUCCESS {
+    //     log.error("Error setting compiler options: %v", res)
+    //     return 
+    // }
+
+    resources: spvc.Resources
+    spvc.compiler_create_shader_resources(compiler, &resources)
+
+    uniform_buffers, _ := spvc.resources_get_resource_list_for_type(resources, .UNIFORM_BUFFER)
+
+    log_info(LC.Engine, "\t%v Stage:", stage)
+    log_info(LC.Engine, "\t\tUniform Buffers(%v):", stage)
+    for resource in uniform_buffers {
+        log_info(LC.Engine, "\t\t\tID: %v", resource.id)
+        log_info(LC.Engine, "\t\t\tBaseTypeID: %v", resource.base_type_id)
+        log_info(LC.Engine, "\t\t\tTypeID: %v", resource.type_id)
+        log_info(LC.Engine, "\t\t\tName: %v", resource.name)
+
+        log_info(LC.Engine, "\t\t\tSet: %v, Binding: %v",
+            spvc.compiler_get_decoration(compiler, resource.id, .DescriptorSet),
+            spvc.compiler_get_decoration(compiler, resource.id, .Binding))
+        log_info(LC.Engine, "\t\t\tName: %v", spvc.compiler_get_name(compiler, resource.id))
+
+
+        log_info(LC.Engine, "")
     }
 
-    glsl_shader: cstring
-    res = spvc.compiler_compile(glsl_compiler, &glsl_shader)
-    if res != .SUCCESS {
-        log.error("Error generating GLSL code: %v", res)
-        return 
+    stage_inputs, _ := spvc.resources_get_resource_list_for_type(resources, .STAGE_INPUT)
+
+    log_info(LC.Engine, "\t\tStage Inputs(%v):", stage)
+    for resource in stage_inputs {
+        log_info(LC.Engine, "\t\t\tID: %v", resource.id)
+        log_info(LC.Engine, "\t\t\tBaseTypeID: %v", resource.base_type_id)
+        log_info(LC.Engine, "\t\t\tTypeID: %v", resource.type_id)
+        log_info(LC.Engine, "\t\t\tName: %v", resource.name)
+
+        // log_info(LC.Engine, "\tSet: %v, Binding: %v",
+        //     spvc.compiler_get_decoration(compiler, resource.id, .DescriptorSet),
+        //     spvc.compiler_get_decoration(compiler, resource.id, .Binding))
+        // log_info(LC.Engine, "\tName: %v", spvc.compiler_get_name(compiler, resource.id))
+
+
+        log_info(LC.Engine, "")
     }
 
-    return transmute([]byte)string(glsl_shader), true
+    return true
 }
 
 @(private = "file")
