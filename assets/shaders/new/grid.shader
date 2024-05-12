@@ -1,6 +1,7 @@
 #version 450 core
 
-#include "common.glsl"
+#include "new/global.glsl"
+#include "new/scene.glsl"
 
 struct VertexOutput {
     vec3 near_point;
@@ -54,10 +55,10 @@ vec4 grid(vec3 frag_pos, float scale) {
     vec4 color = vec4(0.2, 0.2, 0.2, 1.0 - min(line, 1.0));
 
     if (frag_pos.x > -0.5 * minx && frag_pos.x < 0.5 * minx)
-        color.z = 1.0;
+        color.xyz = vec3(3, 111, 252) / 255.0;
 
     if (frag_pos.z > -0.5 * minz && frag_pos.z < 0.5 * minz)
-        color.x = 1.0;
+        color.xyz = vec3(237, 55, 55) / 255.0;
 
     return color;
 }
