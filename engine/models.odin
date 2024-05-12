@@ -7,6 +7,7 @@ import gl "vendor:OpenGL"
 import stbi "vendor:stb/image"
 import "core:math/linalg"
 import "gpu"
+import "core:mem"
 
 WHITE_TEXTURE :: #load("../assets/textures/white_texture.png")
 BLACK_TEXTURE :: #load("../assets/textures/black_texture.png")
@@ -58,6 +59,144 @@ mesh_deinit :: proc(mesh: ^Mesh) {
     delete(mesh.name)
 }
 
+new_mesh_from_file :: proc(file: string) -> ^Mesh {
+    m, ok := load_mesh_from_gltf_file(file)
+    if !ok do return nil
+
+    mesh := new(Mesh)
+    mesh^ = m
+    return mesh
+}
+
+load_mesh_from_gltf_file :: proc(path: string) -> (mesh: Mesh, ok: bool) {
+    gltf_data := os.read_entire_file(path) or_return
+
+    if len(gltf_data) <= 0 {
+        log.errorf("Empty data provided to model loader. Cannot continue.")
+        return
+    }
+
+    options := gltf.options{}
+
+    data, res := gltf.parse(options, raw_data(gltf_data), len(gltf_data))
+    (res == .success) or_return
+
+    res = gltf.load_buffers(options, data, cstr(path))
+    (res == .success) or_return
+
+    assert(len(data.scenes) == 1, "Can only support one scene definition per scene file.")
+    s := data.scenes[0]
+
+    node := s.nodes[0]
+
+    for primitive in node.mesh.primitives {
+        get_buffer_data :: proc(attributes: []gltf.attribute, index: u32, $T: typeid) -> []T {
+            accessor := attributes[index].data
+            data := cast([^]T)(uintptr(accessor.buffer_view.buffer.data) +
+                uintptr(accessor.buffer_view.offset))
+            count := accessor.count
+            #partial switch attributes[index].type {
+            case .tangent:
+                count *= 4
+            case .normal: fallthrough
+            case .position:
+                count *= 3
+            case .texcoord:
+                count *= 2
+            }
+            return data[:count]
+        }
+
+        position_data := get_buffer_data(primitive.attributes, 0, f32)
+
+        normal_data := get_buffer_data(primitive.attributes, 1, f32)
+
+        tex_data := get_buffer_data(primitive.attributes, 2, f32)
+
+        tangent_data := get_buffer_data(primitive.attributes, 3, f32)
+
+        vertices := make([]Vertex, len(position_data) / 3, context.temp_allocator)
+
+        vi := 0
+        ti := 0
+        tangent_idx := 0
+        for i := 0; i < len(vertices) - 0; i += 1 {
+            vertices[i] = Vertex {
+                position = {position_data[vi], position_data[vi + 1], position_data[vi + 2]},
+                normal = {normal_data[vi], normal_data[vi + 1], normal_data[vi + 2]},
+                tangent = {tangent_data[tangent_idx], tangent_data[tangent_idx + 1], tangent_data[tangent_idx + 2]},
+                uv = {tex_data[ti], tex_data[ti + 1]},
+                color = {1, 1, 1},
+            }
+            // vertices[i].pos += node.translation
+            vi += 3
+            ti += 2
+            tangent_idx += 4
+        }
+
+        accessor := primitive.indices
+        data := accessor.buffer_view.buffer.data
+        offset := accessor.buffer_view.offset
+
+        indices_raw := cast([^]u16)(uintptr(data) + uintptr(offset))
+        count := accessor.count
+        indices := indices_raw[:count]
+
+        mesh.num_indices = i32(len(indices))
+
+        vertex_buffer_spec := gpu.BufferSpecification {
+            device = &Renderer3DInstance.device,
+            name = "Mesh Vertex Buffer",
+            size = size_of(Vertex) * len(vertices),
+            usage = {.Vertex},
+        }
+
+        mesh.vertex_buffer = gpu.create_buffer(vertex_buffer_spec)
+        gpu.buffer_upload(mesh.vertex_buffer, mem.slice_to_bytes(vertices))
+
+        index_buffer_spec := gpu.BufferSpecification {
+            name = "Mesh Index Buffer",
+            device = &Renderer3DInstance.device,
+            size = size_of(u16) * len(indices),
+            usage = {.Index},
+        }
+
+        mesh.index_buffer = gpu.create_buffer(index_buffer_spec)
+        gpu.buffer_upload(mesh.index_buffer, mem.slice_to_bytes(indices))
+        // gl.CreateBuffers(1, &model.vertex_buffer)
+        // gl.NamedBufferStorage(model.vertex_buffer, size_of(Vertex) * len(vertices), raw_data(vertices), gl.DYNAMIC_STORAGE_BIT)
+
+        // gl.CreateBuffers(1, &model.index_buffer)
+        // gl.NamedBufferStorage(model.index_buffer, size_of(u16) * len(indices), raw_data(indices), gl.DYNAMIC_STORAGE_BIT)
+
+        // gl.CreateVertexArrays(1, &model.vertex_array)
+
+        // vao := model.vertex_array
+        // gl.VertexArrayVertexBuffer(vao, 0, model.vertex_buffer, 0, size_of(Vertex))
+        // gl.VertexArrayElementBuffer(vao, model.index_buffer)
+
+        // gl.EnableVertexArrayAttrib(vao, 0)
+        // gl.EnableVertexArrayAttrib(vao, 1)
+        // gl.EnableVertexArrayAttrib(vao, 2)
+        // gl.EnableVertexArrayAttrib(vao, 3)
+        // gl.EnableVertexArrayAttrib(vao, 4)
+
+        // gl.VertexArrayAttribFormat(vao, 0, 3, gl.FLOAT, false, u32(offset_of(Vertex, position)))
+        // gl.VertexArrayAttribFormat(vao, 1, 3, gl.FLOAT, false, u32(offset_of(Vertex, normal)))
+        // gl.VertexArrayAttribFormat(vao, 2, 3, gl.FLOAT, false, u32(offset_of(Vertex, tangent)))
+        // gl.VertexArrayAttribFormat(vao, 3, 2, gl.FLOAT, false, u32(offset_of(Vertex, uv)))
+        // gl.VertexArrayAttribFormat(vao, 4, 3, gl.FLOAT, false, u32(offset_of(Vertex, color)))
+
+        // gl.VertexArrayAttribBinding(vao, 0, 0)
+        // gl.VertexArrayAttribBinding(vao, 1, 0)
+        // gl.VertexArrayAttribBinding(vao, 2, 0)
+        // gl.VertexArrayAttribBinding(vao, 3, 0)
+        // gl.VertexArrayAttribBinding(vao, 4, 0)
+    }
+    ok = true
+    return
+}
+
 @(asset)
 PbrMaterial :: struct {
     using base: Asset,
@@ -76,6 +215,7 @@ PbrMaterial :: struct {
 @(constructor=PbrMaterial)
 new_pbr_material :: proc() -> ^Asset {
     material := new(PbrMaterial)
+    material.type = .PbrMaterial
 
     // TODO(minebill): Hacky solution, this doesn't belong here.
     object_shader := get_asset(&EngineInstance.asset_manager, Renderer3DInstance.object_shader, Shader)

@@ -117,149 +117,21 @@ import_mesh :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImpo
         }
     }
 
-    gltf_data, ok := os.read_entire_file(path)
-    assert(ok)
+    mesh := new(Mesh)
+    mesh.type = .Mesh
 
-    if len(gltf_data) <= 0 {
-        log.errorf("Empty data provided to model loader. Cannot continue.")
-        return nil, InvalidAssetFormatError {
-            message = "Asset is",
+    ok: bool
+    mesh^, ok = load_mesh_from_gltf_file(path)
+    if !ok {
+        error = GenericMessageError {
+            message = "Failed to import mesh",
         }
+        return
     }
 
-    options := gltf.options{}
+    asset = mesh
 
-    data, res := gltf.parse(options, raw_data(gltf_data), len(gltf_data))
-    if res != .success {
-        log.errorf("Error while loading model: %v", res)
-        return nil, GenericMessageError {
-            message = fmt.aprintf("cgltf error: %v", res),
-        }
-    }
-
-    res = gltf.load_buffers(options, data, cstr(path))
-    if res != .success {
-        log.errorf("Error while loading model: %v", res)
-        return nil, GenericMessageError {
-            message = "Could not load gltf buffers",
-        }
-    }
-
-    assert(len(data.scenes) == 1, "Can only support one scene definition per scene file.")
-    s := data.scenes[0]
-
-    model := new(Mesh)
-    model.type = .Mesh
-
-    node := s.nodes[0]
-
-    mesh := node.mesh
-
-    for primitive in mesh.primitives {
-        get_buffer_data :: proc(attributes: []gltf.attribute, index: u32, $T: typeid) -> []T {
-            accessor := attributes[index].data
-            data := cast([^]T)(uintptr(accessor.buffer_view.buffer.data) +
-                uintptr(accessor.buffer_view.offset))
-            count := accessor.count
-            #partial switch attributes[index].type {
-            case .tangent:
-                count *= 4
-            case .normal: fallthrough
-            case .position:
-                count *= 3
-            case .texcoord:
-                count *= 2
-            }
-            return data[:count]
-        }
-
-        position_data := get_buffer_data(primitive.attributes, 0, f32)
-
-        normal_data := get_buffer_data(primitive.attributes, 1, f32)
-
-        tex_data := get_buffer_data(primitive.attributes, 2, f32)
-
-        tangent_data := get_buffer_data(primitive.attributes, 3, f32)
-
-        vertices := make([]Vertex, len(position_data) / 3, context.temp_allocator)
-
-        vi := 0
-        ti := 0
-        tangent_idx := 0
-        for i := 0; i < len(vertices) - 0; i += 1 {
-            vertices[i] = Vertex {
-                position = {position_data[vi], position_data[vi + 1], position_data[vi + 2]},
-                normal = {normal_data[vi], normal_data[vi + 1], normal_data[vi + 2]},
-                tangent = {tangent_data[tangent_idx], tangent_data[tangent_idx + 1], tangent_data[tangent_idx + 2]},
-                uv = {tex_data[ti], tex_data[ti + 1]},
-                color = {1, 1, 1},
-            }
-            // vertices[i].pos += node.translation
-            vi += 3
-            ti += 2
-            tangent_idx += 4
-        }
-
-        accessor := primitive.indices
-        data := accessor.buffer_view.buffer.data
-        offset := accessor.buffer_view.offset
-
-        indices_raw := cast([^]u16)(uintptr(data) + uintptr(offset))
-        count := accessor.count
-        indices := indices_raw[:count]
-
-        model.num_indices = i32(len(indices))
-
-        vertex_buffer_spec := gpu.BufferSpecification {
-            device = &Renderer3DInstance.device,
-            name = "Mesh Vertex Buffer",
-            size = size_of(Vertex) * len(vertices),
-            usage = {.Vertex},
-        }
-
-        model.vertex_buffer = gpu.create_buffer(vertex_buffer_spec)
-        gpu.buffer_upload(model.vertex_buffer, mem.slice_to_bytes(vertices))
-
-        index_buffer_spec := gpu.BufferSpecification {
-            name = "Mesh Index Buffer",
-            device = &Renderer3DInstance.device,
-            size = size_of(u16) * len(indices),
-            usage = {.Index},
-        }
-
-        model.index_buffer = gpu.create_buffer(index_buffer_spec)
-        gpu.buffer_upload(model.index_buffer, mem.slice_to_bytes(indices))
-        // gl.CreateBuffers(1, &model.vertex_buffer)
-        // gl.NamedBufferStorage(model.vertex_buffer, size_of(Vertex) * len(vertices), raw_data(vertices), gl.DYNAMIC_STORAGE_BIT)
-
-        // gl.CreateBuffers(1, &model.index_buffer)
-        // gl.NamedBufferStorage(model.index_buffer, size_of(u16) * len(indices), raw_data(indices), gl.DYNAMIC_STORAGE_BIT)
-
-        // gl.CreateVertexArrays(1, &model.vertex_array)
-
-        // vao := model.vertex_array
-        // gl.VertexArrayVertexBuffer(vao, 0, model.vertex_buffer, 0, size_of(Vertex))
-        // gl.VertexArrayElementBuffer(vao, model.index_buffer)
-
-        // gl.EnableVertexArrayAttrib(vao, 0)
-        // gl.EnableVertexArrayAttrib(vao, 1)
-        // gl.EnableVertexArrayAttrib(vao, 2)
-        // gl.EnableVertexArrayAttrib(vao, 3)
-        // gl.EnableVertexArrayAttrib(vao, 4)
-
-        // gl.VertexArrayAttribFormat(vao, 0, 3, gl.FLOAT, false, u32(offset_of(Vertex, position)))
-        // gl.VertexArrayAttribFormat(vao, 1, 3, gl.FLOAT, false, u32(offset_of(Vertex, normal)))
-        // gl.VertexArrayAttribFormat(vao, 2, 3, gl.FLOAT, false, u32(offset_of(Vertex, tangent)))
-        // gl.VertexArrayAttribFormat(vao, 3, 2, gl.FLOAT, false, u32(offset_of(Vertex, uv)))
-        // gl.VertexArrayAttribFormat(vao, 4, 3, gl.FLOAT, false, u32(offset_of(Vertex, color)))
-
-        // gl.VertexArrayAttribBinding(vao, 0, 0)
-        // gl.VertexArrayAttribBinding(vao, 1, 0)
-        // gl.VertexArrayAttribBinding(vao, 2, 0)
-        // gl.VertexArrayAttribBinding(vao, 3, 0)
-        // gl.VertexArrayAttribBinding(vao, 4, 0)
-    }
-    return model, {}
+    return
 }
 
 @(importer=PbrMaterial)
@@ -268,7 +140,7 @@ import_pbr_material :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: A
     material.type = .PbrMaterial
 
     s: SerializeContext
-    serialize_init_file(&s, filepath.join({EditorInstance.active_project.root, metadata.path}))
+    serialize_init_file(&s, filepath.join({EditorInstance.active_project.root, metadata.path}, context.temp_allocator))
 
     serialize_pbr_material(material, &s)
 
@@ -276,8 +148,16 @@ import_pbr_material :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: A
 }
 
 @(importer=Shader)
-import_shader :: proc(metadata: AssetMetadata) ->(asset: ^Asset, error: AssetImportError) {
+import_shader :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
     return
+}
+
+@(importer=World)
+import_scene :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
+    world := new(World)
+    deserialize_world(world, filepath.join({EditorInstance.active_project.root, metadata.path}, context.temp_allocator))
+
+    return world, nil
 }
 
 // This is a seperate proc from `import_shader` to allow the editor to use it aswell.
