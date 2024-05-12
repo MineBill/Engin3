@@ -18,3 +18,4 @@ build.bin
 .obuild
 temp/
 tmp/
+**/*.log
