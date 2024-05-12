@@ -123,6 +123,7 @@ when USE_EDITOR {
 
         ENGINE_ASSET_DIR :: #config(ENGINE_ASSET_DIR, "")
         when ENGINE_ASSET_DIR != "" {
+            log_debug(LC.AssetSystem, "Starting file watcher for %v", ENGINE_ASSET_DIR)
             fs.watcher_init_with_callback(
                 &manager.assets_watcher,
                 ENGINE_ASSET_DIR,
@@ -135,6 +136,7 @@ when USE_EDITOR {
                     path, _ := filepath.to_slash(filepath.join({"assets", file}, temp), context.temp_allocator)
                     handle := get_asset_handle_from_path(manager, path)
 
+                    log_debug(LC.AssetSystem, "File change detected: %v", path)
                     metadata := get_asset_metadata(manager, handle)
                     #partial switch metadata.type {
                     case .LuaScript:
@@ -275,14 +277,31 @@ when USE_EDITOR {
         return nil, nil
     }
 
-    // Registers and new asset file with the registry. It should then be available for retrieval using `get_asset`.
-    register_asset :: proc(manager: ^EditorAssetManager, absolute_file_path: string) {
-        // // Check it file is already registered.
-        // if handle := get_asset_handle_from_path(manager, path); handle != 0 {
-        //     return
-        // }
+    register_existing_asset :: proc(manager: ^EditorAssetManager, absolute_file_path: string) -> (handle: AssetHandle) {
+        handle = AssetHandle(generate_uuid())
 
-        handle := AssetHandle(generate_uuid())
+        relative_path_to_project, _ := filepath.rel(EditorInstance.active_project.root, absolute_file_path)
+
+        ext := filepath.ext(filepath.base(absolute_file_path))
+        log_debug(LC.AssetSystem, "File ext: '%v'", ext)
+
+        type: AssetType = .Invalid
+        if ext in SUPPORTED_ASSETS {
+            type = SUPPORTED_ASSETS[ext]
+        }
+
+        metadata := AssetMetadata {
+            type = type,
+            path = relative_path_to_project,
+        }
+
+        registry_set_metadata(&manager.registry, handle, metadata)
+        return
+    }
+
+    // Imports and __COPIES__ an file from outside the project, into the active project.
+    import_external_asset :: proc(manager: ^EditorAssetManager, absolute_file_path: string) -> (handle: AssetHandle) {
+        handle = AssetHandle(generate_uuid())
 
         file_name := filepath.base(absolute_file_path)
 
@@ -315,13 +334,15 @@ when USE_EDITOR {
         }
 
         registry_set_metadata(&manager.registry, handle, metadata)
+        return
     }
 
     // Writes an asset handle.
     serialize_asset_handle :: proc(am: ^EditorAssetManager, s: ^SerializeContext, key: string, asset: ^AssetHandle) {
         switch s.mode {
         case .Serialize:
-            if !is_asset_handle_valid(am, asset^) {
+            meta := get_asset_metadata(am, asset^)
+            if !is_asset_handle_valid(am, asset^) || meta.is_virtual {
                 return
             }
             serialize_do_field(s, key, asset^)
