@@ -55,7 +55,7 @@ vec4 grid(vec3 frag_pos, float scale) {
     vec4 color = vec4(0.2, 0.2, 0.2, 1.0 - min(line, 1.0));
 
     if (frag_pos.x > -0.5 * minx && frag_pos.x < 0.5 * minx)
-        color.xyz = vec3(3, 111, 252) / 255.0;
+        color.xyz = vec3(3, 111, 202) / 255.0;
 
     if (frag_pos.z > -0.5 * minz && frag_pos.z < 0.5 * minz)
         color.xyz = vec3(237, 55, 55) / 255.0;
@@ -63,6 +63,7 @@ vec4 grid(vec3 frag_pos, float scale) {
     return color;
 }
 
+// TODO(minebill): These need to be parameters.
 const float near = 0.1;
 const float far = 1000;
 
@@ -74,10 +75,9 @@ float compute_depth(vec3 pos) {
 
 float compute_linear_depth(vec3 pos) {
     vec4 clip_space_pos = In.projection * In.view * vec4(pos.xyz, 1.0);
-    // float clip_space_depth = (clip_space_pos.z / clip_space_pos.w) * 2.0 - 1.0; // put back between -1 and 1
-    float clip_space_depth = (clip_space_pos.z / clip_space_pos.w); // put back between -1 and 1
+    float clip_space_depth = (clip_space_pos.z / clip_space_pos.w);
     float linearDepth = (2.0 * near * far) / (far + near - clip_space_depth * (far - near)); // get linear value between 0.01 and 100
-    return linearDepth / far; // normalize
+    return linearDepth / far;
 }
 
 void Fragment() {
@@ -86,8 +86,7 @@ void Fragment() {
     vec3 frag_pos = In.near_point + (t) * (In.far_point - In.near_point);
 
     float d = compute_depth(frag_pos);
-    // gl_FragDepth =  (((1 - 0) * d) + (1 + 0)) / 2.0;
-    gl_FragDepth = (d + 1.0) / 2.0;
+    gl_FragDepth = d;
 
     float linear_depth = compute_linear_depth(frag_pos);
     float fading = max(0, (0.5 - linear_depth));
