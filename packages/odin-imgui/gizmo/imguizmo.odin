@@ -44,9 +44,10 @@ foreign lib {
     SetDrawlist                   :: proc(drawlist: ^imgui.DrawList) ---
     BeginFrame                    :: proc() ---
     SetImGuiContext               :: proc(ctx: ^imgui.Context) ---
-    IsOver_Nil                    :: proc() ---
-    IsUsing                       :: proc() ---
-    IsUsingAny                    :: proc() ---
+    IsOver                        :: proc() -> bool ---
+    IsOverEx                      :: proc(op: OPERATION) -> bool ---
+    IsUsing                       :: proc() -> bool ---
+    IsUsingAny                    :: proc() -> bool ---
     Enable                        :: proc(enable: bool) ---
     DecomposeMatrixToComponents   :: proc(m, translation, rotation: [^]f32, scale: [^]f32) ---
     RecomposeMatrixFromComponents :: proc(translation, rotation, scale: [^]f32, m: [^]f32) ---
@@ -58,7 +59,6 @@ foreign lib {
     ViewManipulate_Float          :: proc(view: [^]f32, length: f32, position, size: [2]f32, backgroundColor: u32) ---
     ViewManipulate_FloatPtr       :: proc(view: [^]f32, projection: [^]f32, operation: OPERATION, mode: MODE, _matrix: [^]f32, length: f32, position: [2]f32, size: [2]f32, backgroundColor: u32) ---
     SetID                         :: proc(id: i32) ---
-    IsOverEx                      :: proc(op: OPERATION) ---
     SetGizmoSizeClipSpace         :: proc(value: f32) ---
     AllowAxisFlip                 :: proc(value: bool) ---
     SetAxisLimit                  :: proc(value: f32) ---
