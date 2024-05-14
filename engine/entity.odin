@@ -409,10 +409,8 @@ reparent_entity :: proc(world: ^World, entity_h, new_parent_h: EntityHandle) {
 
 new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(EntityHandle) = nil) -> EntityHandle {
     tracy.Zone()
-    // handle := world.next_handle
     id := EntityHandle(generate_uuid())
     world.objects[id] = Entity{name = make_ds(name)}
-    // world.next_handle += 1
 
     go := &world.objects[id]
 
@@ -432,21 +430,6 @@ new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Ent
     world.local_id_to_uuid[go.local_id] = go.handle
 
     return id
-}
-
-copy_entity :: proc(from_world, new_world: ^World, from_entity, new_entity: EntityHandle) {
-    // new.id = from.id
-    // new.name = from.name // TODO: Wrong
-    // new.flags = from.flags
-    // new.world = from.world
-
-    from := get_object(from_world, from_entity)
-
-    for type, component in from.components {
-        add_component(new_world, new_entity, type)
-    }
-
-    return
 }
 
 new_object_with_uuid :: proc(world: ^World, name: string = "New Entity", handle: EntityHandle, parent: Maybe(EntityHandle) = nil) -> EntityHandle {
