@@ -25,6 +25,9 @@ DebugDrawContext :: struct {
     vertex_buffer: gpu.Buffer,
 
     lines: [dynamic]LinePoint,
+
+    timed_lines: [dynamic]LinePoint,
+    timers: [dynamic]f32,
 }
 
 g_dbg_context: ^DebugDrawContext
@@ -54,8 +57,10 @@ dbg_init :: proc(d: ^DebugDrawContext, render_pass: gpu.RenderPass) {
 
     config := gpu.default_pipeline_config()
     config.input_assembly_info.topology = .LINE_LIST
-    config.rasterization_info.lineWidth = 1.0
+    config.rasterization_info.lineWidth = 2.0
     config.multisample_info.rasterizationSamples = {._8}
+    config.depth_stencil_info.depthTestEnable = false
+    config.depth_stencil_info.depthWriteEnable = false
 
     pipeline_spec := gpu.PipelineSpecification {
         tag = "Debug Draw Pipeline",
@@ -83,14 +88,22 @@ dbg_deinit :: proc(d: DebugDrawContext) {
     delete(d.lines)
 }
 
-dbg_draw_line :: proc(d: ^DebugDrawContext, s, e: vec3, thickness: f32 = 1.0, color := COLOR_GREEN) {
+dbg_draw_line :: proc(d: ^DebugDrawContext, s, e: vec3, thickness: f32 = 1.0, color := COLOR_GREEN, time := f32(0)) {
     if sync.mutex_guard(&d.mutex) {
-        append(&d.lines, LinePoint{s, thickness, color})
-        append(&d.lines, LinePoint{e, thickness, color})
+        if time > 0 {
+            append(&d.timed_lines, LinePoint{s, thickness, color})
+            append(&d.timed_lines, LinePoint{e, thickness, color})
+
+            append(&d.timers, time)
+            append(&d.timers, time)
+        } else {
+            append(&d.lines, LinePoint{s, thickness, color})
+            append(&d.lines, LinePoint{e, thickness, color})
+        }
     }
 }
 
-dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: vec3, thickness: f32 = 1.0, color := COLOR_GREEN) {
+dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: vec3, thickness: f32 = 1.0, color := COLOR_GREEN, time := f32(0)) {
     half := size / 2
 
     AXIS_X :: vec3{1, 0, 0}
@@ -102,23 +115,23 @@ dbg_draw_cube :: proc(d: ^DebugDrawContext, center: vec3, angles: vec3, size: ve
              angles.x * math.RAD_PER_DEG,
              angles.z * math.RAD_PER_DEG)
 
-    dbg_draw_line(d, center + rot * (vec3{-1, -1, 1}   * half), center + rot * (vec3{1, -1, 1}   * half), thickness, color)
-    dbg_draw_line(d, center + rot * (vec3{-1, 1,  1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color)
+    dbg_draw_line(d, center + rot * (vec3{-1, -1, 1}   * half), center + rot * (vec3{1, -1, 1}   * half), thickness, color, time)
+    dbg_draw_line(d, center + rot * (vec3{-1, 1,  1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color, time)
 
-    dbg_draw_line(d, center + rot * (vec3{-1, -1, -1}  * half), center + rot * (vec3{1, -1, -1}  * half), thickness, color)
-    dbg_draw_line(d, center + rot * (vec3{-1, 1,  -1}  * half), center + rot * (vec3{1, 1,  -1}  * half), thickness, color)
+    dbg_draw_line(d, center + rot * (vec3{-1, -1, -1}  * half), center + rot * (vec3{1, -1, -1}  * half), thickness, color, time)
+    dbg_draw_line(d, center + rot * (vec3{-1, 1,  -1}  * half), center + rot * (vec3{1, 1,  -1}  * half), thickness, color, time)
 
-    dbg_draw_line(d, center + rot * (vec3{1, -1, -1}   * half), center + rot * (vec3{1, -1, 1}   * half), thickness, color)
-    dbg_draw_line(d, center + rot * (vec3{1, 1,  -1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color)
+    dbg_draw_line(d, center + rot * (vec3{1, -1, -1}   * half), center + rot * (vec3{1, -1, 1}   * half), thickness, color, time)
+    dbg_draw_line(d, center + rot * (vec3{1, 1,  -1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color, time)
 
-    dbg_draw_line(d, center + rot * (vec3{-1, -1, -1}  * half), center + rot * (vec3{-1, -1, 1}  * half), thickness, color)
-    dbg_draw_line(d, center + rot * (vec3{-1, 1,  -1}  * half), center + rot * (vec3{-1, 1,  1}  * half), thickness, color)
+    dbg_draw_line(d, center + rot * (vec3{-1, -1, -1}  * half), center + rot * (vec3{-1, -1, 1}  * half), thickness, color, time)
+    dbg_draw_line(d, center + rot * (vec3{-1, 1,  -1}  * half), center + rot * (vec3{-1, 1,  1}  * half), thickness, color, time)
 
-    dbg_draw_line(d, center + rot * (vec3{-1, -1, -1}  * half), center + rot * (vec3{-1, 1, -1}  * half), thickness, color)
-    dbg_draw_line(d, center + rot * (vec3{1, -1,  -1}  * half), center + rot * (vec3{1, 1,  -1}  * half), thickness, color)
+    dbg_draw_line(d, center + rot * (vec3{-1, -1, -1}  * half), center + rot * (vec3{-1, 1, -1}  * half), thickness, color, time)
+    dbg_draw_line(d, center + rot * (vec3{1, -1,  -1}  * half), center + rot * (vec3{1, 1,  -1}  * half), thickness, color, time)
 
-    dbg_draw_line(d, center + rot * (vec3{-1, -1, 1}   * half), center + rot * (vec3{-1, 1, 1}   * half), thickness, color)
-    dbg_draw_line(d, center + rot * (vec3{1, -1,  1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color)
+    dbg_draw_line(d, center + rot * (vec3{-1, -1, 1}   * half), center + rot * (vec3{-1, 1, 1}   * half), thickness, color, time)
+    dbg_draw_line(d, center + rot * (vec3{1, -1,  1}   * half), center + rot * (vec3{1, 1,  1}   * half), thickness, color, time)
 }
 
 dbg_draw_sphere :: proc(
@@ -127,7 +140,8 @@ dbg_draw_sphere :: proc(
     #no_broadcast euler_rotation: vec3 = {},
     radius: f32 = 1.0,
     thickness: f32 = 1.0,
-    color := COLOR_GREEN) {
+    color := COLOR_GREEN,
+    time := f32(0)) {
 
     SEGMENTS :: 10  // Number of segments per circle
     LATITUDE_SEGMENTS :: SEGMENTS
@@ -166,24 +180,37 @@ dbg_draw_sphere :: proc(
             y3 := math.sin(lon0) * r1
 
             // Draw the quad formed by these four points
-            dbg_draw_line(d, center + rot * vec3{x0, y0, z0}, center + rot * vec3{x1, y1, z0}, thickness, color)
-            dbg_draw_line(d, center + rot * vec3{x1, y1, z0}, center + rot * vec3{x2, y2, z1}, thickness, color)
-            dbg_draw_line(d, center + rot * vec3{x2, y2, z1}, center + rot * vec3{x3, y3, z1}, thickness, color)
-            dbg_draw_line(d, center + rot * vec3{x3, y3, z1}, center + rot * vec3{x0, y0, z0}, thickness, color)
+            dbg_draw_line(d, center + rot * vec3{x0, y0, z0}, center + rot * vec3{x1, y1, z0}, thickness, color, time)
+            dbg_draw_line(d, center + rot * vec3{x1, y1, z0}, center + rot * vec3{x2, y2, z1}, thickness, color, time)
+            dbg_draw_line(d, center + rot * vec3{x2, y2, z1}, center + rot * vec3{x3, y3, z1}, thickness, color, time)
+            dbg_draw_line(d, center + rot * vec3{x3, y3, z1}, center + rot * vec3{x0, y0, z0}, thickness, color, time)
         }
     }
 }
 
-dbg_render :: proc(d: ^DebugDrawContext, cmd: gpu.CommandBuffer) {
-    line_count := len(d.lines)
+dbg_render :: proc(d: ^DebugDrawContext, cmd: gpu.CommandBuffer, delta: f32) {
+    line_count := len(d.lines) + len(d.timed_lines)
     if line_count == 0 do return
     assert(line_count % 2 == 0)
 
     gpu.pipeline_bind(cmd, d.pipeline)
 
-    mem.copy(d.vertex_buffer.alloc_info.pMappedData, raw_data(d.lines), line_count * size_of(LinePoint))
+    mem.copy(d.vertex_buffer.alloc_info.pMappedData, raw_data(d.lines), len(d.lines) * size_of(LinePoint))
+    mem.copy(
+        rawptr(uintptr(d.vertex_buffer.alloc_info.pMappedData) + uintptr(len(d.lines) * size_of(LinePoint))),
+        raw_data(d.timed_lines),
+        len(d.timed_lines) * size_of(LinePoint))
+
     gpu.bind_buffers(cmd, d.vertex_buffer)
     gpu.draw(cmd, line_count, 1)
 
     clear(&d.lines)
+
+    #reverse for _, i in d.timed_lines {
+        d.timers[i] -= delta
+        if d.timers[i] < 0 {
+            ordered_remove(&d.timed_lines, i)
+            ordered_remove(&d.timers, i)
+        }
+    }
 }
