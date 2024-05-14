@@ -112,11 +112,6 @@ Editor :: struct {
     texture_previews: map[UUID]Texture2D,
     preview_cubemap_texture: Texture2D,
 
-    outline_frame_buffer: FrameBuffer,
-
-    outline_shader: Shader,
-    grid_shader: Shader,
-
     // Texture view to visualize individual layers of the shadow map texture array.
     shadow_map_texture_view: TextureView,
 
@@ -190,7 +185,6 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     log_set_categories(&e.category_logger, LogCategories{.Editor, .AssetSystem, .PhysicsSystem, .ScriptingEngine})
     e.selected_log_categories = ~LogCategories{}
 
-
     e.logger = create_category_logger(&e.category_logger, &e.log_entries)
     context.logger = e.logger
 
@@ -253,10 +247,6 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     if err != nil {
         log_error(LC.Editor, "Error while loading editor icons: %v", err)
     }
-
-    ok: bool
-    e.outline_shader, ok = shader_load_from_file("assets/shaders/new/outline.shader")
-    assert(ok == true, "Failed to read outline shader.")
 
     io := imgui.GetIO()
     io.IniFilename = nil
@@ -364,16 +354,19 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                     io.ConfigFlags -= {.NoMouse}
                 }
             } else if ev.button == .left {
-                if ev.state == .pressed && e.is_viewport_focused && (e.state == .Edit || e.is_detached) {
-                    // tracy.ZoneNC("Mouse Picking", 0xff0000ff)
-                    // mouse := g_event_ctx.mouse + g_event_ctx.window_position - e.viewport_position
-                    // x, y := int(mouse.x), int(e.viewport_size.y) - int(mouse.y)
-                    // color, ok := gpu.read_pixel(Renderer3DInstance.world_framebuffers[0], x, y, 3)
-                    // if ok {
-                    //     id := color[0]
-                    //     handle := e.engine.world.local_id_to_uuid[int(id)]
-                    //     select_entity(e, handle, !is_key_pressed(.LeftShift))
-                    // }
+                if ev.state == .pressed && 
+                    e.is_viewport_focused && 
+                    (e.state == .Edit || e.is_detached) &&
+                    !(gizmo.IsUsing() || gizmo.IsOver()) {
+                    tracy.ZoneNC("Mouse Picking", 0xff0000ff)
+                    mouse := g_event_ctx.mouse + g_event_ctx.window_position - e.viewport_position
+                    x, y := int(mouse.x), int(mouse.y)
+                    color, ok := gpu.read_pixel(Renderer3DInstance.object_picking.framebuffer, x, y)
+                    if ok {
+                        id := color[0]
+                        handle := e.engine.world.local_id_to_uuid[int(id)]
+                        select_entity(e, handle, !is_key_pressed(.LeftShift))
+                    }
                 }
             }
         case MouseWheelEvent:

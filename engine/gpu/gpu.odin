@@ -77,6 +77,7 @@ get_color_attachment :: proc(fb: FrameBuffer, #any_int index: int) -> Image {
 }
 
 read_pixel :: proc(fb: FrameBuffer, x, y: int, attachment := 0) -> (pixel: [4]byte, ok: bool) {
+    assert(attachment < len(fb.color_attachments), "Attachment index is bigger than the amount of attachments in the framebuffer")
     cmd := device_begin_single_time_command(fb.spec.device^)
 
     image := &fb.color_attachments[attachment]

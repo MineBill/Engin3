@@ -55,8 +55,7 @@ Renderer3D :: struct {
 
     // Probably shouldn't be here.
     imgui_renderpass: gpu.RenderPass,
-    object_picking_renderpass: gpu.RenderPass,
-    object_picking_shader: AssetHandle,
+    object_picking: ObjectPicking,
 
     swapchain_needs_resize: bool,
     _editor_images: map[gpu.UUID]vk.DescriptorSet,
@@ -150,6 +149,7 @@ r3d_setup :: proc(r: ^Renderer3D) {
 
 r3d_init :: proc(r: ^Renderer3D) {
     r3d_setup_renderpasses(r)
+    object_picking_init(&r.object_picking, &r.device)
     create_default_resources(r)
 
     swapchain_spec := gpu.SwapchainSpecification {
@@ -182,7 +182,10 @@ r3d_init :: proc(r: ^Renderer3D) {
     dbg_init(g_dbg_context, r.world_renderpass)
 }
 
-r3d_deinit :: proc(r: ^Renderer3D) {}
+r3d_deinit :: proc(r: ^Renderer3D) {
+    gpu.device_wait(r.device)
+    object_picking_deinit(&r.object_picking)
+}
 
 RPacket :: struct {
     scene: ^World,
@@ -241,6 +244,8 @@ r3d_draw_frame :: proc(r: ^Renderer3D, packet: RPacket, cmd: gpu.CommandBuffer) 
             gpu.draw(cmd, 6, 1)
         }
     }
+
+    object_picking_render(&r.object_picking, packet, cmd, mesh_components[:])
 }
 
 r3d_begin_frame :: proc(r: ^Renderer3D) -> (cmd: gpu.CommandBuffer, ok: bool) {
@@ -284,6 +289,8 @@ r3d_on_resize :: proc(r: ^Renderer3D, size: vec2) {
     for i in 0..<len(r.world_framebuffers) {
         gpu.framebuffer_resize(&r.world_framebuffers[i], size)
     }
+
+    object_picking_resize(&r.object_picking, size)
 }
 
 r3d_resize_swapchain :: proc(r: ^Renderer3D, size: vec2) {
@@ -906,10 +913,6 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
         manager.loaded_assets[id] = new_shader("assets/shaders/new/simple_3d.shader", pipeline_spec) or_return
 
         r.object_shader = id
-    }
-
-    object_picking: {
-        
     }
 
     pipeline_layout_spec := gpu.PipelineLayoutSpecification {
