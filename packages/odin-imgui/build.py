@@ -183,10 +183,10 @@ def main():
 		full_dep = backend_deps[backend_dep]
 		ensure_checked_out_with_commit(path.join("backend_deps", full_dep["path"]), full_dep["repo"], full_dep["commit"])
 
-	os.chdir("imgui")
+	# os.chdir("imgui")
 	# Apply vulkan backend patch
-	exec(["git", "apply", "../vulkan_multiview_fix.patch"], "Apply vulkan backend patch")
-	os.chdir("..")
+	exec(["git", "apply", "vulkan_multiview_fix.patch"], "Apply vulkan backend patch")
+	# os.chdir("..")
 
 	# Clear the temp folder
 	shutil.rmtree(path="temp", ignore_errors=True)
@@ -201,9 +201,13 @@ def main():
 	_imgui_headers = glob_copy("imgui", "*.h", "temp")
 	imgui_sources = glob_copy("imgui", "*.cpp", "temp")
 
+	_imguizmo_header = glob_copy("gizmo", "*.h", "temp")
+	imguizmo = glob_copy("gizmo", "*.cpp", "temp")
+
 	# Gather sources, defines, includes etc
 	all_sources = imgui_sources
 	all_sources += ["c_imgui.cpp"]
+	all_sources += imguizmo
 
 	# Basic flags
 	compile_flags = platform_select({

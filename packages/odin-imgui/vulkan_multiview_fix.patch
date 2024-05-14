@@ -1,7 +1,7 @@
-diff --git a/backends/imgui_impl_vulkan.cpp b/backends/imgui_impl_vulkan.cpp
+diff --git a/imgui/backends/imgui_impl_vulkan.cpp b/imgui/backends/imgui_impl_vulkan.cpp
 index 1296730b..5b4927c7 100644
---- a/backends/imgui_impl_vulkan.cpp
-+++ b/backends/imgui_impl_vulkan.cpp
+--- a/imgui/backends/imgui_impl_vulkan.cpp
++++ b/imgui/backends/imgui_impl_vulkan.cpp
 @@ -240,8 +240,9 @@ struct ImGui_ImplVulkan_Data
      VkPipelineCreateFlags       PipelineCreateFlags;
      VkDescriptorSetLayout       DescriptorSetLayout;
