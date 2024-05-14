@@ -79,6 +79,7 @@ init_transform :: proc(this: ^TransformComponent) {}
 // Called by the world/gameobject.
 update_transform :: proc(go: ^Entity, this: ^TransformComponent, update: f64) {
     tracy.Zone()
+    assert(go != nil, "Entity is nil")
     parent := get_object(go.world, go.parent)
 
     s := linalg.matrix4_scale(go.transform.local_scale)
@@ -346,10 +347,10 @@ directional_light_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {
 
     rot := go.transform.local_rotation
     dir_light_quat := linalg.quaternion_from_euler_angles(
-        rot.x * math.RAD_PER_DEG,
         rot.y * math.RAD_PER_DEG,
+        rot.x * math.RAD_PER_DEG,
         rot.z * math.RAD_PER_DEG,
-        .XYZ)
+        .YXZ)
     dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, -1})
 
     end := go.transform.position + dir
@@ -474,10 +475,10 @@ camera_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {
 
     euler := entity.transform.local_rotation
     this.rotation = linalg.quaternion_from_euler_angles(
-        euler.x * math.RAD_PER_DEG,
         euler.y * math.RAD_PER_DEG,
+        euler.x * math.RAD_PER_DEG,
         euler.z * math.RAD_PER_DEG,
-        .XYZ)
+        .YXZ)
 
     this.view = linalg.matrix4_from_quaternion(this.rotation) *
                     linalg.inverse(linalg.matrix4_translate(entity.transform.position))
@@ -959,7 +960,7 @@ rigid_body_init :: proc(this: rawptr) {
     }
 
     euler_angles := entity.transform.local_rotation
-    quat := linalg.quaternion_from_euler_angles(euler_angles.x, euler_angles.y, euler_angles.z, .XYZ)
+    quat := linalg.quaternion_from_euler_angles(euler_angles.y, euler_angles.x, euler_angles.z, .YXZ)
     quat_to_vec4 := transmute(vec4)quat
     sphere_body_settings: jolt.BodyCreationSettings
 

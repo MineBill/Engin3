@@ -55,6 +55,8 @@ Renderer3D :: struct {
 
     // Probably shouldn't be here.
     imgui_renderpass: gpu.RenderPass,
+    object_picking_renderpass: gpu.RenderPass,
+    object_picking_shader: AssetHandle,
 
     swapchain_needs_resize: bool,
     _editor_images: map[gpu.UUID]vk.DescriptorSet,
@@ -229,7 +231,7 @@ r3d_draw_frame :: proc(r: ^Renderer3D, packet: RPacket, cmd: gpu.CommandBuffer) 
 
         gpu.bind_resource(cmd, r.global_set.resource, g_dbg_context.pipeline)
         // NOTE(minebill): Is this the correct place for this?
-        dbg_render(g_dbg_context, cmd)
+        dbg_render(g_dbg_context, cmd, EngineInstance.delta)
 
         {
             grid_shader := get_asset(&EngineInstance.asset_manager, r.grid_shader, Shader)
@@ -299,10 +301,10 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, m
         dir_light := get_component(packet.scene, handle, DirectionalLight)
         rot := go.transform.local_rotation
         dir_light_quat := linalg.quaternion_from_euler_angles(
-            rot.x * math.RAD_PER_DEG,
             rot.y * math.RAD_PER_DEG,
+            rot.x * math.RAD_PER_DEG,
             rot.z * math.RAD_PER_DEG,
-            .XYZ)
+            .YXZ)
         dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, 1})
 
         light_data := &r.scene_set.light_data
@@ -407,10 +409,10 @@ do_depth_pass :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, 
                     dir_light := get_component(scene, handle, DirectionalLight)
                     rot := go.transform.local_rotation
                     dir_light_quat := linalg.quaternion_from_euler_angles(
-                        rot.x * math.RAD_PER_DEG,
                         rot.y * math.RAD_PER_DEG,
+                        rot.x * math.RAD_PER_DEG,
                         rot.z * math.RAD_PER_DEG,
-                        .XYZ)
+                        .YXZ)
                     dir := linalg.quaternion_mul_vector3(dir_light_quat, vec3{0, 0, 1})
                         // gl.NamedFramebufferTextureLayer(
                         //     depth_fb.handle,
@@ -904,11 +906,10 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
         manager.loaded_assets[id] = new_shader("assets/shaders/new/simple_3d.shader", pipeline_spec) or_return
 
         r.object_shader = id
+    }
 
-        // world_pipeline, pipeline_error := gpu.create_pipeline(&r.device, pipeline_spec)
-        // fmt.assertf(pipeline_error == nil, "Failed to create pipeline: %v", pipeline_error)
-
-        // r.world_pipeline = world_pipeline
+    object_picking: {
+        
     }
 
     pipeline_layout_spec := gpu.PipelineLayoutSpecification {

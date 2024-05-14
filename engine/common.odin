@@ -14,6 +14,7 @@ import "core:mem"
     },
 })
 vec2 :: [2]f32
+Vector2 :: [2]f32
 
 VEC2_ONE :: vec2{1, 1}
 
@@ -27,6 +28,7 @@ VEC2_ONE :: vec2{1, 1}
     },
 })
 vec3 :: [3]f32
+Vector3 :: [3]f32
 
 VEC3_ONE :: vec3{1, 1, 1}
 
@@ -40,6 +42,7 @@ VEC3_ONE :: vec3{1, 1, 1}
     },
 })
 vec4 :: [4]f32
+Vector4 :: [4]f32
 
 VEC4_ONE :: vec4{1, 1, 1, 1}
 

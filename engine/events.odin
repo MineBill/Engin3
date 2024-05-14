@@ -90,10 +90,10 @@ Event_Context :: struct {
 g_event_ctx := Event_Context{}
 
 @(private = "file")
-mouse: map[MouseButton]InputState
+mouse: map[MouseButton]KeyState
 
 @(private = "file")
-keys, prev_keys: map[Key]KeyState
+keys: map[Key]KeyState
 
 setup_glfw_callbacks :: proc(window: glfw.WindowHandle, parent_context := context) {
     g_event_ctx.odin_context = parent_context
@@ -175,7 +175,14 @@ glfw_mouse_button_callback :: proc "c" (win: glfw.WindowHandle, button, action, 
         button = btn,
         state = key_state,
     })
-    mouse[btn] = key_state
+    #partial switch (key_state) {
+        case .pressed:
+        mouse[btn] = .just_pressed
+        case .released:
+        mouse[btn] = .just_released
+        case .repeat:
+        mouse[btn] = .held
+    }
 }
 
 glfw_cursor_pos_callback :: proc "c" (win: glfw.WindowHandle, x, y: f64) {
@@ -197,9 +204,20 @@ flush_input :: proc() {
                 keys[key] = .held
         }
     }
+
+    for m, state in mouse {
+        #partial switch state {
+        case .just_released:
+            mouse[m] = .none
+        case .just_pressed:
+            mouse[m] = .held
+        }
+    }
     g_event_ctx.previous_mouse = g_event_ctx.mouse
     g_event_ctx.mouse_wheel = 0
 }
+
+// Mouse
 
 get_mouse_wheel_delta :: proc() -> f32 {
     return g_event_ctx.mouse_wheel
@@ -210,12 +228,22 @@ get_mouse_delta :: proc() -> [2]f32 {
 }
 
 is_mouse_down :: proc(button: MouseButton) -> bool {
-    return mouse[button] == .pressed
+    return mouse[button] == .just_pressed || mouse[button] == .held
 }
 
 is_mouse_up :: proc(button: MouseButton) -> bool {
-    return mouse[button] == .released
+    return mouse[button] == .just_released || mouse[button] == .none
 }
+
+is_mouse_just_down :: proc(button: MouseButton) -> bool {
+    return mouse[button] == .just_pressed
+}
+
+is_mouse_just_up :: proc(button: MouseButton) -> bool {
+    return mouse[button] == .just_released
+}
+
+// Keys
 
 is_key_pressed :: proc(key: Key) -> bool {
     return keys[key] == .just_pressed || keys[key] == .held

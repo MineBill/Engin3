@@ -45,6 +45,8 @@ Engine :: struct {
     physics: Physics,
 
     screen_size: vec2,
+
+    delta: f32,
 }
 
 engine_init :: proc(e: ^Engine) -> Engine_Error {
@@ -100,6 +102,7 @@ engine_update :: proc(e: ^Engine, _delta: f64) {
     defer tracy.FrameMark()
     tracy.Zone()
     delta := f32(_delta)
+    e.delta = delta
     glfw.PollEvents()
 
     // nk_new_frame()

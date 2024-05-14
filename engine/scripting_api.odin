@@ -73,6 +73,17 @@ lua_entity_get_position :: proc(le: LuaEntity) -> vec3 {
     return go.transform.local_position
 }
 
+@(LuaExport = {
+    Name = "get_forward",
+    MethodOf = LuaEntity,
+})
+lua_entity_get_forward :: proc(le: LuaEntity) -> vec3 {
+    go := get_object(le.world, EntityHandle(le.entity))
+    if go == nil do return vec3{}
+
+    return get_forward(go.transform.local_rotation)
+}
+
 //!Gets the global position of the entity.
 //!To get the local position use `get_position`.
 //!@see LuaEntity.get_position

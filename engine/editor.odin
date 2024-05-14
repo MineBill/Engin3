@@ -17,12 +17,15 @@ import "packages:odin-imgui/imgui_impl_vulkan"
 import "vendor:glfw"
 import gl "vendor:OpenGL"
 import imgui "packages:odin-imgui"
+import gizmo "packages:odin-imgui/gizmo"
 import tracy "packages:odin-tracy"
 import stbi "vendor:stb/image"
 import fs "filesystem"
 import "core:io"
 import "core:thread"
 import "core:container/small_array"
+import "gpu"
+import vk "vendor:vulkan"
 
 PRIMITIVE_CUBE :: #load("../assets/models/primitives/cube.glb")
 
@@ -132,6 +135,9 @@ Editor :: struct {
 
     notifications: [dynamic]Notification,
     notification_mutex: sync.Mutex,
+
+    gizmo_space: GizmoSpace,
+    gizmo_type: GizmoType,
 }
 
 editor_open_project :: proc(e: ^Editor) {
@@ -259,6 +265,8 @@ editor_init :: proc(e: ^Editor, engine: ^Engine) {
     e.style = default_style()
     apply_style(e.style)
 
+    // imgui.ImGuizmo_SetPlaneLimit(e.camera.far_plane)
+
     // imgui.FontAtlas_AddFont(io.Fonts, )
     // inter_font :: #load("../assets/fonts/inter/Inter-Regular.ttf")
     // imgui.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(inter_font), cast(i32)len(inter_font), 16, nil, nil)
@@ -301,6 +309,7 @@ editor_deinit :: proc(e: ^Editor) {
 
 editor_update :: proc(e: ^Editor, _delta: f64) {
     tracy.ZoneN("Editor Update")
+    gizmo.BeginFrame()
     @(static) show_imgui_demo := false
     @(static) CAMERA_SPEED := f32(2)
     e.delta = _delta
@@ -377,12 +386,12 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                 if .Control in ev.mods {
                     #partial switch ev.key {
                     case .S:
-                        log_debug(LC.Editor, "Saving world!")
+                        log_debug(LC.Editor, "Saving world to %v", e.engine.world.file_path)
                         serialize_world(e.engine.world, e.engine.world.file_path)
                         e.engine.world.modified = false
                     case .D:
                         // Create a local copy before reseting the selection
-                        selection :=  clone_map(e.entity_selection)
+                        selection := clone_map(e.entity_selection)
                         defer delete(selection)
                         reset_selection(e)
                         for entity, _ in selection {
@@ -403,6 +412,25 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                         delete_object(&e.engine.world, entity)
                     }
                 }
+
+                if ev.key == .T {
+                    switch e.gizmo_space {
+                    case .Global:
+                        e.gizmo_space = .Local
+                    case .Local:
+                        e.gizmo_space = .Global
+                    }
+                }
+
+                if ev.key == .W {
+                    e.gizmo_type = .Translation
+                }
+                if ev.key == .E {
+                    e.gizmo_type = .Rotation
+                }
+                if ev.key == .R {
+                    e.gizmo_type = .Scale
+                }
             }
         }
     }
@@ -412,7 +440,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         case .Edit:
             engine := e.engine
             if e.capture_mouse && e.was_viewport_focused {
-                e.camera.euler_angles.xy += get_mouse_delta().yx * 25 * delta
+                e.camera.euler_angles.xy += get_mouse_delta().yx * 20 * delta
                 e.camera.euler_angles.x = math.clamp(e.camera.euler_angles.x, -80, 80)
             }
 
@@ -425,10 +453,10 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
             euler := e.camera.euler_angles
             e.camera.rotation = linalg.quaternion_from_euler_angles(
+                euler.z * math.RAD_PER_DEG,
                 euler.x * math.RAD_PER_DEG,
                 euler.y * math.RAD_PER_DEG,
-                euler.z * math.RAD_PER_DEG,
-                .XYZ)
+                .ZXY)
 
             e.camera.view              = linalg.matrix4_from_quaternion(e.camera.rotation) * linalg.inverse(linalg.matrix4_translate(e.camera.position))
             e.camera.projection        = linalg.matrix4_perspective_f32(math.to_radians(f32(e.camera.fov)), f32(e.engine.screen_size.x) / f32(e.engine.screen_size.y), e.camera.near_plane, e.camera.far_plane)
@@ -440,7 +468,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
             } else {
                 engine := e.engine
                 if e.capture_mouse && e.was_viewport_focused {
-                    e.camera.euler_angles.xy += get_mouse_delta().yx * 25 * delta
+                    e.camera.euler_angles.xy += get_mouse_delta().yx * 20 * delta
                     e.camera.euler_angles.x = math.clamp(e.camera.euler_angles.x, -80, 80)
                 }
 
@@ -613,6 +641,8 @@ editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
         },
         // clear_color = COLOR_BLACK,
     }
+
+
 
     for id, &obj in e.engine.world.objects {
         if id in e.entity_selection {
@@ -816,6 +846,8 @@ editor_viewport :: proc(e: ^Editor) {
                 }
             }
 
+            imgui_enum_combo_id("Gizmo Type", e.gizmo_type, type_info_of(GizmoType))
+
             imgui_flags_box("Visualization", &Renderer3DInstance.visualization_options)
 
             imgui.EndMenuBar()
@@ -851,7 +883,8 @@ editor_viewport :: proc(e: ^Editor) {
                 #partial switch get_asset_type(&EngineInstance.asset_manager, asset_handle) {
                 case .World:
                     world := get_asset(&EngineInstance.asset_manager, asset_handle, World)
-                    EngineInstance.world = world^
+                    e.engine.world = world^
+                    // e.engine.world.objects = clone_map(world.objects)
                 }
             }
 
@@ -875,6 +908,11 @@ editor_viewport :: proc(e: ^Editor) {
                 }
             }
             imgui.EndDragDropTarget()
+        }
+
+        for handle, _ in e.entity_selection {
+            en := get_object(&EngineInstance.world, handle)
+            draw_position_gizmo(e, en)
         }
 
         flags := imgui.WindowFlags_NoDecoration
@@ -962,8 +1000,8 @@ editor_entidor :: proc(e: ^Editor) {
                 imgui.Separator()
 
                 modified := false
-                opened := imgui.CollapsingHeader("Transform", {.Framed, .DefaultOpen}) 
-                // help_marker("The Transfrom component is a special component that is included by default" + 
+                opened := imgui.CollapsingHeader("Transform", {.Framed, .DefaultOpen})
+                // help_marker("The Transfrom component is a special component that is included by default" +
                 //     " in every gameobject and as such, it has special drawing code.")
 
                 if opened {
@@ -1022,7 +1060,7 @@ editor_entidor :: proc(e: ^Editor) {
                 if do_button("Add Component", alignment = 0.5) {
                     imgui.OpenPopup("component_popup", {})
                 }
-            
+
             }
         } else {
             imgui.TextUnformatted("Multiple selection")
@@ -1105,7 +1143,7 @@ editor_ui_toolstrip :: proc(e: ^Editor) {
     ImGuiDockNodeFlags_NoResizeX                :: 1 << 22  // [EXPERIMENTAL]
     ImGuiDockNodeFlags_NoResizeY                :: 1 << 23  // [EXPERIMENTAL]
 
-    flags: i32 = 
+    flags: i32 =
         ImGuiDockNodeFlags_NoTabBar |
         ImGuiDockNodeFlags_HiddenTabBar |
         ImGuiDockNodeFlags_NoDockingSplitMe |
@@ -1956,7 +1994,7 @@ editor_gameobjects :: proc(e: ^Editor) {
 }
 
 editor_asset_manager :: proc(e: ^Editor) {
-    if !e.show_asset_manager do return 
+    if !e.show_asset_manager do return
     if do_window("Asset Manager", &e.show_asset_manager) {
         if imgui.BeginTabBar("##registry") {
             flags := imgui.TableFlags_Borders |
@@ -2359,7 +2397,7 @@ imgui_draw_struct :: proc(e: ^Editor, s: any) -> (modified: bool) {
                         mod_count += 1
                     }
                     imgui.TreePop()
-                } 
+                }
                 }
             } else {
                 // if draw_struct_field(e, reflect.struct_field_value(s, field), field) {
@@ -3159,5 +3197,94 @@ editor_render_notifications :: proc(e: ^Editor) {
     }
 }
 
-import "gpu"
-import vk "vendor:vulkan"
+GizmoSpace :: enum {
+    Local,
+    Global,
+}
+
+GizmoType :: enum {
+    Translation,
+    Rotation,
+    Scale,
+}
+
+draw_position_gizmo :: proc(editor: ^Editor, e: ^Entity) {
+    if e == nil do return
+    d := g_dbg_context
+
+    right, up, forward: Vector3
+    mode: gizmo.MODE
+    switch editor.gizmo_space {
+    case .Local:
+        mode = .LOCAL
+        quat := linalg.quaternion_from_euler_angles(
+            e.transform.local_rotation.y * math.RAD_PER_DEG,
+            e.transform.local_rotation.x * math.RAD_PER_DEG,
+            e.transform.local_rotation.z * math.RAD_PER_DEG,
+            .YXZ)
+        forward = linalg.quaternion_mul_vector3(quat, Vector3{0, 0, 1})
+        up      = linalg.quaternion_mul_vector3(quat, Vector3{0, 1, 0})
+        right   = linalg.quaternion_mul_vector3(quat, Vector3{1, 0, 0})
+    case .Global:
+        mode = .WORLD
+        forward = Vector3{0, 0, 1}
+        up = Vector3{0, 1, 0}
+        right = Vector3{1, 0, 0}
+    }
+
+    operation: gizmo.OPERATION
+    switch editor.gizmo_type {
+    case .Translation:
+        operation = .TRANSLATE
+    case .Rotation:
+        operation = .ROTATE
+    case .Scale:
+        operation = .SCALE
+    }
+
+    // if is_mouse_down(.left) {
+    //     dir := get_forward(editor.camera.rotation)
+
+    //     dbg_draw_line(d,
+    //         editor.camera.position,
+    //         editor.camera.position + dir * editor.camera.far_plane,
+    //         color = COLOR_LAVENDER,
+    //         time = 5)
+    // }
+
+    m := &e.transform.global_matrix[0][0]
+
+    snap := Vector3{0.5, 0.5, 0.5}
+
+
+    io := imgui.GetIO()
+    gizmo.SetDrawlist(imgui.GetWindowDrawList())
+    gizmo.SetRect(editor.viewport_position.x, editor.viewport_position.y, editor.viewport_size.x, editor.viewport_size.y)
+    if gizmo.Manipulate(
+        &editor.camera.view[0][0],
+        &editor.camera.projection[0][0],
+        operation,
+        mode,
+        m,
+        snap = &snap[0] if is_key_pressed(.LeftControl) else nil,
+    ) {
+        switch editor.gizmo_space {
+        case .Local:
+            new_pos, new_euler, new_scale: Vector3
+            gizmo.DecomposeMatrixToComponents(
+                m,
+                &new_pos[0],
+                &new_euler[0],
+                &new_scale[0])
+            e.transform.local_position = new_pos
+            e.transform.local_rotation = new_euler
+            e.transform.local_scale = new_scale
+        case .Global:
+
+        }
+    }
+
+    // dbg_draw_line(d, e.transform.position, e.transform.position + right, color = COLOR_ROSE)
+    // dbg_draw_line(d, e.transform.position, e.transform.position + up, color = COLOR_MINT)
+    // dbg_draw_line(d, e.transform.position, e.transform.position + forward, color = COLOR_SKY_BLUE)
+}

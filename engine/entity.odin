@@ -100,16 +100,16 @@ Children :: [dynamic]EntityHandle
     },
 })
 Entity :: struct {
-    components: ComponentMap,
-    world: ^World,
+    components: ComponentMap `fmt:"-"`,
+    world: ^World `fmt:"-"`,
     handle: EntityHandle,
     local_id: int,
 
     enabled: bool,
-    name: DynamicString,
+    name: DynamicString `fmt:"s"`,
     flags: EntityFlags,
 
-    transform: TransformComponent,
+    transform: TransformComponent `fmt:"-"`,
     parent: EntityHandle,
     children: Children,
 }
@@ -118,7 +118,7 @@ EntityHandle :: distinct UUID
 
 duplicate_entity :: proc(world: ^World, entity: EntityHandle) -> EntityHandle {
     en := get_object(world, entity)
-    new := new_object(world, ds_to_string(en.name), en.parent)
+    new := new_object(world, ds_to_string(en.name))
     new_en := get_object(world, new)
 
     new_en.transform = en.transform
@@ -415,12 +415,11 @@ new_object :: proc(world: ^World, name: string = "New Entity", parent: Maybe(Ent
     // world.next_handle += 1
 
     go := &world.objects[id]
-    if parent == nil {
-        // go.parent = world.root
-        add_child(world, world.root, id)
+
+    if p, ok := parent.(EntityHandle); ok {
+        add_child(world, p, id)
     } else {
-        // go.parent = parent.(EntityHandle)
-        add_child(world, parent.(EntityHandle), id)
+        add_child(world, world.root, id)
     }
 
     go.world = world
