@@ -1,6 +1,9 @@
 #version 450 core
 #include "new/common.glsl"
 #include "new/lighting.glsl"
+#include "new/global.glsl"
+#include "new/scene.glsl"
+#include "new/object.glsl"
 
 layout(push_constant) uniform PushConstants {
     mat4 model;
@@ -105,9 +108,9 @@ float ShadowCalculation(int index) {
     vec4 fragPosLightSpace = In.pos_light_space[index];
     vec3 shadowCoords = (fragPosLightSpace.xyz / fragPosLightSpace.w);
     // shadowCoords = shadowCoords * 2 - 1.0;
-    if (shadowCoords.z > 1.0  || shadowCoords.x > 1.0 || shadowCoords.x < 0.0)
-    // if (shadowCoords.z > 1.0 || shadowCoords.z <= 0.0)
+    if (shadowCoords.z > 1.0 || shadowCoords.x > 1.0 || shadowCoords.x < 0.0 || shadowCoords.z < 0.0)
         return 1.0;
+    shadowCoords.y = 1.0 - shadowCoords.y;
     float bias = max((1.0/4096.0) * (1.0 - dot(In.normal, normalize(u_LightData.directional.direction.xyz))), 0.003);
     // vec2 texel_size = 1.0 / textureSize(shadow_map, 0).xy;
     ivec3 textureSize = textureSize(shadow_map, 0); // Get the size of the texture at level 0
@@ -201,7 +204,7 @@ vec3 do_directional_light() {
 
     float NdotL = max(dot(N, L), 0.0);
 
-    float index = 0.0;
+    float index = 0;
     if (1.0 - gl_FragCoord.z < u_LightData.shadow_split_distances.x) {
         index = 3;
     } else if (1.0 - gl_FragCoord.z < u_LightData.shadow_split_distances.y) {

@@ -29,7 +29,7 @@ object_picking_init :: proc(this: ^ObjectPicking, device: ^gpu.Device) -> bool {
             },
             {
                 tag          = "Object Picking Depth",
-                format       = .D32_SFLOAT,
+                format       = .D32_SFLOAT_S8_UINT,
                 load_op      = .Clear,
                 store_op     = .Store,
                 samples      = 1,
@@ -66,7 +66,7 @@ object_picking_init :: proc(this: ^ObjectPicking, device: ^gpu.Device) -> bool {
                 samples = 1,
             },
             {
-                format = .D32_SFLOAT,
+                format = .D32_SFLOAT_S8_UINT,
                 usage = {.Transient, .DepthStencilAttachment},
                 samples = 1,
             }

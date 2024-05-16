@@ -385,6 +385,7 @@ ImageFormat :: enum {
     D32_SFLOAT,
     DEPTH24_STENCIL8,
     DEPTH32_SFLOAT,
+    D32_SFLOAT_S8_UINT,
 }
 
 @(private)
@@ -414,6 +415,8 @@ image_format_to_vulkan :: proc(format: ImageFormat, loc := #caller_location) -> 
         return .D24_UNORM_S8_UINT
     case .DEPTH32_SFLOAT:
         return .D32_SFLOAT
+    case .D32_SFLOAT_S8_UINT:
+        return .D32_SFLOAT_S8_UINT
     }
     unreachable()
 }

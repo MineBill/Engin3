@@ -13,16 +13,22 @@ PushConstants :: struct {
     model: mat4,
     using _ : EditorPushConstants,
 }
+#assert(size_of(PushConstants) <= 128)
 
 DepthPassPushConstants :: struct {
     model: mat4,
     light_space: mat4,
 }
+#assert(size_of(DepthPassPushConstants) <= 128)
 
 GlobalUniform :: struct {
     projection: mat4,
     view: mat4,
     screen_size: vec2,
+}
+
+GlobalData :: struct {
+    time: f32,
 }
 
 SceneData :: struct {
@@ -90,6 +96,7 @@ GlobalSet :: struct {
     layout: gpu.ResourceLayout,
     // pool: gpu.ResourcePool,
 
+    global_data: UniformBuffer(GlobalData),
     uniform_buffer: UniformBuffer(GlobalUniform),
     debug_options: UniformBuffer(ShaderVisualizationOptions),
 }

@@ -78,9 +78,15 @@ get_color_attachment :: proc(fb: FrameBuffer, #any_int index: int) -> Image {
 
 read_pixel :: proc(fb: FrameBuffer, x, y: int, attachment := 0) -> (pixel: [4]byte, ok: bool) {
     assert(attachment < len(fb.color_attachments), "Attachment index is bigger than the amount of attachments in the framebuffer")
+
     cmd := device_begin_single_time_command(fb.spec.device^)
 
     image := &fb.color_attachments[attachment]
+
+    if x < 0 || y < 0 || x >= image.spec.width || y >= image.spec.height {
+        ok = false
+        return
+    }
 
     buffer_spec := BufferSpecification {
         name = "Read Pixel Temp Buffer",
@@ -248,10 +254,7 @@ framebuffer_invalidate :: proc(fb: ^FrameBuffer) {
 @(private)
 is_depth_format :: proc(format: ImageFormat) -> bool {
     #partial switch format {
-    case .DEPTH24_STENCIL8: fallthrough
-    case .DEPTH32_SFLOAT: fallthrough
-    case .D32_SFLOAT: fallthrough
-    case .D16_UNORM:
+    case .D16_UNORM, .D32_SFLOAT_S8_UINT, .D32_SFLOAT, .DEPTH32_SFLOAT, .DEPTH24_STENCIL8:
         return true
     }
     return false

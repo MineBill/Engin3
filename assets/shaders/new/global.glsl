@@ -9,6 +9,10 @@ layout(std140, set = GLOBAL_SET, binding = 0) uniform ViewData {
     vec2 screen_size;
 } u_ViewData;
 
+layout(std140, set = GLOBAL_SET, binding = 2) uniform GlobalData {
+    float time;
+} u_GlobalData;
+
 layout(std140, set = GLOBAL_SET, binding = 1) uniform DebugOptions {
     bool shadow_cascade_boxes;
     bool shadow_cascade_colors;

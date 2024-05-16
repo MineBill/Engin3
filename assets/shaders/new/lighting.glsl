@@ -39,9 +39,5 @@ layout(std140, set = SCENE_SET, binding = 1) uniform LightData {
 layout(set = OBJECT_SET, binding = 1) uniform sampler2D albedo_map;
 layout(set = OBJECT_SET, binding = 2) uniform sampler2D normal_map;
 layout(set = SCENE_SET,  binding = 2) uniform sampler2DArray shadow_map;
-/* layout(binding = 0) uniform sampler2D albedo_map;
-layout(binding = 1) uniform sampler2D normal_map;
-layout(binding = 2) uniform sampler2DArray shadow_map;
-layout(binding = 6) uniform samplerCube reflection_map; */
 
 #endif

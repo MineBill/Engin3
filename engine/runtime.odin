@@ -937,33 +937,7 @@ world_renderer_resize :: proc(world_renderer: ^WorldRenderer, width, height: int
     // resize_framebuffer(&world_renderer.bloom_horizontal_fb, width, height)
 }
 
-get_frustum_corners_world_space :: proc(proj, view: mat4) -> (corners: [8]vec4) {
-    inv := linalg.inverse(proj * view)
 
-    i := 0
-    for x in 0..<2 {
-        for y in 0..<2 {
-            for z in 0..<2 {
-                pt := inv * vec4{
-                    2 * f32(x) - 1,
-                    2 * f32(y) - 1,
-                    2 * f32(z) - 1,
-                    1.0}
-
-                corners[i] = pt / pt.w
-
-                i += 1
-            }
-        }
-    }
-    return
-}
-
-get_split_depth :: proc(current_split, max_splits: int, near, far: f32, l := f32(1)) -> f32 {
-    split_ratio := f32(current_split) / f32(max_splits)
-    z := near * math.pow(far / near, split_ratio)
-    return l * z + (1.0 - l) * (near +  split_ratio * (far - near))
-}
 
 render_material_preview :: proc(packet: RenderPacket, target: ^FrameBuffer, material: ^PbrMaterial, mesh: ^Mesh, renderer: ^WorldRenderer, cubemap_texture: ^Texture2D) {
     /*

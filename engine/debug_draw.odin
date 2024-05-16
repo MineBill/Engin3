@@ -57,10 +57,10 @@ dbg_init :: proc(d: ^DebugDrawContext, render_pass: gpu.RenderPass) {
 
     config := gpu.default_pipeline_config()
     config.input_assembly_info.topology = .LINE_LIST
-    config.rasterization_info.lineWidth = 2.0
+    config.rasterization_info.lineWidth = 4.0
     config.multisample_info.rasterizationSamples = {._8}
-    config.depth_stencil_info.depthTestEnable = false
-    config.depth_stencil_info.depthWriteEnable = false
+    config.depth_stencil_info.depthTestEnable = true
+    config.depth_stencil_info.depthWriteEnable = true
 
     pipeline_spec := gpu.PipelineSpecification {
         tag = "Debug Draw Pipeline",
