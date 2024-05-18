@@ -36,8 +36,12 @@ layout(std140, set = SCENE_SET, binding = 1) uniform LightData {
     vec4 shadow_split_distances;
 } u_LightData;
 
+layout(set = SCENE_SET,  binding = 2) uniform sampler2DArray shadow_map;
+
 layout(set = OBJECT_SET, binding = 1) uniform sampler2D albedo_map;
 layout(set = OBJECT_SET, binding = 2) uniform sampler2D normal_map;
-layout(set = SCENE_SET,  binding = 2) uniform sampler2DArray shadow_map;
+layout(set = OBJECT_SET, binding = 3) uniform sampler2D ambient_occlusion_map;
+layout(set = OBJECT_SET, binding = 4) uniform sampler2D emissive_map;
+layout(set = OBJECT_SET, binding = 5) uniform sampler2D metallic_roughness_map;
 
 #endif

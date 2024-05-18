@@ -64,7 +64,7 @@ Renderer3D :: struct {
 
     visualization_options: VisualizationOptions,
 
-    white_texture, normal_texture: AssetHandle,
+    white_texture, normal_texture, black_texture: AssetHandle,
     primitive_cube: AssetHandle,
     default_material: AssetHandle,
 }
@@ -377,17 +377,35 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, m
                 normal = get_asset(manager, Renderer3DInstance.normal_texture, Texture2D)
             }
 
+            ao := get_asset(manager, material.ambient_occlusion_texture, Texture2D)
+            if ao == nil {
+                ao = get_asset(manager, Renderer3DInstance.white_texture, Texture2D)
+            }
+
+            emissive := get_asset(manager, material.emissive_texture, Texture2D)
+            if emissive == nil {
+                emissive = get_asset(manager, Renderer3DInstance.black_texture, Texture2D)
+            }
+
+            metallic_roughness := get_asset(manager, material.metallic_texture, Texture2D)
+            if metallic_roughness == nil {
+                metallic_roughness = get_asset(manager, Renderer3DInstance.white_texture, Texture2D)
+            }
+
             object_set.material = material^
+            // @note This is where we could use shader reflection i guess?
             gpu.resource_bind_buffer(object_set.resource, object_set.material.block.handle, .UniformBuffer, 0)
             gpu.resource_bind_image(object_set.resource, albedo.handle, .CombinedImageSampler, 1)
             gpu.resource_bind_image(object_set.resource, normal.handle, .CombinedImageSampler, 2)
+            gpu.resource_bind_image(object_set.resource, ao.handle, .CombinedImageSampler, 3)
+            gpu.resource_bind_image(object_set.resource, emissive.handle, .CombinedImageSampler, 4)
+            gpu.resource_bind_image(object_set.resource, metallic_roughness.handle, .CombinedImageSampler, 5)
 
             uniform_buffer_flush(&object_set.material.block)
             gpu.bind_resource(cmd, object_set.resource, object_shader.pipeline, 2)
         }
 
         mat := go.transform.global_matrix
-        // draw_elements(gl.TRIANGLES, mesh.num_indices, gl.UNSIGNED_SHORT)
         push := PushConstants {
             model = mat,
             local_entity_id = go.local_id,
@@ -443,7 +461,6 @@ do_depth_pass :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, 
                     near := packet.camera.near
 
                     z := distances[split]
-                    log_debug(LC.Renderer, "Split %v distance %v", split, z)
 
                     proj := linalg.matrix4_perspective_f32(
                         math.to_radians(f32(50)),
@@ -992,6 +1009,11 @@ create_default_resources :: proc(r: ^Renderer3D) {
     r.normal_texture = create_virtual_asset(&EngineInstance.asset_manager, normal, "Default Normal Texture")
     gpu.image_transition_layout(&normal.handle, .ShaderReadOnlyOptimal)
 
+    black_data := []byte {0, 0, 0, 255}
+    black := new_texture2d(spec, black_data, "Black Texture")
+    r.black_texture = create_virtual_asset(&EngineInstance.asset_manager, black, "Default Black Texture")
+    gpu.image_transition_layout(&black.handle, .ShaderReadOnlyOptimal)
+
     cube := new_mesh_from_file("assets/models/primitives/cube.glb")
     assert(cube != nil, "Failed to load cube primitive")
     r.primitive_cube = create_virtual_asset(&EngineInstance.asset_manager, cube, "Primitive Cube")
@@ -1110,6 +1132,9 @@ create_texture2d :: proc(spec: TextureSpecification, data: []byte = {}, tag: cst
         usage = {.Sampled, .TransferDst, .ColorAttachment},
         format = .R8G8B8A8_UNORM,
         final_layout = .ShaderReadOnlyOptimal,
+        sampler = {
+            wrap = .Repeat,
+        }
     }
 
     texture.handle = gpu.create_image(image_spec)
@@ -1200,6 +1225,21 @@ build_object_set :: proc(r: ^Renderer3D) -> (set: ObjectSet) {
         stage ={.Fragment},
     }, {
         tag = "Normal Map",
+        type = .CombinedImageSampler,
+        count = 1,
+        stage ={.Fragment},
+    }, {
+        tag = "Ambient Occlusion Map",
+        type = .CombinedImageSampler,
+        count = 1,
+        stage ={.Fragment},
+    }, {
+        tag = "Emissive Map",
+        type = .CombinedImageSampler,
+        count = 1,
+        stage ={.Fragment},
+    }, {
+        tag = "Metallic Roughness Map",
         type = .CombinedImageSampler,
         count = 1,
         stage ={.Fragment},

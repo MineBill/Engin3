@@ -201,9 +201,12 @@ load_mesh_from_gltf_file :: proc(path: string) -> (mesh: Mesh, ok: bool) {
 PbrMaterial :: struct {
     using base: Asset,
 
-    albedo_texture: AssetHandle `asset:"Texture2D"`,
-    normal_texture: AssetHandle `asset:"Texture2D"`,
-    height_texture: AssetHandle `asset:"Texture2D"`,
+    albedo_texture:            AssetHandle `asset:"Texture2D"`,
+    normal_texture:            AssetHandle `asset:"Texture2D"`,
+    height_texture:            AssetHandle `asset:"Texture2D"`,
+    ambient_occlusion_texture: AssetHandle `asset:"Texture2D"`,
+    metallic_texture:          AssetHandle `asset:"Texture2D"`,
+    emissive_texture:          AssetHandle `asset:"Texture2D"`,
 
     block: UniformBuffer(struct {
         albedo_color:     Color,
@@ -240,6 +243,9 @@ serialize_pbr_material :: proc(this: ^Asset, s: ^SerializeContext) {
         serialize_do_field(s, "RoughnessFactor", this.block.roughness_factor)
         serialize_asset_handle(&EngineInstance.asset_manager, s, "AbledoTexture", &this.albedo_texture)
         serialize_asset_handle(&EngineInstance.asset_manager, s, "NormalTexture", &this.normal_texture)
+        serialize_asset_handle(&EngineInstance.asset_manager, s, "AmbientOcclusionTexture", &this.ambient_occlusion_texture)
+        serialize_asset_handle(&EngineInstance.asset_manager, s, "MetallicTexture", &this.metallic_texture)
+        serialize_asset_handle(&EngineInstance.asset_manager, s, "EmissiveTexture", &this.emissive_texture)
 
         serialize_end_table(s)
     case .Deserialize:
@@ -256,6 +262,9 @@ serialize_pbr_material :: proc(this: ^Asset, s: ^SerializeContext) {
 
             serialize_asset_handle(&EngineInstance.asset_manager, s, "AbledoTexture", &this.albedo_texture)
             serialize_asset_handle(&EngineInstance.asset_manager, s, "NormalTexture", &this.normal_texture)
+            serialize_asset_handle(&EngineInstance.asset_manager, s, "AmbientOcclusionTexture", &this.ambient_occlusion_texture)
+            serialize_asset_handle(&EngineInstance.asset_manager, s, "MetallicTexture", &this.metallic_texture)
+            serialize_asset_handle(&EngineInstance.asset_manager, s, "EmissiveTexture", &this.emissive_texture)
             serialize_end_table(s)
         }
     }

@@ -183,11 +183,15 @@ vec3 do_directional_light() {
     vec3 F0 = vec3(0.04);
     vec3 albedo = texture(albedo_map, In.frag_uv).rgb;
     // vec3 albedo = vec3(1, 1, 1);
-    F0 = mix(F0, u_Material.albedo_color.rgb * albedo, u_Material.metallic);
+
+    float metalness = texture(metallic_roughness_map, In.frag_uv).b * u_Material.metallic;
+    F0 = mix(F0, u_Material.albedo_color.rgb * albedo, metalness);
 
     vec3 F = FrenselSchlick(max(dot(H, V), 0.0), F0);
-    float NDF = DistributionGGX(N, H, u_Material.roughness);
-    float G = GeometrySmith(N, V, L, u_Material.roughness);
+
+    float roughness = texture(metallic_roughness_map, In.frag_uv).g * u_Material.roughness;
+    float NDF = DistributionGGX(N, H, roughness);
+    float G = GeometrySmith(N, V, L, roughness);
 
     vec3 numerator = NDF * G * F;
     float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
@@ -195,7 +199,7 @@ vec3 do_directional_light() {
 
     vec3 ks = F;
     vec3 kd = vec3(1.0) - ks;
-    kd *= 1.0 - u_Material.metallic;
+    kd *= 1.0 - metalness;
 
     vec3 I = In.frag_pos - u_SceneData.view_position.xyz;
     vec3 R = reflect(I, normalize(In.normal));
@@ -219,11 +223,13 @@ vec3 do_directional_light() {
     /* vec2 frag_coords = In.frag_pos.xy / In.frag_pos.w;
     vec2 screen_uv = frag_color * 0.5 + 0.5; */
     // float occlusion = texture(s_SSAO,  gl_FragCoord.xy / u_ViewData.screen_size).r;
-    float occlusion = 1.0;
+    float occlusion = texture(ambient_occlusion_map, In.frag_uv).r;
 
     vec3 ambient = u_SceneData.ambient_color.rgb * albedo * u_Material.albedo_color.rgb * 0.1;
     ambient *= occlusion;
-    vec3 ret = ambient + (kd * u_Material.albedo_color.rgb * albedo / PI + specular + reflection * u_Material.metallic * ks) * radiance * NdotL * shadow * occlusion;
+    vec3 ret = ambient + (kd * u_Material.albedo_color.rgb * albedo / PI + specular + reflection * metalness * ks) * radiance * NdotL * shadow * occlusion;
+
+    ret += texture(emissive_map, In.frag_uv).rgb;
     if (u_DebugOptions.shadow_cascade_colors) {
         switch(int(index)) {
             case 0 :
