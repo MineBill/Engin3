@@ -7,7 +7,7 @@ import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:reflect"
-import "core:runtime"
+import "base:runtime"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
@@ -2545,7 +2545,7 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
 //     return e.texture_previews[image.id]
 // }
 
-import "core:intrinsics"
+import "base:intrinsics"
 
 number_to_imgui_scalar :: proc(number: any) -> imgui.DataType {
     switch _ in number {

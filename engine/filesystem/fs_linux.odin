@@ -6,9 +6,11 @@ import "core:os"
 import "core:log"
 import "core:fmt"
 import "core:sync"
+import "core:sys/unix"
 
-copy_file :: proc(from: string, to: string) {
-    unimplemented()
+copy_file :: proc(from: string, to: string, overwrite: bool = false, allocator := context.temp_allocator) -> (ok: bool) {
+    os.write_entire_file(to, os.read_entire_file(from) or_return) or_return
+    return true
 }
 
 open_file_explorer :: proc(dir: string) {

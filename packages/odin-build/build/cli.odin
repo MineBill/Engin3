@@ -5,13 +5,13 @@ import "core:os"
 import "core:path/filepath"
 import "core:sync"
 import "core:encoding/json"
-import "core:runtime"
+import "base:runtime"
 import "core:fmt"
 import "core:slice"
 import "core:unicode/utf8"
 import "core:unicode"
 import "core:strconv"
-import "core:intrinsics"
+import "base:intrinsics"
 
 Flag_Arg :: struct { // -flag:key=val
 	flag: string,

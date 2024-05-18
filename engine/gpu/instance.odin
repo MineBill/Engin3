@@ -3,7 +3,7 @@ import vk "vendor:vulkan"
 import glfw "vendor:glfw"
 import "core:strings"
 import "core:log"
-import "core:runtime"
+import "base:runtime"
 import "core:fmt"
 
 Instance :: struct {

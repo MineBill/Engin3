@@ -9,7 +9,7 @@ import vk "vendor:vulkan"
 import "packages:odin-imgui/imgui_impl_vulkan"
 import "packages:odin-imgui/imgui_impl_glfw"
 import imgui "packages:odin-imgui"
-import "core:runtime"
+import "base:runtime"
 import "core:fmt"
 import glfw "vendor:glfw"
 

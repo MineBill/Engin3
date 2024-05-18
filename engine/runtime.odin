@@ -5,7 +5,7 @@ import "core:math"
 import "core:math/linalg"
 import tracy "packages:odin-tracy"
 import "core:math/rand"
-import "core:intrinsics"
+import "base:intrinsics"
 import "core:mem"
 import "gpu"
 

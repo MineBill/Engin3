@@ -1,7 +1,7 @@
 package engine
 import "packages:odin-lua/lua"
 import "packages:odin-lua/luaL"
-import "core:runtime"
+import "base:runtime"
 import "core:strings"
 import "core:os"
 import "core:reflect"

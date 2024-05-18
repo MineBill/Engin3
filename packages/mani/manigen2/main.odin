@@ -5,9 +5,9 @@ import os "core:os"
 import dlib "core:dynlib"
 import c "core:c"
 import libc "core:c/libc"
-import runtime "core:runtime"
+import runtime "base:runtime"
 import strings "core:strings"
-import intr "core:intrinsics"
+import intr "base:intrinsics"
 import filepath "core:path/filepath"
 
 

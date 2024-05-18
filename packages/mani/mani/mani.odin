@@ -5,7 +5,7 @@ import luaL "packages:odin-lua/luaL"
 import strings "core:strings"
 import "core:c"
 import "core:fmt"
-import "core:runtime"
+import "base:runtime"
 
 LuaName :: distinct string
 OdinName :: distinct string

@@ -1,7 +1,7 @@
 package engine
 
 import "vendor:glfw"
-import "core:runtime"
+import "base:runtime"
 
 Event :: union {
     KeyEvent,

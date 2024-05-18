@@ -5,9 +5,9 @@ package mani
 import lua "packages:odin-lua/lua"
 import luaL "packages:odin-lua/luaL"
 
-import intr "core:intrinsics"
+import intr "base:intrinsics"
 import refl "core:reflect"
-import rt "core:runtime"
+import rt "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:c"

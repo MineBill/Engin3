@@ -7,7 +7,7 @@ import "core:reflect"
 import "core:slice"
 import "core:strings"
 import fs "filesystem"
-import intr "core:intrinsics"
+import intr "base:intrinsics"
 
 AbsolutePath :: distinct string
 RelativePath :: distinct string

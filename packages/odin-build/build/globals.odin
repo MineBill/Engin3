@@ -1,6 +1,6 @@
 package build
 
-import "core:runtime"
+import "base:runtime"
 
 DEFAULT_VET :: Vet_Flags{.Unused, .Shadowing, .Using_Stmt}
 
@@ -62,7 +62,7 @@ _style_mode_to_arg := [Style_Mode]string {
 	.Strict_Init_Only = "-strict-style-init-only",
 }
 
-_os_to_arg := [runtime.Odin_OS_Type]string {
+_os_to_arg := #partial [runtime.Odin_OS_Type]string {
 	.Unknown = "UNKNOWN_OS",
 	.Windows = "windows",
 	.Darwin = "darwin",

@@ -1,7 +1,7 @@
 package test
 import "core:c"
 import jolt "../"
-import "core:runtime"
+import "base:runtime"
 import "core:fmt"
 
 float3 :: [3]f32

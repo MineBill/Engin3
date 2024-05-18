@@ -131,7 +131,7 @@ config_package :: proc(config: ^GeneratorConfig, pkg: string, filename: string) 
         }
         file.imports["runtime"] = FileImport {
             name = "runtime",
-            text = `import runtime "core:runtime"`,
+            text = `import runtime "base:runtime"`,
         }
         file.imports["lua"] = FileImport {
             name = "lua",

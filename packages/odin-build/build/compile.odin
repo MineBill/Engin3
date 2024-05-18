@@ -4,7 +4,7 @@ import "core:strings"
 import "core:os"
 import "core:fmt"
 import "core:slice"
-import "core:runtime"
+import "base:runtime"
 
 Build_Mode :: enum {
 	EXE,

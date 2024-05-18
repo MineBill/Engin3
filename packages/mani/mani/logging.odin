@@ -1,7 +1,7 @@
 package mani
 import "core:odin/tokenizer"
 import "core:odin/ast"
-import "core:runtime"
+import "base:runtime"
 import "core:log"
 import "core:os"
 import "core:strings"

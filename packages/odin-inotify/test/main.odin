@@ -4,7 +4,7 @@ import ".."
 import "core:os"
 import "core:fmt"
 import "core:sys/unix"
-import "core:runtime"
+import "base:runtime"
 import "core:time"
 
 check_events :: proc "c" (arg: rawptr) -> rawptr

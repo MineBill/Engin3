@@ -1,7 +1,7 @@
 package build
 
 import "core:unicode/utf8"
-import "core:runtime"
+import "base:runtime"
 import "core:os"
 import "core:fmt"
 import "core:strings"
