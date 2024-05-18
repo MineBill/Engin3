@@ -1,0 +1,9 @@
+{
+	version: "0.0.1",
+	description: "Bindings to CURL",
+	url: "https://github.com/jon-lipstate/odin-curl",
+	readme: "readme.md",
+	license: "BSD-3",
+	keywords:["CURL","Bindings"],
+	dependencies: {}
+}
