@@ -2902,11 +2902,18 @@ pbr_material_asset_window :: proc(window: ^AssetWindow, material: ^PbrMaterial) 
                 do_property_name("Roughness")
                 do_property_value(material.block.roughness_factor, "")
 
-                do_property_name("Albedo Texture")
-                do_property_value(material.albedo_texture, `asset:"Texture2D"`)
+                // do_property_name("Albedo Texture")
+                // do_property_value(material.albedo_texture, `asset:"Texture2D"`)
 
-                do_property_name("Normal Texture")
-                do_property_value(material.normal_texture, `asset:"Texture2D"`)
+                // do_property_name("Normal Texture")
+                // do_property_value(material.normal_texture, `asset:"Texture2D"`)
+
+                for field in reflect.struct_fields_zipped(type_of(material^)) {
+                    if val, ok := reflect.struct_tag_lookup(field.tag, "asset"); ok && val == "Texture2D" {
+                        do_property_name(field.name)
+                        do_property_value(reflect.struct_field_value(material^, field), field.tag)
+                    }
+                }
             }
 
             imgui.TreePop()
@@ -3203,26 +3210,13 @@ GizmoType :: enum {
 
 draw_position_gizmo :: proc(editor: ^Editor, e: ^Entity) {
     if e == nil do return
-    d := g_dbg_context
 
-    right, up, forward: Vector3
     mode: gizmo.MODE
     switch editor.gizmo_space {
     case .Local:
         mode = .LOCAL
-        quat := linalg.quaternion_from_euler_angles(
-            e.transform.local_rotation.y * math.RAD_PER_DEG,
-            e.transform.local_rotation.x * math.RAD_PER_DEG,
-            e.transform.local_rotation.z * math.RAD_PER_DEG,
-            .YXZ)
-        forward = linalg.quaternion_mul_vector3(quat, Vector3{0, 0, 1})
-        up      = linalg.quaternion_mul_vector3(quat, Vector3{0, 1, 0})
-        right   = linalg.quaternion_mul_vector3(quat, Vector3{1, 0, 0})
     case .Global:
         mode = .WORLD
-        forward = Vector3{0, 0, 1}
-        up = Vector3{0, 1, 0}
-        right = Vector3{1, 0, 0}
     }
 
     operation: gizmo.OPERATION
@@ -3249,10 +3243,11 @@ draw_position_gizmo :: proc(editor: ^Editor, e: ^Entity) {
 
     snap := Vector3{0.5, 0.5, 0.5}
 
-
     io := imgui.GetIO()
     gizmo.SetDrawlist(imgui.GetWindowDrawList())
     gizmo.SetRect(editor.viewport_position.x, editor.viewport_position.y, editor.viewport_size.x, editor.viewport_size.y)
+
+    @static activated := false
     if gizmo.Manipulate(
         &editor.camera.view[0][0],
         &editor.camera.projection[0][0],
@@ -3275,9 +3270,30 @@ draw_position_gizmo :: proc(editor: ^Editor, e: ^Entity) {
         case .Global:
 
         }
-    }
 
-    // dbg_draw_line(d, e.transform.position, e.transform.position + right, color = COLOR_ROSE)
-    // dbg_draw_line(d, e.transform.position, e.transform.position + up, color = COLOR_MINT)
-    // dbg_draw_line(d, e.transform.position, e.transform.position + forward, color = COLOR_SKY_BLUE)
+        if !activated {
+            activated = true
+            switch editor.gizmo_type {
+            case .Translation:
+                undo_push_single(&editor.undo, &e.transform.local_position, tag = "GizmoLocalPosition")
+            case .Rotation:
+                undo_push_single(&editor.undo, &e.transform.local_rotation, tag = "GizmoLocalRotation")
+            case .Scale:
+                undo_push_single(&editor.undo, &e.transform.local_scale, tag = "GizmoLocalScale")
+            }
+        }
+    } else {
+        if activated && !gizmo.IsUsingAny() {
+            activated = false
+            log_debug(LC.Editor, "Gizmo deactivate")
+            switch editor.gizmo_type {
+            case .Translation:
+                undo_commit_single(&editor.undo, tag = "GizmoLocalPosition")
+            case .Rotation:
+                undo_commit_single(&editor.undo, tag = "GizmoLocalRotation")
+            case .Scale:
+                undo_commit_single(&editor.undo, tag = "GizmoLocalScale")
+            }
+        }
+    }
 }

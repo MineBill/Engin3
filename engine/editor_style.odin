@@ -451,6 +451,13 @@ do_property_value :: proc(value: any, tag: reflect.Struct_Tag = "") -> (modified
             // Ask the content browser to navigate to this asset
         }
 
+        if imgui.BeginPopupContextItem() {
+            if imgui.MenuItem("Unset handle") {
+                handle^ = 0
+            }
+            imgui.EndPopup()
+        }
+
         if imgui.BeginDragDropTarget() {
 
             if type_name, ok := reflect.struct_tag_lookup(tag, "asset"); ok {
