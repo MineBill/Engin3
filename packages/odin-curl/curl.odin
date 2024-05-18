@@ -1,9 +1,5 @@
 package curl
 import "core:fmt"
-main :: proc() {
-	curl := easy_init()
-	fmt.println("end", curl)
-}
 
 CURL :: struct {}
 CURLSH :: struct {}
