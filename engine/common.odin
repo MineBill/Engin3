@@ -3,6 +3,7 @@ import gl "vendor:OpenGL"
 import "core:strings"
 import "core:math"
 import "core:mem"
+import "core:path/filepath"
 
 @(LuaExport = {
     Name = "vec2",
@@ -210,3 +211,14 @@ cstr :: proc(s: string, allocator := context.temp_allocator) -> cstring {
     return strings.clone_to_cstring(s, allocator)
 }
 
+make_path :: proc(elements: ..string, allocator := context.allocator) -> string {
+    return filepath.join(elements, allocator = allocator)
+}
+
+make_tpath :: proc(elements: ..string) -> string {
+    return filepath.join(elements, allocator = context.temp_allocator)
+}
+
+concat :: proc(ss: ..string, allocator := context.allocator) -> string {
+    return strings.concatenate(ss, allocator)
+}

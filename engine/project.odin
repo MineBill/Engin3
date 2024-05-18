@@ -75,6 +75,10 @@ project_get_assets_folder :: proc(project: Project, allocator := context.allocat
     return filepath.join({project.root, project.assets_folder}, allocator)
 }
 
+project_get_cache_folder :: proc(project: Project, allocator := context.allocator) -> string {
+    return filepath.join({project.root, project.cache_folder}, allocator)
+}
+
 project_get_asset_registry_location :: proc(project: Project, allocator := context.allocator) -> string {
     return filepath.join({project.root, project.asset_registry_location}, allocator)
 }

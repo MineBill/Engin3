@@ -31,45 +31,96 @@ Shader :: struct {
 }
 
 @(private="file")
-check_shader_cache :: proc(path: string) -> (bytecode: []byte, ok: bool) {
-    source_info, _ := os.stat(path)
+_check_shader_cache :: proc(path: string) -> (bytecode: []byte, ok: bool) {
+    when ODIN_OS == .Windows {
+        // @note This is stupid, raise an issue about this on Odin discord/repo?
+        cwd := os.get_current_directory(context.temp_allocator)
+    } else {
+        cwd := os.get_current_directory()
+    }
 
-    base := filepath.base(path)
-    cached_path := filepath.join({"cache/shaders", base}, context.temp_allocator)
-    full_path := strings.join({cached_path, "cache"}, ".", context.temp_allocator)
+    cache_path := concat(make_tpath(project_get_cache_folder(EditorInstance.active_project), path), ".bin", allocator = context.temp_allocator)
+    source_path := make_tpath(cwd, path)
+    source_info, _ := os.stat(source_path)
 
-    cache_info, _ := os.stat(full_path)
+    cache_info, _ := os.stat(cache_path)
     if time.diff(source_info.modification_time, cache_info.modification_time) < 0 {
         return {}, false
     }
     // if source_info.modification_time
-    return os.read_entire_file(full_path)
+    return os.read_entire_file(cache_path)
+}
+
+@(private = "file")
+read_shader_cache :: proc(path: string) -> (vertex, fragment: []byte, ok: bool) {
+    when ODIN_OS == .Windows {
+        // @note This is stupid, raise an issue about this on Odin discord/repo?
+        cwd := os.get_current_directory(context.temp_allocator)
+    } else {
+        cwd := os.get_current_directory()
+    }
+
+    vertex_cache_path := concat(make_tpath(project_get_cache_folder(EditorInstance.active_project), path), ".vbin", allocator = context.temp_allocator)
+    fragment_cache_path := concat(make_tpath(project_get_cache_folder(EditorInstance.active_project), path), ".fbin", allocator = context.temp_allocator)
+
+    source_path := make_tpath(cwd, path)
+    source_info, _ := os.stat(source_path)
+
+    cache_info, _ := os.stat(vertex_cache_path)
+    if time.diff(source_info.modification_time, cache_info.modification_time) < 0 {
+        return
+    }
+
+    vertex = os.read_entire_file(vertex_cache_path) or_return
+    fragment = os.read_entire_file(fragment_cache_path) or_return
+    log_debug(LC.Engine, "%v %v ", len(vertex), len(fragment))
+    ok = true
+    return
+}
+
+@(private = "file")
+write_shader_cache :: proc(vertex, fragment: []byte, path: string) {
+    vertex_cache_path := concat(make_tpath(project_get_cache_folder(EditorInstance.active_project), path), ".vbin", allocator = context.temp_allocator)
+    fs.make_directory_recursive(filepath.dir(vertex_cache_path, context.temp_allocator))
+    fragment_cache_path := concat(make_tpath(project_get_cache_folder(EditorInstance.active_project), path), ".fbin", allocator = context.temp_allocator)
+    fs.make_directory_recursive(filepath.dir(fragment_cache_path, context.temp_allocator))
+
+    log_debug(LC.Engine, "Writing shader caches to %v and %v", vertex_cache_path, fragment_cache_path)
+    os.write_entire_file(vertex_cache_path, vertex)
+    os.write_entire_file(fragment_cache_path, fragment)
 }
 
 load_shader_stage :: proc(path: string, source: string, shader_kind: ShaderKind, force_compile := false) -> (bytecode: []byte, ok: bool) {
     // cache, found := check_shader_cache(path)
-    // defer delete(cache)
-    // if !found || force_compile {
-    //     cache, ok = compile_shader(path, shader_kind)
-    //     // Save to disk
-    //     fs.make_directory_recursive("cache/shaders")
-    //     base := filepath.base(path)
-    //     cached_path := filepath.join({"cache/shaders", base}, context.temp_allocator)
-    //     full_path := strings.join({cached_path, "cache"}, ".", context.temp_allocator)
-    //     log.debugf("Will write cache to %v", full_path)
-    //     os.write_entire_file(full_path, cache)
+    // if found && !force_compile {
+    //     log_debug(LC.Engine, "CACHE FOUND")
+    //     bytecode, ok = cache, true
+    // } else {
+    //     log_debug(LC.Engine, "CACHE NOT FOUND - COMPILING")
+    //     cache_path := concat(make_tpath(project_get_cache_folder(EditorInstance.active_project), path), ".bin", allocator = context.temp_allocator)
+    //     if !os.write_entire_file(cache_path, bytecode) {
+    //         log_error(LC.Engine, "Could not write shader cache for '%v' of type '%v'", path, shader_kind)
+    //     }
     // }
-    _ = path
+
     bytecode, ok = compile_shader_source(path, source, shader_kind)
     return
 }
 
 shader_load_from_file :: proc(path: string, pipeline_spec: Maybe(gpu.PipelineSpecification) = {}, force_compile := false) -> (shader: Shader, ok: bool) {
-    shader_source, _ := os.read_entire_file(path)
-    vertex_src, fragment_src := split_shader(string(shader_source))
+    vertex, fragment, found := read_shader_cache(path)
 
-    vertex   := load_shader_stage(path, vertex_src, .Vertex, force_compile) or_return
-    fragment := load_shader_stage(path, fragment_src, .Fragment, force_compile) or_return
+    if !found || force_compile {
+        log_debug(LC.Engine, "CACHE NOT FOUND - COMPILING")
+        shader_source := os.read_entire_file(path) or_return
+        vertex_src, fragment_src := split_shader(string(shader_source))
+
+        vertex   = load_shader_stage(path, vertex_src, .Vertex, force_compile) or_return
+        fragment = load_shader_stage(path, fragment_src, .Fragment, force_compile) or_return
+        log_debug(LC.Engine, "%v %v ", len(vertex), len(fragment))
+
+        write_shader_cache(vertex, fragment, path)
+    }
 
     shader_spec := gpu.ShaderSpecification {
         vertex_spirv = vertex,
