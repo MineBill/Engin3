@@ -1054,3 +1054,57 @@ rigid_body_serialize :: proc(this: rawptr, serialize: bool, s: ^SerializeContext
         }
     }
 }
+
+@(component = {
+    Category = "Core/Rendering",
+})
+SkyComponent :: struct {
+    using base: Component,
+
+    clouds: bool,
+    clouds_density: f32,
+    rayleigh_coefficient: f32,
+    mie_coefficient: f32,
+    mie_scattering_direction: f32,
+}
+
+@(constructor=SkyComponent)
+make_sky_component :: proc() -> rawptr {
+    sky := new(SkyComponent)
+    sky.base       = default_component_constructor()
+    // sky.update     = rigid_body_update
+    // sky.destroy    = rigid_body_destroy
+    // sky.copy       = rigid_body_copy
+
+    return sky
+}
+
+@(serializer=SkyComponent)
+sky_component_serialize :: proc(this: rawptr, serialize: bool, s: ^SerializeContext) {
+    this := cast(^SkyComponent) this
+
+    switch s.mode {
+    case .Serialize:
+        serialize_do_field(s, "Clouds", this.clouds)
+        serialize_do_field(s, "CloudsDensity", this.clouds_density)
+        serialize_do_field(s, "RayleighCoefficient", this.rayleigh_coefficient)
+        serialize_do_field(s, "MieCoefficient", this.mie_coefficient)
+        serialize_do_field(s, "MieScatteringDirection", this.mie_scattering_direction)
+    case .Deserialize:
+        if clouds, ok := serialize_get_field(s, "Clouds", bool); ok {
+            this.clouds = clouds
+        }
+        if clouds_density, ok := serialize_get_field(s, "CloudsDensity", f32); ok {
+            this.clouds_density = clouds_density
+        }
+        if rayleigh_coefficient, ok := serialize_get_field(s, "RayleighCoefficient", f32); ok {
+            this.rayleigh_coefficient = rayleigh_coefficient
+        }
+        if mie_coefficient, ok := serialize_get_field(s, "MieCoefficient", f32); ok {
+            this.mie_coefficient = mie_coefficient
+        }
+        if mie_scattering_direction, ok := serialize_get_field(s, "MieScatteringDirection", f32); ok {
+            this.mie_scattering_direction = mie_scattering_direction
+        }
+    }
+}
