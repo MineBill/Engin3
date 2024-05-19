@@ -8,6 +8,7 @@ macro(set_option option value)
 endmacro()
 
 # Jolt Options
+set_option(FLOATING_POINT_EXCEPTIONS_ENABLED OFF)
 set_option(INTERPROCEDURAL_OPTIMIZATION OFF)
 set_option(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF)
 set_option(TARGET_UNIT_TESTS OFF)
@@ -15,8 +16,12 @@ set_option(TARGET_HELLO_WORLD OFF)
 set_option(TARGET_PERFORMANCE_TEST OFF)
 set_option(TARGET_SAMPLES OFF)
 set_option(TARGET_VIEWER OFF)
+
 set_option(VMA_STATIC_VULKAN_FUNCTIONS OFF)
 set_option(VMA_DYNAMIC_VULKAN_FUNCTIONS OFF)
+
+set_option(TRACY_ON_DEMAND ON)
+set_option(TRACY_CALLSTACK ON)
 
 add_subdirectory(odin-vma/VulkanMemoryAllocator)
 add_subdirectory(odin-tracy/tracy)
