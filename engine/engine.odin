@@ -37,7 +37,7 @@ Engine :: struct {
     game:              Game,
     run_mode:          EngineMode,
 
-    world: World,
+    world: ^World,
     dbg_draw: DebugDrawContext,
     asset_manager: AssetManager,
     scripting_engine: ScriptingEngine,
@@ -98,7 +98,6 @@ engine_resize :: proc(e: ^Engine, size: vec2) {
 engine_update :: proc(e: ^Engine, _delta: f64) {
     context.logger = e.editor.logger
 
-    @static CAMERA_SPEED := f32(2)
     defer tracy.FrameMark()
     tracy.Zone()
     delta := f32(_delta)
@@ -153,7 +152,7 @@ engine_draw :: proc(e: ^Engine) {
 }
 
 engine_deinit :: proc(e: ^Engine) {
-    destroy_world(&e.world)
+    destroy_world(e.world)
 
     physics_deinit(&e.physics)
 

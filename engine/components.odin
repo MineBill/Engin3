@@ -128,6 +128,7 @@ make_printer :: proc() -> rawptr {
     printer.base = default_component_constructor()
     printer.init = printer_init
     printer.update = printer_update
+    printer.copy = component_shallow_copy(PrinterComponent)
     return printer
 }
 
@@ -160,22 +161,8 @@ make_mesh_renderer :: proc() -> rawptr {
     }
 
     mr.prop_changed = mesh_renderer_prop_changed
-    mr.copy         = mesh_renderer_copy
+    mr.copy         = component_shallow_copy(MeshRenderer)
     return mr
-}
-
-mesh_renderer_copy :: proc(this: rawptr) -> rawptr {
-    this := cast(^MeshRenderer)this
-
-    new := cast(^MeshRenderer)make_mesh_renderer()
-
-    // TODO: make MeshRenderer.model a pointer
-    // new.mesh = get_asset(&EngineInstance.asset_manager, this.mesh, Mesh)
-    new.mesh = this.mesh
-    new.material = this.material
-    mesh_renderer_update_material(new)
-
-    return new
 }
 
 mesh_renderer_prop_changed :: proc(this: rawptr, prop: any) {
@@ -206,13 +193,7 @@ serialize_mesh_renderer :: proc(this: rawptr, serialize: bool, s: ^SerializeCont
             log_info(LC.EntitySystem, "MeshRenderer: Deserialized material is nil, using default material")
             this.material = Renderer3DInstance.default_material
         }
-
-        mesh_renderer_update_material(this)
     }
-}
-
-mesh_renderer_update_material :: proc(mr: ^MeshRenderer) {
-    // upload_material(mr.material)
 }
 
 @(component="Core/Lights")
@@ -236,6 +217,7 @@ make_point_light :: proc() -> rawptr {
         init = component_default_init,
         update = component_default_update,
         prop_changed = point_light_prop_changed,
+        copy = component_shallow_copy(PointLightComponent),
 
         color = Color{1, 1, 1, 1},
         constant = 1.0,
@@ -287,6 +269,7 @@ SpotLightComponent :: struct {
 make_spotlight :: proc() -> rawptr {
     light := new(SpotLightComponent)
     light.base = default_component_constructor()
+    light.copy = component_shallow_copy(SpotLightComponent)
 
     return light
 }
@@ -303,6 +286,7 @@ MoverComponent :: struct {
 make_mover :: proc() -> rawptr {
     mover := new(MoverComponent)
     mover.base = default_component_constructor()
+    mover.copy = component_shallow_copy(MoverComponent)
     mover.update = mover_update
     return mover
 }
@@ -334,6 +318,7 @@ DirectionalLight :: struct {
 make_directional_light :: proc() -> rawptr {
     light := new(DirectionalLight)
     light.base = default_component_constructor()
+    light.copy = component_shallow_copy(DirectionalLight)
     light.debug_draw = directional_light_debug_draw
 
     light.color = COLOR_WHITE
@@ -459,6 +444,7 @@ make_camera :: proc() -> rawptr {
     camera := new(Camera)
     camera.base = default_component_constructor()
     camera.debug_draw = camera_debug_draw
+    camera.copy = component_shallow_copy(Camera)
 
     camera.fov = 50
     camera.near_plane = 0.1
@@ -564,10 +550,23 @@ make_script_component :: proc() -> rawptr {
     script.init = script_init
     script.update = script_update
     script.destroy = script_destroy
+    script.copy = script_copy
 
     when USE_EDITOR {
         script.editor_ui = script_editor_ui
     }
+    return script
+}
+
+script_copy :: proc(this: rawptr) -> rawptr {
+    this := cast(^ScriptComponent) this
+    script := new(ScriptComponent)
+    script^ = this^
+
+    script.script_fields = clone(this.script_fields)
+    script.scripts = clone(this.scripts)
+    script.instances = clone(this.instances)
+
     return script
 }
 
@@ -840,6 +839,7 @@ make_box_collider :: proc() -> rawptr {
     box := new(BoxColliderComponent)
     box.base = default_component_constructor()
     box.debug_draw = box_collider_debug_draw
+    box.copy = component_shallow_copy(BoxColliderComponent)
 
     box.half_extent = VEC3_ONE * 0.5
 
@@ -881,6 +881,7 @@ make_sphere_collider :: proc() -> rawptr {
     sphere := new(SphereColliderComponent)
     sphere.base = default_component_constructor()
     sphere.debug_draw = sphere_collider_debug_draw
+    sphere.copy = component_shallow_copy(SphereColliderComponent)
 
     sphere.radius = 0.5
     return sphere
@@ -1027,9 +1028,15 @@ rigid_body_destroy :: proc(this: rawptr) {
 rigid_body_copy :: proc(this: rawptr) -> rawptr {
     this := cast(^RigidBodyComponent) this
 
-    copy := cast(^RigidBodyComponent) make_rigid_body()
+    body := new(RigidBodyComponent)
+    body^ = this^
 
-    return copy
+        // body_type: BodyType,
+        // linear_damping: f32,
+        // angular_damping: f32,
+
+        // body_id: jolt.BodyID `hide:""`,
+    return body
 }
 
 @(serializer=RigidBodyComponent)
@@ -1055,12 +1062,18 @@ rigid_body_serialize :: proc(this: rawptr, serialize: bool, s: ^SerializeContext
     }
 }
 
+SkyBoxType :: enum {
+    Procedural,
+    HDRI,
+}
+
 @(component = {
     Category = "Core/Rendering",
 })
 SkyComponent :: struct {
     using base: Component,
 
+    type: SkyBoxType,
     clouds: bool,
     clouds_density: f32,
     rayleigh_coefficient: f32,
@@ -1071,7 +1084,8 @@ SkyComponent :: struct {
 @(constructor=SkyComponent)
 make_sky_component :: proc() -> rawptr {
     sky := new(SkyComponent)
-    sky.base       = default_component_constructor()
+    sky.base = default_component_constructor()
+    sky.copy = component_shallow_copy(SkyComponent)
     // sky.update     = rigid_body_update
     // sky.destroy    = rigid_body_destroy
     // sky.copy       = rigid_body_copy
@@ -1085,6 +1099,7 @@ sky_component_serialize :: proc(this: rawptr, serialize: bool, s: ^SerializeCont
 
     switch s.mode {
     case .Serialize:
+        serialize_do_field(s, "Type", this.type)
         serialize_do_field(s, "Clouds", this.clouds)
         serialize_do_field(s, "CloudsDensity", this.clouds_density)
         serialize_do_field(s, "RayleighCoefficient", this.rayleigh_coefficient)

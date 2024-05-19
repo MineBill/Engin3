@@ -152,9 +152,10 @@ import_shader :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetIm
     return
 }
 
-@(importer=World)
+@(importer=Scene)
 import_scene :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
-    world := new(World)
+    world := new(Scene)
+    world.type = .Scene
     deserialize_world(world, filepath.join({EditorInstance.active_project.root, metadata.path}, context.temp_allocator))
 
     return world, nil

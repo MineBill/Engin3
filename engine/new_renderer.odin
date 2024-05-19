@@ -215,7 +215,10 @@ r3d_draw_frame :: proc(r: ^Renderer3D, packet: RPacket, cmd: gpu.CommandBuffer) 
     gpu.bind_resource(cmd, r.global_set.resource, object_shader.pipeline)
 
     mesh_components := make([dynamic]^MeshRenderer, allocator = context.temp_allocator)
-    {
+    m: {
+        if packet.scene == nil {
+            break m
+        }
         tracy.ZoneN("Mesh Collection")
         for handle, &go in packet.scene.objects do if go.enabled && has_component(packet.scene, handle, MeshRenderer) {
             mr := get_component(packet.scene, handle, MeshRenderer)
@@ -307,6 +310,9 @@ r3d_resize_swapchain :: proc(r: ^Renderer3D, size: vec2) {
 render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, mesh_components: []^MeshRenderer) {
     tracy.Zone()
     asset_manager := &EngineInstance.asset_manager
+    if packet.scene == nil {
+        return
+    }
 
     for handle, &go in packet.scene.objects do if go.enabled && has_component(packet.scene, handle, DirectionalLight) {
         dir_light := get_component(packet.scene, handle, DirectionalLight)
@@ -424,6 +430,9 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, m
 
 do_depth_pass :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, mesh_components: []^MeshRenderer) -> (distances: [4]f32) {
     scene := packet.scene
+    if scene == nil {
+        return
+    }
     view_data := &r.global_set.uniform_buffer
 
     for split in 0..<SHADOW_CASCADES {

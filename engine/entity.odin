@@ -62,8 +62,16 @@ component_default_editor_ui :: proc(this: rawptr, editor: ^Editor, s: any) -> bo
 component_default_debug_draw :: proc(this: rawptr, ctx: ^DebugDrawContext) {}
 
 component_default_copy :: proc(this: rawptr) -> rawptr {
-    assert(false, "Copy needs to be implemented")
-    return nil
+    panic("Copy is not implemented!")
+}
+
+component_shallow_copy :: proc($T: typeid) -> proc(rawptr) -> rawptr {
+    return proc(this: rawptr) -> rawptr {
+        this := cast(^T) this
+        c := new(T)
+        c^ = this^
+        return c
+    }
 }
 
 default_component_constructor :: proc() -> Component {
@@ -129,6 +137,17 @@ duplicate_entity :: proc(world: ^World, entity: EntityHandle) -> EntityHandle {
         copy_component(world, new, entity, id)
     }
     return new
+}
+
+clone_entity :: proc(source: Entity) -> (en: Entity) {
+    en = source
+    en.children = clone(source.children)
+    en.name.data = clone(source.name.data)
+
+    for id, component in source.components {
+        en.components[id] = cast(^Component)component->copy()
+    }
+    return
 }
 
 @(private = "file")
@@ -269,7 +288,7 @@ when USE_EDITOR {
 @(asset = {
     ImportFormats = ".scene",
 })
-World :: struct {
+Scene :: struct {
     using base: Asset,
 
     // The name of this world/level.
@@ -290,10 +309,7 @@ World :: struct {
     using editor_data: WorldEditorData,
 }
 
-// @(constructor=World)
-// new_world :: proc() -> ^Asset {
-//     // world: 
-// }
+World :: Scene
 
 create_world :: proc(world: ^World, name: string = "World") {
     tracy.Zone()
@@ -311,20 +327,30 @@ create_world :: proc(world: ^World, name: string = "World") {
 }
 
 destroy_world :: proc(world: ^World) {
+    if world == nil {
+        return
+    }
     delete(world.name)
     delete_object(world, world.root)
     delete(world.objects)
     delete(world.file_path)
 }
 
-copy_world :: proc(source: ^World) -> (new: World) {
-    new.name = strings.clone(source.name)
-    new.root = source.root
+copy_world :: proc(source: ^World) -> ^World {
+    world := new(World)
+    // Shallow copy first..
+    world^ = source^
 
-    new.file_path = source.file_path
-    new.next_local_id = source.next_local_id
+    // Then copy heap structures
+    world.name = strings.clone(source.name)
 
-    return
+    for handle, entity in source.objects {
+        world.objects[handle] = clone_entity(entity)
+    }
+
+    world.local_id_to_uuid = clone(source.local_id_to_uuid)
+
+    return world
 }
 
 world_update :: proc(world: ^World, delta: f64, update_components := true) {
@@ -484,7 +510,7 @@ delete_object :: proc(world: ^World, handle: EntityHandle) {
                 comp->destroy()
             }
         }
-        
+
         delete_key(&world.objects, handle)
     }
 

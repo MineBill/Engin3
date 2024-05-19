@@ -190,6 +190,19 @@ clone_map :: proc(m: map[$K]$V, allocator := context.allocator) -> map[K]V {
     return r
 }
 
+clone_dyn :: proc(m: [dynamic]$V, allocator := context.allocator) -> [dynamic]V {
+    r := make([dynamic]V, len(m), allocator)
+    for v, i in m {
+        r[i] = v
+    }
+    return r
+}
+
+clone :: proc {
+    clone_map,
+    clone_dyn,
+}
+
 OwnedString :: struct {
     s: string,
     allocator: mem.Allocator,

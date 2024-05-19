@@ -354,8 +354,9 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                     io.ConfigFlags -= {.NoMouse}
                 }
             } else if ev.button == .left {
-                if ev.state == .pressed && 
-                    e.is_viewport_focused && 
+                if ev.state == .pressed &&
+                    e.engine.world != nil &&
+                    e.is_viewport_focused &&
                     (e.state == .Edit || e.is_detached) &&
                     !(gizmo.IsUsing() || gizmo.IsOver()) {
                     tracy.ZoneNC("Mouse Picking", 0xff0000ff)
@@ -380,7 +381,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                     #partial switch ev.key {
                     case .S:
                         log_debug(LC.Editor, "Saving world to %v", e.engine.world.file_path)
-                        serialize_world(e.engine.world, e.engine.world.file_path)
+                        serialize_world(e.engine.world^, e.engine.world.file_path)
                         e.engine.world.modified = false
                     case .D:
                         // Create a local copy before reseting the selection
@@ -388,7 +389,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
                         defer delete(selection)
                         reset_selection(e)
                         for entity, _ in selection {
-                            new_entity := duplicate_entity(&e.engine.world, entity)
+                            new_entity := duplicate_entity(e.engine.world, entity)
                             select_entity(e, new_entity)
                         }
                     case .Z:
@@ -402,7 +403,7 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
                 if ev.key == .Delete {
                     for entity, _ in e.entity_selection {
-                        delete_object(&e.engine.world, entity)
+                        delete_object(e.engine.world, entity)
                     }
                 }
 
@@ -492,11 +493,11 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
 
         if imgui.BeginMenu("Scene") {
             if imgui.MenuItem("Save") {
-                serialize_world(e.engine.world, e.engine.world.file_path)
+                serialize_world(e.engine.world^, e.engine.world.file_path)
             }
 
             if imgui.MenuItem("Load") {
-                deserialize_world(&e.engine.world, e.engine.world.file_path)
+                deserialize_world(e.engine.world, e.engine.world.file_path)
             }
 
             imgui.EndMenu()
@@ -570,7 +571,9 @@ editor_update :: proc(e: ^Editor, _delta: f64) {
         editor_content_browser(e)
     }
 
-    world_update(&e.engine.world, _delta, e.state == .Play)
+    if e.engine.world != nil {
+        world_update(e.engine.world, _delta, e.state == .Play)
+    }
     if e.state == .Play {
         physics_update(PhysicsInstance, _delta)
     }
@@ -621,8 +624,8 @@ editor_draw :: proc(e: ^Editor) {
 
 editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
     packet := RPacket {
-        // world = &e.engine.world,
-        scene = &e.engine.world,
+        // world = e.engine.world,
+        scene = e.engine.world,
         size = vec2i{i32(e.viewport_size.x), i32(e.viewport_size.y)},
         camera = RenderCamera {
             projection = e.camera.projection,
@@ -635,12 +638,12 @@ editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
         // clear_color = COLOR_BLACK,
     }
 
-
-
-    for id, &obj in e.engine.world.objects {
-        if id in e.entity_selection {
-            for type, component in obj.components {
-                component->debug_draw(g_dbg_context)
+    if e.engine.world != nil {
+        for id, &obj in e.engine.world.objects {
+            if id in e.entity_selection {
+                for type, component in obj.components {
+                    component->debug_draw(g_dbg_context)
+                }
             }
         }
     }
@@ -668,8 +671,8 @@ editor_render_scene :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
 }
 
 editor_render_game_view :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
-    if camera := find_first_component(&e.engine.world, Camera); camera != nil {
-        go := get_object(&e.engine.world, camera.owner)
+    if camera := find_first_component(e.engine.world, Camera); camera != nil {
+        go := get_object(e.engine.world, camera.owner)
 
         euler := go.transform.local_rotation
         rotation := linalg.quaternion_from_euler_angles(
@@ -683,8 +686,8 @@ editor_render_game_view :: proc(e: ^Editor, cmd: gpu.CommandBuffer) {
         camera_rotation   := rotation
 
         packet := RPacket {
-            // world = &e.engine.world,
-            scene = &e.engine.world,
+            // world = e.engine.world,
+            scene = e.engine.world,
             size = vec2i{i32(e.viewport_size.x), i32(e.viewport_size.y)},
             camera = RenderCamera {
                 projection = camera_projection,
@@ -708,13 +711,13 @@ editor_on_scene_play :: proc(e: ^Editor) {
     }
 
     // Save first
-    serialize_world(e.engine.world, e.engine.world.file_path)
+    serialize_world(e.engine.world^, e.engine.world.file_path)
 
     deserialize_world(&e.runtime_world, e.engine.world.file_path)
-    e.editor_world = e.engine.world
-    e.engine.world = e.runtime_world
+    e.editor_world = e.engine.world^
+    e.engine.world = &e.runtime_world
 
-    world_init_components(&e.engine.world)
+    world_init_components(e.engine.world)
 }
 
 editor_on_scene_pause :: proc(e: ^Editor) {
@@ -729,7 +732,7 @@ editor_on_scene_stop :: proc(e: ^Editor) {
     log_debug(LC.Editor, "On Scene Stop")
 
     destroy_world(&e.runtime_world)
-    e.engine.world = e.editor_world
+    e.engine.world = &e.editor_world
     e.is_detached = false
 }
 
@@ -780,7 +783,12 @@ editor_env_panel :: proc(e: ^Editor) {
     using imgui
 
     imgui.PushStyleVar(.IndentSpacing, 20)
-    if do_window("Scene") {
+    window: if do_window("Scene") {
+        if e.engine.world == nil {
+            TextUnformatted("No scene loaded")
+            break window
+        }
+
         @(static) clear_color: vec3
         if do_property("clear_color") {
             do_property_name("Clear Color")
@@ -874,9 +882,9 @@ editor_viewport :: proc(e: ^Editor) {
                 asset_handle := (cast(^AssetHandle)payload.Data)^
 
                 #partial switch get_asset_type(&EngineInstance.asset_manager, asset_handle) {
-                case .World:
+                case .Scene:
                     world := get_asset(&EngineInstance.asset_manager, asset_handle, World)
-                    e.engine.world = world^
+                    e.engine.world = world
                     // e.engine.world.objects = clone_map(world.objects)
                 }
             }
@@ -885,7 +893,7 @@ editor_viewport :: proc(e: ^Editor) {
                 data := transmute(^byte)payload.Data
                 path := strings.string_from_ptr(data, int(payload.DataSize / size_of(byte)))
 
-                deserialize_world(&e.engine.world, path)
+                deserialize_world(e.engine.world, path)
             }
 
             if payload := imgui.AcceptDragDropPayload(CONTENT_ITEM_TYPES[.Model], {}); payload != nil {
@@ -895,8 +903,8 @@ editor_viewport :: proc(e: ^Editor) {
                 // log_debug(LC.Editor, "Load model from", path)
 
                 if is_asset_handle_valid(&EngineInstance.asset_manager, data^) {
-                    entity := new_object(&e.engine.world, "New Mesh")
-                    mesh_component := get_or_add_component(&e.engine.world, entity, MeshRenderer)
+                    entity := new_object(e.engine.world, "New Mesh")
+                    mesh_component := get_or_add_component(e.engine.world, entity, MeshRenderer)
                     mesh_renderer_set_mesh(mesh_component, data^)
                 }
             }
@@ -904,7 +912,7 @@ editor_viewport :: proc(e: ^Editor) {
         }
 
         for handle, _ in e.entity_selection {
-            en := get_object(&EngineInstance.world, handle)
+            en := get_object(EngineInstance.world, handle)
             draw_position_gizmo(e, en)
         }
 
@@ -965,7 +973,7 @@ editor_entidor :: proc(e: ^Editor) {
         // Single selection
         if len(e.entity_selection) == 1 {
             for handle, _ in e.entity_selection {
-                go := get_object(&e.engine.world, handle)
+                go := get_object(e.engine.world, handle)
                 if go == nil {
                     // Entity selection is invalide, reset it
                     e.selected_entity = nil
@@ -1066,7 +1074,7 @@ editor_entidor :: proc(e: ^Editor) {
                 if imgui.Selectable(cstr(info.name)) {
                     handle, ok := e.selected_entity.?
                     if ok {
-                        add_component(&e.engine.world, handle, component_id)
+                        add_component(e.engine.world, handle, component_id)
                     }
                 }
             } else {
@@ -1099,7 +1107,7 @@ editor_entidor :: proc(e: ^Editor) {
                                     if imgui.MenuItem(cstr(name)) {
                                         handle, ok := e.selected_entity.?
                                         if ok {
-                                            add_component(&e.engine.world, handle, id)
+                                            add_component(e.engine.world, handle, id)
                                         }
                                     }
                                 }
@@ -1184,7 +1192,7 @@ editor_ui_toolstrip :: proc(e: ^Editor) {
     step_enabled := e.state == .Paused
     if do_image_button("##step_button", e.icons[.StepFrameButton], vec2{size, size}, .Disabled if !step_enabled else .GenericRounded, disabled = !step_enabled) {
         log_debug(LC.Editor, "Stepping 1 frame")
-        world_update(&e.engine.world, e.delta, true)
+        world_update(e.engine.world, e.delta, true)
         physics_update(PhysicsInstance, e.delta)
     }
 
@@ -1609,7 +1617,7 @@ return NewScript
                             texture = e.content_browser.textures[.Script]
                         case .PbrMaterial:
                             texture = e.content_browser.textures[.Material]
-                        case .World:
+                        case .Scene:
                             texture = e.content_browser.textures[.Scene]
                         case .Texture2D:
                             texture = get_asset(&EngineInstance.asset_manager, item.asset, Texture2D)^
@@ -1646,7 +1654,7 @@ return NewScript
                                 #partial switch item.type {
                                 case .PbrMaterial:
                                     e.asset_windows[item.asset] = create_asset_window(item.asset)
-                                case .World:
+                                case .Scene:
                                     // Load the world
                                 }
                             }
@@ -1807,23 +1815,23 @@ editor_gameobjects :: proc(e: ^Editor) {
     entity_create_menu :: proc(e: ^Editor, parent: EntityHandle) {
         if imgui.BeginMenu("New") {
             if imgui.MenuItem("Empty Entity") {
-                new_object(&e.engine.world, parent = parent)
+                new_object(e.engine.world, parent = parent)
             }
             if imgui.MenuItem("Point Light") {
-                go := new_object(&e.engine.world, "Point Light", parent)
-                add_component(&e.engine.world, go, PointLightComponent)
+                go := new_object(e.engine.world, "Point Light", parent)
+                add_component(e.engine.world, go, PointLightComponent)
             }
             if imgui.MenuItem("Camera") {
-                go := new_object(&e.engine.world, "Camera", parent)
-                add_component(&e.engine.world, go, Camera)
+                go := new_object(e.engine.world, "Camera", parent)
+                add_component(e.engine.world, go, Camera)
             }
             if imgui.MenuItem("Sky") {
-                go := new_object(&e.engine.world, "Sky", parent)
-                add_component(&e.engine.world, go, CubemapComponent)
+                go := new_object(e.engine.world, "Sky", parent)
+                add_component(e.engine.world, go, CubemapComponent)
             }
             if imgui.MenuItem("Directional Light") {
-                go := new_object(&e.engine.world, "Directional Light", parent)
-                add_component(&e.engine.world, go, DirectionalLight)
+                go := new_object(e.engine.world, "Directional Light", parent)
+                add_component(e.engine.world, go, DirectionalLight)
             }
             if imgui.BeginMenu("Primitives") {
                 cube: if imgui.MenuItem("Cube") {
@@ -1852,9 +1860,9 @@ editor_gameobjects :: proc(e: ^Editor) {
                     }
 
 
-                    go := new_object(&e.engine.world, "Cube", parent)
-                    add_component(&e.engine.world, go, MeshRenderer)
-                    mr := get_component(&e.engine.world, go, MeshRenderer)
+                    go := new_object(e.engine.world, "Cube", parent)
+                    add_component(e.engine.world, go, MeshRenderer)
+                    mr := get_component(e.engine.world, go, MeshRenderer)
                     mr.mesh = handle
                     mr.material = Renderer3DInstance.default_material
                 }
@@ -1866,7 +1874,7 @@ editor_gameobjects :: proc(e: ^Editor) {
     tree_node_gameobject :: proc(e: ^Editor, handle: EntityHandle) {
         flags := imgui.TreeNodeFlags{}
         flags += {.SpanAvailWidth, .FramePadding, .OpenOnDoubleClick, .OpenOnArrow}
-        children := &get_object(&e.engine.world, handle).children
+        children := &get_object(e.engine.world, handle).children
 
         slice.sort_by_key(children[:], proc(a: EntityHandle) -> EntityHandle {
             return a
@@ -1876,7 +1884,7 @@ editor_gameobjects :: proc(e: ^Editor) {
             flags += {.Leaf}
         }
 
-        go, ok := &e.engine.world.objects[handle]
+        go, ok := e.engine.world.objects[handle]
         if !ok do return
 
         // if e.selected_entity == handle {
@@ -1906,7 +1914,7 @@ editor_gameobjects :: proc(e: ^Editor) {
             imgui.Separator()
 
             if imgui.MenuItem(fmt.ctprintf("Destroy '%v'", ds_to_string(go.name))) {
-                delete_object(&e.engine.world, handle)
+                delete_object(e.engine.world, handle)
             }
         }
 
@@ -1926,7 +1934,7 @@ editor_gameobjects :: proc(e: ^Editor) {
         if imgui.BeginDragDropTarget() {
             if payload := imgui.AcceptDragDropPayload("WORLD_TREENODE"); payload != nil {
                 id := (cast(^EntityHandle)payload.Data)^
-                reparent_entity(&e.engine.world, id, go.handle)
+                reparent_entity(e.engine.world, id, go.handle)
             }
             imgui.EndDragDropTarget()
         }
@@ -1941,11 +1949,11 @@ editor_gameobjects :: proc(e: ^Editor) {
     }
 
     flags: imgui.WindowFlags
-    if e.engine.world.modified {
+    if e.engine.world != nil && e.engine.world.modified {
         flags += {.UnsavedDocument}
     }
     if do_window("Entities", flags = flags) {
-        if e.engine.world.objects == nil {
+        if e.engine.world == nil {
             imgui.TextUnformatted("No scene is currently loaded")
             imgui.Separator()
         } else {
@@ -1954,7 +1962,7 @@ editor_gameobjects :: proc(e: ^Editor) {
 
             go := e.engine.world.root
 
-            children := &get_object(&e.engine.world, go).children
+            children := &get_object(e.engine.world, go).children
 
             {
                 with_popup_style()
@@ -1978,7 +1986,7 @@ editor_gameobjects :: proc(e: ^Editor) {
             if imgui.BeginDragDropTarget() {
                 if payload := imgui.AcceptDragDropPayload("WORLD_TREENODE"); payload != nil {
                     id := (cast(^EntityHandle)payload.Data)^
-                    reparent_entity(&e.engine.world, id, 0)
+                    reparent_entity(e.engine.world, id, 0)
                 }
                 imgui.EndDragDropTarget()
             }
@@ -2149,7 +2157,7 @@ editor_undo_redo_window :: proc(e: ^Editor) {
 
 reset_selection :: proc(e: ^Editor) {
     for entity, _ in e.entity_selection {
-        if go := get_object(&e.engine.world, entity); go != nil {
+        if go := get_object(e.engine.world, entity); go != nil {
             go.flags -= {.Outlined}
         }
     }
@@ -2167,7 +2175,7 @@ select_entity :: proc(e: ^Editor, entity: EntityHandle, should_reset_selection :
     if entity != 0 {
         e.selected_entity = entity
         e.entity_selection[entity] = true
-        get_object(&e.engine.world, entity).flags += {.Outlined}
+        get_object(e.engine.world, entity).flags += {.Outlined}
     }
 }
 
@@ -2209,7 +2217,7 @@ draw_component :: proc(e: ^Editor, id: typeid, component: ^Component) {
             if imgui.MenuItem("Remove Component") {
                 handle, ok := e.selected_entity.(EntityHandle)
                 if ok {
-                    remove_component(&e.engine.world, handle, id)
+                    remove_component(e.engine.world, handle, id)
                 }
             }
             imgui.EndPopup()
@@ -2417,7 +2425,7 @@ draw_struct_field :: proc(e: ^Editor, value: any, field: reflect.Struct_Field) -
     switch {
     case typeid_of(EntityHandle) == field.type.id:
         handle := &value.(EntityHandle)
-        go := get_object(&e.engine.world, handle^)
+        go := get_object(e.engine.world, handle^)
         name := ds_to_cstring(go.name) if go != nil else "None"
         if imgui.BeginCombo(cstr(field.name), name, {}) {
             for h, &obj in e.engine.world.objects {

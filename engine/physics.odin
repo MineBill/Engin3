@@ -98,8 +98,8 @@ physics_init :: proc(physics: ^Physics) {
             return
         }
 
-        entity_a := get_entity(&EngineInstance.world, handle_a)
-        entity_b := get_entity(&EngineInstance.world, handle_b)
+        entity_a := get_entity(EngineInstance.world, handle_a)
+        entity_b := get_entity(EngineInstance.world, handle_b)
         log_debug(LC.PhysicsSystem, "Collision started between '{}' and '{}'", ds_to_string(entity_a.name), ds_to_string(entity_b.name))
     }
 
@@ -120,8 +120,8 @@ physics_init :: proc(physics: ^Physics) {
         handle_a := cast(EntityHandle) body1.user_data
         handle_b := cast(EntityHandle) body2.user_data
 
-        entity_a := get_entity(&EngineInstance.world, handle_a)
-        entity_b := get_entity(&EngineInstance.world, handle_b)
+        entity_a := get_entity(EngineInstance.world, handle_a)
+        entity_b := get_entity(EngineInstance.world, handle_b)
         log_debug(LC.PhysicsSystem, "Collision ended between '{}' and '{}'", ds_to_string(entity_a.name), ds_to_string(entity_b.name))
     }
 
