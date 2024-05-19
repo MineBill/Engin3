@@ -54,6 +54,49 @@ import_texture :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetI
     return texture, error
 }
 
+@(importer=HDRTexture)
+import_hdr :: proc(metadata: AssetMetadata) -> (asset: ^Asset, error: AssetImportError) {
+    tracy.Zone()
+    // texture := new(Texture2D)
+    // texture.type = .Texture2D
+    // path := filepath.join({EditorInstance.active_project.root, metadata.path})
+    // defer delete(path)
+    // texture^, error = import_texture_from_path(path)
+    // return texture, error
+    w, h, n: i32
+    data := stbi.loadf(cstr(metadata.path), &w, &h, &n, 4)
+    if data == nil {
+        return {}, GenericMessageError {
+            message = "Failed to load HDR image."
+        }
+    }
+
+    log_debug(LC.AssetSystem, "width: %v, height: %v, channels: %v", w, h, n)
+
+    image_spec := gpu.ImageSpecification {
+        tag = "HDR Image",
+        device = &Renderer3DInstance.device,
+        width = cast(int) w,
+        height = cast(int) h,
+        samples = 1,
+        usage = {.Sampled, .TransferDst, .ColorAttachment},
+        format = .R16G16B16A16_SFLOAT,
+        final_layout = .ShaderReadOnlyOptimal,
+        sampler = {
+            wrap = .Repeat,
+        }
+    }
+
+    texture := new(HDRTexture)
+    handle := gpu.create_image(image_spec)
+    size := w * h * n
+    gpu.image_set_data(&texture.handle, mem.slice_to_bytes(data[:size]))
+
+    gpu.image_transition_layout(&texture.handle, .ShaderReadOnlyOptimal)
+
+    return
+}
+
 import_texture_from_path :: proc(path: string) -> (Texture2D, AssetImportError) {
     tracy.Zone()
     if !os.exists(path) {

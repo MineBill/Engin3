@@ -12,50 +12,6 @@ struct VertexOutput {
 
 layout(location = 0) out VertexOutput Out;
 
-// vec3 cube[36] = vec3[](
-//     vec3(-1.0f,  1.0f, -1.0f),
-//     vec3(-1.0f, -1.0f, -1.0f),
-//     vec3( 1.0f, -1.0f, -1.0f),
-//     vec3( 1.0f, -1.0f, -1.0f),
-//     vec3( 1.0f,  1.0f, -1.0f),
-//     vec3(-1.0f,  1.0f, -1.0f),
-
-//     vec3(-1.0f, -1.0f,  1.0f),
-//     vec3(-1.0f, -1.0f, -1.0f),
-//     vec3(-1.0f,  1.0f, -1.0f),
-//     vec3(-1.0f,  1.0f, -1.0f),
-//     vec3(-1.0f,  1.0f,  1.0f),
-//     vec3(-1.0f, -1.0f,  1.0f),
-
-//     vec3( 1.0f, -1.0f, -1.0f),
-//     vec3( 1.0f, -1.0f,  1.0f),
-//     vec3( 1.0f,  1.0f,  1.0f),
-//     vec3( 1.0f,  1.0f,  1.0f),
-//     vec3( 1.0f,  1.0f, -1.0f),
-//     vec3( 1.0f, -1.0f, -1.0f),
-
-//     vec3(-1.0f, -1.0f,  1.0f),
-//     vec3(-1.0f,  1.0f,  1.0f),
-//     vec3( 1.0f,  1.0f,  1.0f),
-//     vec3( 1.0f,  1.0f,  1.0f),
-//     vec3( 1.0f, -1.0f,  1.0f),
-//     vec3(-1.0f, -1.0f,  1.0f),
-
-//     vec3(-1.0f,  1.0f, -1.0f),
-//     vec3( 1.0f,  1.0f, -1.0f),
-//     vec3( 1.0f,  1.0f,  1.0f),
-//     vec3( 1.0f,  1.0f,  1.0f),
-//     vec3(-1.0f,  1.0f,  1.0f),
-//     vec3(-1.0f,  1.0f, -1.0f),
-
-//     vec3(-1.0f, -1.0f, -1.0f),
-//     vec3(-1.0f, -1.0f,  1.0f),
-//     vec3( 1.0f, -1.0f, -1.0f),
-//     vec3( 1.0f, -1.0f, -1.0f),
-//     vec3(-1.0f, -1.0f,  1.0f),
-//     vec3( 1.0f, -1.0f,  1.0f)
-// );
-
 const vec2 positions[4] = vec2[](
     vec2(-1.0,  1.0), vec2(-1.0, -1.0),
     vec2( 1.0,  1.0), vec2( 1.0, -1.0)
@@ -71,14 +27,6 @@ void Vertex() {
 #line 10
 
 layout(location = 0) out vec4 o_Color;
-
-const float Br = 0.0025; // Rayleigh coefficient
-const float Bm = 0.0003; // Mie coefficient
-const float g =  0.9800; // Mie scattering direction. Should be ALMOST 1.0f
-
-const vec3 nitrogen = vec3(0.650, 0.570, 0.475);
-const vec3 Kr = Br / pow(nitrogen, vec3(4.0));
-const vec3 Km = Bm / pow(nitrogen, vec3(0.84));
 
 float mod289(float x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
 vec4 mod289(vec4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
@@ -123,9 +71,24 @@ const float cumulus = 0.8;
 
 layout(location = 0) in VertexOutput In;
 
+// layout(std140, set = 0, binding = 0) uniform SkySettings {
+//     const float Br = 0.0025; // Rayleigh coefficient
+//     const float Bm = 0.0003; // Mie coefficiet
+//     const float g =  0.9800; // Mie scattering direction. Should be ALMOST 1.0f
+// } u_SkySettings;
+
 void Fragment() {
     if (In.position.y < 0)
         discard;
+
+    const float Br = 0.0025; // Rayleigh coefficient
+    const float Bm = 0.0003; // Mie coefficiet
+    const float g =  0.9800; // Mie scattering direction. Should be ALMOST 1.0f
+
+    const vec3 nitrogen = vec3(0.650, 0.570, 0.475);
+    const vec3 Kr = Br / pow(nitrogen, vec3(4.0));
+    const vec3 Km = Bm / pow(nitrogen, vec3(0.84));
+
     float mu = dot(normalize(In.position), normalize(u_LightData.directional.direction.xyz));
     float rayleigh = 3.0 / (8.0 * 3.14) * (1.0 + mu * mu);
     vec3 mie = (Kr + Km * (1.0 - g * g) / (2.0 + g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5)) / (Br + Bm);
@@ -137,6 +100,9 @@ void Fragment() {
 
     // // Cirrus Clouds
     float density = smoothstep(1.0 - cirrus, 1.0, fbm(In.position.xyz / In.position.y * 1.0 + u_GlobalData.time * 0.01)) * 0.3;
+    o_Color.rgb = mix(o_Color.rgb, extinction * 10.0, density * max(In.position.y, 0.0));
+
+    density = smoothstep(1.0 - cirrus, 1.0, fbm(In.position.xyz / In.position.y * 4.0 + u_GlobalData.time * 0.01)) * 0.3;
     o_Color.rgb = mix(o_Color.rgb, extinction * 10.0, density * max(In.position.y, 0.0));
 
     // // Cumulus Clouds

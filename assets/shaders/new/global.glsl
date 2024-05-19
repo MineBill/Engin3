@@ -6,6 +6,7 @@
 layout(std140, set = GLOBAL_SET, binding = 0) uniform ViewData {
     mat4 projection;
     mat4 view;
+    mat4 rotation_view;
     vec2 screen_size;
 } u_ViewData;
 

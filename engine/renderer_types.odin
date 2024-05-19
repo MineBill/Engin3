@@ -24,6 +24,7 @@ DepthPassPushConstants :: struct {
 GlobalUniform :: struct {
     projection: mat4,
     view: mat4,
+    rotation_view: mat4,
     screen_size: vec2,
 }
 

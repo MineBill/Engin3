@@ -34,6 +34,7 @@ Renderer3D :: struct {
     world_renderpass: gpu.RenderPass,
     object_shader, depth_shader: AssetHandle,
     sky_shader: AssetHandle,
+    skybox_shader: AssetHandle,
     grid_shader: AssetHandle,
     // world_pipeline: gpu.Pipeline,
     ui_renderpass:    gpu.RenderPass,
@@ -203,6 +204,7 @@ r3d_draw_frame :: proc(r: ^Renderer3D, packet: RPacket, cmd: gpu.CommandBuffer) 
 
     r.global_set.uniform_buffer.data.projection = packet.camera.projection
     r.global_set.uniform_buffer.data.view = packet.camera.view
+    r.global_set.uniform_buffer.data.rotation_view = linalg.matrix4_from_quaternion(packet.camera.rotation)
     r.global_set.uniform_buffer.data.screen_size = Vector2{cast(f32)packet.size.x, cast(f32)packet.size.y}
     uniform_buffer_flush(&r.global_set.uniform_buffer)
 
@@ -344,7 +346,8 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, m
 
     gpu.resource_bind_image(r.scene_set.resource, r.depth_image, .CombinedImageSampler, 2)
 
-    {
+    USE_PROCEDURAL :: false
+    when USE_PROCEDURAL {
         sky_shader := get_asset(&EngineInstance.asset_manager, r.sky_shader, Shader)
         gpu.pipeline_bind(cmd, sky_shader.pipeline)
         gpu.bind_resource(cmd, r.global_set.resource, sky_shader.pipeline, 0)
@@ -352,6 +355,17 @@ render_scene :: proc(r: ^Renderer3D, packet: ^RPacket, cmd: gpu.CommandBuffer, m
 
         gpu.draw(cmd, 4, 1)
     }
+
+    when !USE_PROCEDURAL {
+        skybox := get_asset(&EngineInstance.asset_manager, r.skybox_shader, Shader)
+        gpu.pipeline_bind(cmd, skybox.pipeline)
+        gpu.bind_resource(cmd, r.global_set.resource, skybox.pipeline, 0)
+        gpu.bind_resource(cmd, r.scene_set.resource, skybox.pipeline, 1)
+
+        gpu.draw(cmd, 36, 1)
+    }
+
+
     object_shader := get_asset(&EngineInstance.asset_manager, r.object_shader, Shader)
     gpu.pipeline_bind(cmd, object_shader.pipeline)
     gpu.bind_resource(cmd, r.global_set.resource, object_shader.pipeline, 0)
@@ -955,6 +969,39 @@ r3d_setup_renderpasses :: proc(r: ^Renderer3D) -> (ok: bool) {
             dont_serialize = true,
         }
         manager.loaded_assets[r.sky_shader] = new_shader(manager.registry[r.sky_shader].path, sky_pl_spec) or_return
+
+        skybox_pl_layout_spec := gpu.PipelineLayoutSpecification {
+            tag = "SkyBox PL Layout",
+            device = &r.device,
+            layouts = {
+                r.global_set.layout,
+                r.scene_set.layout,
+            }
+        }
+
+        skybox_pl_layout := gpu.create_pipeline_layout(skybox_pl_layout_spec)
+
+        config = gpu.default_pipeline_config()
+        config.multisample_info.rasterizationSamples = {._8}
+        config.multisample_info.sampleShadingEnable = true
+        config.rasterization_info.cullMode = {.FRONT}
+        config.depth_stencil_info.depthTestEnable = false
+        config.input_assembly_info.topology = .TRIANGLE_LIST
+
+        skybox_pl_spec := gpu.PipelineSpecification {
+            tag = "SkyBox PL",
+            renderpass = r.world_renderpass,
+            layout = sky_pl_layout,
+            config = config,
+        }
+
+        r.skybox_shader = AssetHandle(generate_uuid())
+        manager.registry[r.skybox_shader] = AssetMetadata {
+            path = "assets/shaders/new/skybox.shader",
+            type = .Shader,
+            dont_serialize = true,
+        }
+        manager.loaded_assets[r.skybox_shader] = new_shader(manager.registry[r.skybox_shader].path, skybox_pl_spec) or_return
     }
 
     pipeline_layout_spec := gpu.PipelineLayoutSpecification {
@@ -1162,6 +1209,13 @@ set_texture2d_data :: proc(texture: ^Texture2D, data: []byte, level: i32 = 0, la
     gpu.image_set_data(&texture.handle, data)
 }
 
+@(asset = {
+    ImportFormats = ".hdr",
+})
+HDRTexture :: struct {
+    using texture_base: Texture,
+}
+
 build_global_set :: proc(r: ^Renderer3D) -> (set: GlobalSet) {
     set.layout = gpu.create_resource_layout(r.device, {
         type = .UniformBuffer,
@@ -1220,6 +1274,10 @@ build_scene_set :: proc(r: ^Renderer3D) -> (set: SceneSet) {
     return
 }
 
+// @note We could generate this at runtime by reflecting on shaders
+// and looking at what kind of resources they use at set = 2, which is the "object set".
+// This way, since we allocate these per-frame, each shader can trivially have it's own unique
+// set bound to it.
 build_object_set :: proc(r: ^Renderer3D) -> (set: ObjectSet) {
     tracy.Zone()
     set.layout = gpu.create_resource_layout(r.device, {
