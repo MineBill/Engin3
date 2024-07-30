@@ -1,7 +1,15 @@
 # Engin3
+<h2>
+  <p align="center">
+    <b>I'm now porting the project to C++, <a href="https://github.com/MineBill/Fussion">here</a>.</b>
+  </p>
+</h2>
+
 <p align="center">
   <img src="assets/editor/icons/Logo_Shadow.png" />
 </p>
+
+
 
 This is a very simple project that aims to help me learn how graphics work and how to develop a simple game engine. It is __NOT__ a serious tool but a learning project, so please keep that in mind.
 
